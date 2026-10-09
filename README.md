@@ -81,7 +81,7 @@ noise --demo-wav [out.wav]         # render the demo song
 | `src/prism_overdrive.rs` | The fourth demo song, and the kit and orchestra hit it renders |
 | `src/project.rs` | Song data (patterns and their automation, the order list, tracks, modules, links); saved as JSON |
 | `src/project_dir.rs` | Project folders: saving a song with its samples named by hashes, deleting the unused ones; export and import as `.noise` files (zip archives) |
-| `src/dsp/` | The audio code for every module: most in `mod.rs`, the larger ones (wavetable, granular, convolver) and the FFT in files of their own |
+| `src/dsp/` | The audio code for every module, a file to each family (`filters.rs`, `delays.rs`, `fm.rs`, `sampler.rs`…); `mod.rs` holds the `Dsp` trait, `create`, envelopes and voices, `tests.rs` the tests they share |
 | `src/sample.rs` | Loading WAV, FLAC and Ogg Vorbis samples; saving WAV |
 | `src/soundfont.rs` | SF2, SF3 and SFZ soundfonts turned into Sampler samples |
 | `src/engine.rs` | The sequencer, effects, automation, mixer and modules, run on the audio thread |
@@ -144,8 +144,9 @@ keep sounding while you edit during playback.
   through `Engine::picked_phrase`, set while its note is sent.
 - Adding a module: a `ModuleKind` with a `ParamSpec` table (with units) in
   `project.rs`, added to `ADDABLE` and `info`, and a `Dsp` in `dsp/` made
-  in `dsp::create`. A module in a file of its own is declared after the
-  `voice_controls!` macro in `dsp/mod.rs`, so it can use it.
+  in `dsp::create`, in its family's file or one of its own. The files are
+  declared after the `voice_controls!` macro in `dsp/mod.rs`, so they can
+  use it; their items are `pub(super)`, for `create` and the tests.
   `Ctx::samples_per_line` gives the tempo for synced rates. The demo song
   (`demo.rs`) must use it, and the manual (`ui/help.rs`) describe it:
   tests check both.
