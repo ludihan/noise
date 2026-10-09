@@ -99,7 +99,7 @@ The UI owns the song and sends a copy to the audio thread after each edit. The
 engine keeps existing modules' state between copies, so notes and effect tails
 keep sounding while you edit during playback.
 
-## Notes for continuing
+## Notes for contributing
 
 - `cargo test` covers the sequencer and effects (the engine tests swap a
   module's `Dsp` for one that records the note events it gets), every
