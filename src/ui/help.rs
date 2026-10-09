@@ -85,7 +85,7 @@ const EFFECTS: &[(&str, &str)] = &[
     ),
     (
         "Sxx",
-        "Sampler: play slice xx of the note's sample (00 the first) at the note's pitch, so any note can play any slice",
+        "Sampler: play slice xx (00 the first) of the note's sample at the note's pitch; a note that plays no sample plays it from the first sliced sample, pitched from its base note",
     ),
     ("Txy", "Tremor: the note sounds for x ticks, then is silent for y, over and over through the line"),
     ("Wxx", "Wait: hold the song on this line for xx lines more, while the line's slides and other effects go on"),
