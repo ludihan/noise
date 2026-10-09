@@ -475,6 +475,7 @@ pub enum ModuleKind {
     PlateReverb,
     Eq5,
     Glide,
+    Wavetable,
 }
 
 /// How a parameter's value is shown.
@@ -605,6 +606,9 @@ impl ParamSpec {
 }
 
 pub const WAVES: &[&str] = &["Saw", "Square", "Triangle", "Sine", "Noise"];
+/// The Wavetable synth's tables: sine to triangle to saw to square, a
+/// narrowing pulse, a hard-synced saw, a folded sine, and vowels.
+pub const WAVETABLES: &[&str] = &["Basic", "Pulse", "Sync", "Fold", "Vocal"];
 pub const LOOP_MODES: &[&str] = &["Off", "Forward", "Backward", "Ping-pong"];
 pub const FILTER_MODES: &[&str] = &["Lowpass", "Highpass", "Bandpass"];
 pub const DISTORTION_TYPES: &[&str] = &["Soft clip", "Hard clip", "Wave fold"];
@@ -662,6 +666,20 @@ static GENERATOR_PARAMS: [ParamSpec; 10] = [
     p("Detune", -100.0, 100.0, 0.0).unit(Cents),
     i("Unison", 1.0, 4.0, 1.0),
     p("Pulse width", 0.05, 0.95, 0.5).unit(Percent),
+    p("Pan", -1.0, 1.0, 0.0).unit(Pan),
+];
+static WAVETABLE_PARAMS: [ParamSpec; 12] = [
+    p("Volume", 0.0, 1.0, 0.5).unit(Gain),
+    c("Table", 0.0, WAVETABLES),
+    p("Position", 0.0, 1.0, 0.0).unit(Percent),
+    p("Sweep", -1.0, 1.0, 0.0),
+    i("Unison", 1.0, 7.0, 1.0),
+    p("Detune", 0.0, 100.0, 15.0).unit(Cents),
+    p("Stereo", 0.0, 1.0, 0.5).unit(Percent),
+    p("Attack", 0.0, 2.0, 0.005).unit(Seconds),
+    p("Decay", 0.0, 2.0, 0.3).unit(Seconds),
+    p("Sustain", 0.0, 1.0, 0.7).unit(Percent),
+    p("Release", 0.0, 4.0, 0.3).unit(Seconds),
     p("Pan", -1.0, 1.0, 0.0).unit(Pan),
 ];
 static FM_PARAMS: [ParamSpec; 9] = [
@@ -1032,8 +1050,9 @@ pub static MIXER_PAN: ParamSpec = p("Pan", -1.0, 1.0, 0.0).unit(Pan);
 pub static MIXER_GAIN: ParamSpec = p("Fader", 0.0, 2.0, 1.0).unit(Gain);
 
 impl ModuleKind {
-    pub const ADDABLE: [ModuleKind; 43] = [
+    pub const ADDABLE: [ModuleKind; 44] = [
         ModuleKind::Generator,
+        ModuleKind::Wavetable,
         ModuleKind::Fm,
         ModuleKind::Drums,
         ModuleKind::Kicker,
@@ -1083,6 +1102,7 @@ impl ModuleKind {
         match self {
             ModuleKind::Output => ("Output", &OUTPUT_PARAMS),
             ModuleKind::Generator => ("Generator", &GENERATOR_PARAMS),
+            ModuleKind::Wavetable => ("Wavetable", &WAVETABLE_PARAMS),
             ModuleKind::Fm => ("FM", &FM_PARAMS),
             ModuleKind::Drums => ("Drums", &DRUM_PARAMS),
             ModuleKind::Sampler => ("Sampler", &SAMPLER_PARAMS),
@@ -1158,6 +1178,7 @@ impl ModuleKind {
         matches!(
             self,
             ModuleKind::Generator
+                | ModuleKind::Wavetable
                 | ModuleKind::Fm
                 | ModuleKind::Drums
                 | ModuleKind::Kicker
@@ -1171,7 +1192,7 @@ impl ModuleKind {
 
     /// Whether the module's voices take a `Modulation`.
     pub fn has_modulation(self) -> bool {
-        matches!(self, ModuleKind::Sampler | ModuleKind::Generator | ModuleKind::Fm)
+        matches!(self, ModuleKind::Sampler | ModuleKind::Generator | ModuleKind::Fm | ModuleKind::Wavetable)
     }
 
     /// Whether the module only passes notes on and makes no sound, as the

@@ -5,6 +5,8 @@ use crate::project::{
     EQ10_FREQS, MAX_COLUMNS, MAX_TRACKS, Modulation, ModuleKind, SampleSlot, VoiceEnvelope, VoiceLfo,
 };
 use crate::sample::Sample;
+
+pub mod fft;
 use std::f32::consts::{PI, TAU};
 use std::sync::Arc;
 
@@ -190,6 +192,7 @@ pub fn create(kind: ModuleKind, sr: f32) -> Box<dyn Dsp> {
     match kind {
         ModuleKind::Output => Box::new(Output),
         ModuleKind::Generator => Box::new(Generator::new()),
+        ModuleKind::Wavetable => Box::new(wavetable::Wavetable::new()),
         ModuleKind::Fm => Box::new(Fm::new()),
         ModuleKind::Drums => Box::new(Drums::new()),
         ModuleKind::Sampler => Box::new(Sampler::new()),
@@ -418,6 +421,9 @@ macro_rules! voice_controls {
         }
     };
 }
+
+// The modules in files of their own come after the macro they use.
+pub mod wavetable;
 
 // ---------------------------------------------------------------- output / amp
 

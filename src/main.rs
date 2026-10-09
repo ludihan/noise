@@ -15,6 +15,8 @@ mod ui;
 
 fn main() -> eframe::Result {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // The wavetables take a moment to make: before any sound, not during.
+    dsp::wavetable::warm_up();
 
     // `noise --export <project folder or song file> out.wav` renders without
     // opening a window.

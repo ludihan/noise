@@ -18,38 +18,6 @@ pub struct SpectrumView {
     columns: Vec<f32>,
 }
 
-/// In-place radix-2 FFT; the length must be a power of two.
-fn fft(re: &mut [f32], im: &mut [f32]) {
-    let n = re.len();
-    let mut j = 0;
-    for i in 1..n {
-        let mut bit = n >> 1;
-        while j & bit != 0 {
-            j ^= bit;
-            bit >>= 1;
-        }
-        j |= bit;
-        if i < j {
-            re.swap(i, j);
-            im.swap(i, j);
-        }
-    }
-    let mut len = 2;
-    while len <= n {
-        for k in 0..len / 2 {
-            let (wi, wr) = (-TAU * k as f32 / len as f32).sin_cos();
-            for start in (0..n).step_by(len) {
-                let (a, b) = (start + k, start + k + len / 2);
-                let (tr, ti) = (re[b] * wr - im[b] * wi, re[b] * wi + im[b] * wr);
-                (re[b], im[b]) = (re[a] - tr, im[a] - ti);
-                re[a] += tr;
-                im[a] += ti;
-            }
-        }
-        len <<= 1;
-    }
-}
-
 /// The amplitude of each frequency bin of the mono sum of `frames`, which
 /// must be a power of two long, scaled so a full-scale sine reads 1.
 fn magnitudes(frames: &[Frame]) -> Vec<f32> {
@@ -58,7 +26,7 @@ fn magnitudes(frames: &[Frame]) -> Vec<f32> {
     let gain = 2.0 / window.iter().sum::<f32>();
     let mut re: Vec<f32> = frames.iter().zip(&window).map(|(f, w)| (f[0] + f[1]) * 0.5 * w).collect();
     let mut im = vec![0.0; n];
-    fft(&mut re, &mut im);
+    crate::dsp::fft::Fft::new(n).forward(&mut re, &mut im);
     (0..n / 2).map(|k| (re[k] * re[k] + im[k] * im[k]).sqrt() * gain).collect()
 }
 

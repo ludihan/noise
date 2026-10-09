@@ -110,6 +110,10 @@ const VOL_COMMANDS: &[(&str, &str)] = &[
 
 const MODULES: &[(&str, &str)] = &[
     ("Generator", "Saw, square, triangle, sine or noise, with an ADSR envelope and unison"),
+    (
+        "Wavetable",
+        "Waves from a table (Basic, Pulse, Sync, Fold or Vocal) that Position morphs through and Sweep moves while a note sounds, band-limited for every note, with up to seven detuned unison voices spread in stereo, an ADSR envelope and Modulation",
+    ),
     ("FM", "Two-operator FM synth with a decaying modulator"),
     ("Drums", "C kick, D snare, F# closed hi-hat, A# open hi-hat, other notes a tom"),
     ("Kicker", "A kick drum: a wave falling from octaves above the note to it, with a boost"),

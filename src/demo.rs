@@ -554,9 +554,15 @@ fn instruments(p: &mut Project) -> Ids {
     let speaker = p.chain_insert(bass, 3, K::Cabinet).unwrap();
     set(p, speaker, "Speaker", &[(0, 2.0), (1, 1.2), (2, 0.35)]);
 
-    // Strings: a wide saw pad, chorused, phased, darkened and widened.
-    let pad = add(p, K::Generator);
-    set(p, pad, "Strings", &[(0, 0.13), (1, 0.0), (2, 0.9), (3, 1.0), (4, 0.85), (5, 2.2), (6, 16.0), (7, 4.0)]);
+    // Strings: a wide wavetable pad between triangle and saw that grows
+    // brighter as a chord holds, chorused, phased, darkened and widened.
+    let pad = add(p, K::Wavetable);
+    set(
+        p,
+        pad,
+        "Strings",
+        &[(0, 0.13), (2, 0.55), (3, 0.03), (4, 5.0), (5, 16.0), (6, 0.6), (7, 0.9), (8, 1.0), (9, 0.85), (10, 2.2)],
+    );
     let chorus = p.chain_insert(pad, 0, K::Flanger).unwrap();
     set(p, chorus, "Ensemble", &[(0, 1.0), (2, 0.7), (3, 0.2), (5, 0.6)]);
     let phase = p.chain_insert(pad, 1, K::Phaser).unwrap();
@@ -714,8 +720,8 @@ fn instruments(p: &mut Project) -> Ids {
     let duck = add(p, K::Modulator);
     set(p, duck, "Duck", &[(0, 1.0), (5, -0.55), (6, 0.004), (7, 0.25)]);
     p.connect(stutter, duck);
-    let fader = K::Generator.params().len();
     for target in [pad, arp] {
+        let fader = p.module(target).unwrap().kind.params().len();
         p.connect(duck, target);
         p.set_control_param(duck, target, fader);
     }
@@ -1050,7 +1056,7 @@ const COMMENTS: &str = "Last Light — the demo song. Press Space to play it and
     Where to look:\n\
     • Piano (F4): a Sampler with two velocity layers, rendered by the demo itself, and a filter envelope. \
     Its chords are strummed with the delay column.\n\
-    • Strings: a chain of Flanger, Phaser and EQ into the shared Hall; the Breath Modulator moves the EQ, \
+    • Strings: a Wavetable pad whose Sweep brightens each chord, through a chain of Flanger, Phaser and EQ into the shared Hall; the Breath Modulator moves the EQ, \
     and Duck, following the drums, pulls the strings and the arp down under each hit.\n\
     • Arp: two phrases, picked with Z01 and Z02; the second clips its notes with Cxx and leaves one to chance with Yxx.\n\
     • Lead: a MultiSynth playing an FM voice (with a late vibrato on its Modulation page) and, through a \
