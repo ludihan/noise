@@ -54,6 +54,15 @@ pub fn track_color(track: usize) -> Color32 {
     TRACK_COLORS[track % TRACK_COLORS.len()]
 }
 
+/// The menus' style: what is on (a view, a part of the window) is shown in
+/// the selected color on a dark fill rather than dark on a bright one, so
+/// its shortcut stays readable beside it.
+pub fn menu_style(style: &mut egui::Style) {
+    egui::containers::menu::menu_style(style);
+    style.visuals.selection.bg_fill = Color32::from_rgb(70, 54, 28);
+    style.visuals.selection.stroke = Stroke::new(1.0, SELECTED);
+}
+
 pub fn setup(ctx: &egui::Context) {
     let mut v = egui::Visuals::dark();
     v.panel_fill = BODY;

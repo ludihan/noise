@@ -1035,7 +1035,8 @@ impl App {
 
     /// The menu bar along the top of the window.
     fn menu_bar(&mut self, ui: &mut egui::Ui) {
-        egui::MenuBar::new().ui(ui, |ui| {
+        let config = egui::containers::menu::MenuConfig::new().style(theme::menu_style);
+        egui::MenuBar::new().config(config).ui(ui, |ui| {
             ui.menu_button("File", |ui| {
                 if menu_item(ui, "New", "Ctrl+N") {
                     self.request(Pending::New);
