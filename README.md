@@ -42,7 +42,7 @@ noise --demo-wav [out.wav]         # render the demo song
   sections, drag and drop and a right-click menu for slots; a **mixer**
   strip for every module; **automation** envelopes of a pattern or part of
   one, picked from a filtered parameter browser.
-- **Modules**: Generator, FM, Drums, Kicker, SpectraVoice, FMX, Sampler, Input (the sound card's input, live), MultiSynth and Modulator (LFO with
+- **Modules**: Generator, FM, Drums, Kicker, SpectraVoice, FMX, Sampler, Input (the sound card's input, live), MultiSynth, Glide (portamento between notes) and Modulator (LFO with
   drawn shapes synced to beats, follower, key and velocity tracker,
   envelope, or a knob);
   Filter, Filter Pro, Analog Filter, Distortion, Delay, Echo, Reverb, Plate Reverb, Amplifier, LFO, Flanger, Chorus, Phaser,

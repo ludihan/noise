@@ -229,7 +229,7 @@ pub fn create(kind: ModuleKind, sr: f32) -> Box<dyn Dsp> {
         ModuleKind::Eq5 => Box::new(Eq5::default()),
         ModuleKind::Compressor => Box::new(Compressor::default()),
         ModuleKind::Eq => Box::new(Eq::default()),
-        ModuleKind::MultiSynth | ModuleKind::Modulator => Box::new(Silent),
+        ModuleKind::MultiSynth | ModuleKind::Glide | ModuleKind::Modulator => Box::new(Silent),
     }
 }
 

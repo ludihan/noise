@@ -101,6 +101,23 @@ struct Held {
     target: Option<usize>,
 }
 
+/// A note a Glide passes on: its key, the pitch it is at and the one it
+/// slides to, in semitones a second, whether it sounds, and a note-off
+/// held back until the tick's events are in, in case a note follows it.
+#[derive(Clone, Copy)]
+struct GlideVoice {
+    key: u32,
+    at: f32,
+    to: f32,
+    rate: f32,
+    sounding: bool,
+    off_pending: bool,
+}
+
+/// The longest stretch rendered while a Glide slides, so its pitch moves
+/// smoothly.
+const GLIDE_STEP: usize = 64;
+
 pub enum Cmd {
     Project(Arc<Project>),
     /// Start playing at `order` / `line`. With `loop_pattern` the current
@@ -327,6 +344,8 @@ struct Node {
     targets: Vec<usize>,
     held: Vec<Held>,
     next_target: usize,
+    /// For a Glide: the last note on each key, sliding.
+    glides: Vec<GlideVoice>,
     /// For a Modulator: the nodes and automatable parameters it moves,
     /// its LFO's phase and the level it follows.
     controls: Vec<(usize, usize)>,
@@ -827,6 +846,7 @@ impl Engine {
                     targets: Vec::new(),
                     held: Vec::with_capacity(if m.kind.notes_only() { MAX_HELD } else { 0 }),
                     next_target: 0,
+                    glides: Vec::with_capacity(if m.kind == ModuleKind::Glide { MAX_HELD } else { 0 }),
                     controls: Vec::new(),
                     phase: 0.0,
                     follow: 0.0,
@@ -1010,6 +1030,10 @@ impl Engine {
             }
             return;
         }
+        if node.kind == ModuleKind::Glide {
+            self.glide_event(i, key, ev, depth);
+            return;
+        }
         if depth >= MAX_NOTE_DEPTH || node.targets.is_empty() {
             return;
         }
@@ -1065,10 +1089,123 @@ impl Engine {
         }
     }
 
-    /// Forgets the notes MultiSynths hold, and the phrases playing.
+    /// Passes `ev` from note module `i` on to every instrument it is
+    /// connected to.
+    fn pass_on(&mut self, i: usize, key: u32, ev: NoteEv, depth: u8) {
+        if depth >= MAX_NOTE_DEPTH {
+            return;
+        }
+        for t in 0..self.nodes[i].targets.len() {
+            let j = self.copy_for(self.nodes[i].targets[t], key);
+            self.note_to(j, key, ev, depth + 1);
+        }
+    }
+
+    /// A note event for Glide node `i`: a new note starts where the last
+    /// one on its key was and slides to its own pitch, in Time whatever
+    /// the distance. In Legato mode only a note played over the last one
+    /// slides, and goes on sounding rather than starting again.
+    fn glide_event(&mut self, i: usize, key: u32, ev: NoteEv, depth: u8) {
+        let node = &self.nodes[i];
+        let p = if node.automated { &node.params } else { &self.project.modules[node.module].params };
+        let (legato, time) = (p[0] >= 0.5, p[1].max(0.001));
+        let at = node.glides.iter().position(|g| g.key == key);
+        let glides = &mut self.nodes[i].glides;
+        match ev {
+            NoteEv::On(note, vel) => {
+                let last = at.map(|a| glides[a]);
+                let tied = last.is_some_and(|g| g.sounding);
+                let from = match last {
+                    Some(g) if tied || !legato => g.at,
+                    _ => note,
+                };
+                let g = GlideVoice {
+                    key,
+                    at: from,
+                    to: note,
+                    rate: (note - from).abs() / time,
+                    sounding: true,
+                    off_pending: false,
+                };
+                match at {
+                    Some(a) => glides[a] = g,
+                    None if glides.len() < MAX_HELD => glides.push(g),
+                    None => {}
+                }
+                if legato && tied {
+                    self.pass_on(i, key, NoteEv::Vel(vel), depth);
+                } else {
+                    // Starting again, with the last note let go first if it
+                    // was held back.
+                    if last.is_some_and(|g| g.off_pending) {
+                        self.pass_on(i, key, NoteEv::Off, depth);
+                    }
+                    self.pass_on(i, key, NoteEv::On(from, vel), depth);
+                }
+            }
+            NoteEv::Off => match at {
+                Some(a) if legato => glides[a].off_pending = glides[a].sounding,
+                _ => {
+                    if let Some(a) = at {
+                        glides[a].sounding = false;
+                    }
+                    self.pass_on(i, key, ev, depth);
+                }
+            },
+            NoteEv::Pitch(note) => {
+                // Slides and vibrato move the note it goes to; while it
+                // still glides there, it keeps gliding.
+                match at.map(|a| &mut glides[a]) {
+                    Some(g) if g.at != g.to => g.to = note,
+                    Some(g) => {
+                        (g.at, g.to) = (note, note);
+                        self.pass_on(i, key, ev, depth);
+                    }
+                    None => self.pass_on(i, key, ev, depth),
+                }
+            }
+            ev => self.pass_on(i, key, ev, depth),
+        }
+    }
+
+    /// Moves every Glide's notes on by `frames`, and lets go of the notes
+    /// it held back that no new note followed.
+    fn run_glides(&mut self, frames: usize) {
+        let dt = frames as f32 / self.sr;
+        for i in 0..self.nodes.len() {
+            if self.nodes[i].glides.is_empty() {
+                continue;
+            }
+            for k in 0..self.nodes[i].glides.len() {
+                let g = &mut self.nodes[i].glides[k];
+                let key = g.key;
+                if std::mem::take(&mut g.off_pending) {
+                    g.sounding = false;
+                    self.pass_on(i, key, NoteEv::Off, 0);
+                    continue;
+                }
+                let g = &mut self.nodes[i].glides[k];
+                if g.at != g.to {
+                    let step = g.rate.max(1e-3) * dt;
+                    g.at = if g.at < g.to { (g.at + step).min(g.to) } else { (g.at - step).max(g.to) };
+                    let at = g.at;
+                    self.pass_on(i, key, NoteEv::Pitch(at), 0);
+                }
+            }
+        }
+    }
+
+    /// Whether a Glide is sliding a note, so rendering goes in small steps.
+    fn gliding(&self) -> bool {
+        self.nodes.iter().any(|n| n.glides.iter().any(|g| g.at != g.to || g.off_pending))
+    }
+
+    /// Forgets the notes MultiSynths and Glides hold, and the phrases
+    /// playing.
     fn forget_held(&mut self) {
         for n in &mut self.nodes {
             n.held.clear();
+            n.glides.clear();
         }
         self.phrases.clear();
     }
@@ -1930,8 +2067,12 @@ impl Engine {
             if self.playing {
                 n = n.min(self.samples_to_tick.ceil().max(1.0) as usize);
             }
+            if self.gliding() {
+                n = n.min(GLIDE_STEP);
+            }
             self.automate();
             self.run_phrases(n);
+            self.run_glides(n);
             self.render_block(&mut out[done..done + n]);
             self.render_preview(&mut out[done..done + n]);
             self.render_click(&mut out[done..done + n]);
@@ -2556,6 +2697,58 @@ mod tests {
         e.node_mut(a).unwrap().dsp = Box::new(Recorder(logs[0].clone()));
         e.node_mut(b).unwrap().dsp = Box::new(Recorder(logs[1].clone()));
         (e, ms, logs)
+    }
+
+    /// A Glide in `mode` taking 0.1 s, feeding a recorder.
+    fn glide(mode: f32) -> (Engine, u8, Log) {
+        let mut p = Project::empty();
+        let g = p.add_module(ModuleKind::Glide, [0.0, 0.0]).unwrap();
+        let synth = p.add_module(ModuleKind::Generator, [0.0, 0.0]).unwrap();
+        assert!(p.connect(g, synth) && !p.connect(synth, g));
+        p.module_mut(g).unwrap().params = vec![mode, 0.1];
+        let mut e = engine(p);
+        let log = Log::default();
+        e.node_mut(synth).unwrap().dsp = Box::new(Recorder(log.clone()));
+        (e, g, log)
+    }
+
+    #[test]
+    fn glide_slides_each_note_from_the_last_in_its_time() {
+        let (mut e, g, log) = glide(0.0);
+        e.handle(Cmd::NoteOn { module: g, key: 1, note: 48, vel: 1.0 });
+        render(&mut e, 1000);
+        e.handle(Cmd::NoteOff { module: g, key: 1 });
+        e.handle(Cmd::NoteOn { module: g, key: 1, note: 60, vel: 1.0 });
+        render(&mut e, (SR * 0.2) as usize);
+        let events = log.take();
+        assert_eq!(values(&events, "on"), [48.0, 48.0], "the second note starts where the first was");
+        let pitches = values(&events, "pitch");
+        assert!(pitches.windows(2).all(|w| w[1] > w[0]) && pitches.last() == Some(&60.0), "{pitches:?}");
+        // In steps of at most GLIDE_STEP frames over the 0.1 s.
+        let steps = (SR * 0.1) as usize / GLIDE_STEP;
+        assert!(pitches.len() >= steps && pitches.len() <= steps + 2, "{}", pitches.len());
+    }
+
+    #[test]
+    fn legato_glides_only_over_a_held_note_without_starting_again() {
+        let (mut e, g, log) = glide(1.0);
+        e.handle(Cmd::NoteOn { module: g, key: 1, note: 48, vel: 1.0 });
+        render(&mut e, 1000);
+        // Let go and played again at once, as a track does: one note on.
+        e.handle(Cmd::NoteOff { module: g, key: 1 });
+        e.handle(Cmd::NoteOn { module: g, key: 1, note: 55, vel: 0.5 });
+        render(&mut e, (SR * 0.2) as usize);
+        let events = log.take();
+        assert_eq!(values(&events, "on"), [48.0]);
+        assert!(values(&events, "off").is_empty() && values(&events, "pitch").last() == Some(&55.0));
+        // Let go for good, then a note after the gap jumps.
+        e.handle(Cmd::NoteOff { module: g, key: 1 });
+        render(&mut e, 1000);
+        e.handle(Cmd::NoteOn { module: g, key: 1, note: 40, vel: 1.0 });
+        render(&mut e, 1000);
+        let events = log.take();
+        assert_eq!((values(&events, "off").len(), values(&events, "on")), (1, vec![40.0]));
+        assert!(values(&events, "pitch").is_empty());
     }
 
     #[test]

@@ -124,6 +124,10 @@ const MODULES: &[(&str, &str)] = &[
         "Plays the sound card's input, live: a microphone or an instrument through the effects. The input is open while the song has an Input module",
     ),
     ("MultiSynth", "Passes the notes it gets on to the instruments it is connected to"),
+    (
+        "Glide",
+        "Passes notes on to the instruments it is connected to, sliding each from the last note on its column in Time, whatever the distance; Legato slides only a note played over the last one, without starting it again",
+    ),
     ("Modulator", "Moves a parameter of each module it links to, with an LFO or by following its input"),
     ("Filter", "Lowpass, highpass or bandpass with resonance and an LFO"),
     ("Distortion", "Soft clip, hard clip or wave fold with a tone control, bit crushing and downsampling"),
@@ -388,6 +392,10 @@ const TOPICS: &[Topic] = &[
             H("MultiSynth"),
             P(
                 "It plays no sound itself: it passes its notes on to every instrument it is connected to, so one track plays layered instruments. It can transpose, finetune, detune each note at random, scale velocity, ignore notes outside a range, and send each note to all its instruments, to the next in turn (Round robin) or to one at random.",
+            ),
+            H("Glide"),
+            P(
+                "A note module, connected to instruments as a MultiSynth is: each note it passes on starts where the last one on its key (its column, for a track) was and slides to its own pitch in Time, near or far. In Legato mode only a note played over the last one, as a track does with no note-off between, slides, and it goes on sounding rather than starting again; a note after a gap jumps. Slides and vibrato on the note still apply.",
             ),
             H("Track effects and the master chain"),
             P(

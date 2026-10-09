@@ -660,8 +660,12 @@ fn instruments(p: &mut Project) -> Ids {
     set(p, waver, "Waver", &[(0, 5.2), (1, 0.12), (2, 0.25)]);
     let lead_echo = add(p, K::Delay);
     set(p, lead_echo, "Lead Echo", &[(0, 6.0), (1, 0.35), (2, 0.25), (3, 0.6)]);
+    // The choir slides between notes played over each other.
+    let slide = add(p, K::Glide);
+    set(p, slide, "Choir Slide", &[(0, 1.0), (1, 0.07)]);
     p.connect(lead, lead_fm);
-    p.connect(lead, lead_saw);
+    p.connect(lead, slide);
+    p.connect(slide, lead_saw);
     p.connect(lead_fm, lead_echo);
     let warm = p.chain_insert(lead_fm, 0, K::AnalogFilter).unwrap();
     set(p, warm, "Warm", &[(1, 3800.0), (2, 0.25), (3, 1.4)]);
@@ -1049,8 +1053,8 @@ const COMMENTS: &str = "Last Light — the demo song. Press Space to play it and
     • Strings: a chain of Flanger, Phaser and EQ into the shared Hall; the Breath Modulator moves the EQ, \
     and Duck, following the drums, pulls the strings and the arp down under each hit.\n\
     • Arp: two phrases, picked with Z01 and Z02; the second clips its notes with Cxx and leaves one to chance with Yxx.\n\
-    • Lead: a MultiSynth playing an FM voice (with a late vibrato on its Modulation page) and a saw through a \
-    Vocal Filter, whose vowel is automated in the chorus.\n\
+    • Lead: a MultiSynth playing an FM voice (with a late vibrato on its Modulation page) and, through a \
+    Glide that slides tied notes, a saw through a Vocal Filter, whose vowel is automated in the chorus.\n\
     • Build: the bass filter opens, the bass slides up with 1xx, the snare rolls with Exx, and the Stutter \
     Repeater's Hold is automated at the end.\n\
     • Bridge: Voices talk through a Vocal Filter and tremble with 7xy; Bells use Yxx, Nxy and 8xx, through a Ring Mod and an LFO.\n\

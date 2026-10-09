@@ -474,6 +474,7 @@ pub enum ModuleKind {
     AnalogFilter,
     PlateReverb,
     Eq5,
+    Glide,
 }
 
 /// How a parameter's value is shown.
@@ -624,6 +625,9 @@ pub const MODULATOR_BEAT_LENGTHS: [f32; 10] = [0.0625, 0.125, 0.25, 0.5, 1.0, 2.
 pub const DEFAULT_SHAPE: [(f32, f32); 3] = [(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)];
 pub const FLANGER_MODES: &[&str] = &["Flanger", "Chorus"];
 pub const MULTISYNTH_MODES: &[&str] = &["All", "Round robin", "Random"];
+/// When a Glide slides: into every note, or only one played on top of the
+/// last, without a gap, which then doesn't start again.
+pub const GLIDE_MODES: &[&str] = &["Always", "Legato"];
 /// What a Modulator moves its parameters by: an LFO, or what it follows:
 /// the level of its input, the last note played on it, or how hard; an
 /// envelope each note starts; or just its Amount, as a knob that turns
@@ -1010,6 +1014,7 @@ static MULTISYNTH_PARAMS: [ParamSpec; 8] = [
     i("Low note", 0.0, 119.0, 0.0).unit(Unit::Note),
     i("High note", 0.0, 119.0, 119.0).unit(Unit::Note),
 ];
+static GLIDE_PARAMS: [ParamSpec; 2] = [c("Mode", 0.0, GLIDE_MODES), p("Time", 0.005, 2.0, 0.12).unit(Seconds)];
 static MODULATOR_PARAMS: [ParamSpec; 9] = [
     c("Mode", 0.0, MODULATOR_MODES),
     c("Shape", 0.0, MODULATOR_SHAPES),
@@ -1027,7 +1032,7 @@ pub static MIXER_PAN: ParamSpec = p("Pan", -1.0, 1.0, 0.0).unit(Pan);
 pub static MIXER_GAIN: ParamSpec = p("Fader", 0.0, 2.0, 1.0).unit(Gain);
 
 impl ModuleKind {
-    pub const ADDABLE: [ModuleKind; 42] = [
+    pub const ADDABLE: [ModuleKind; 43] = [
         ModuleKind::Generator,
         ModuleKind::Fm,
         ModuleKind::Drums,
@@ -1037,6 +1042,7 @@ impl ModuleKind {
         ModuleKind::Sampler,
         ModuleKind::Input,
         ModuleKind::MultiSynth,
+        ModuleKind::Glide,
         ModuleKind::Modulator,
         ModuleKind::Filter,
         ModuleKind::Distortion,
@@ -1117,6 +1123,7 @@ impl ModuleKind {
             ModuleKind::Compressor => ("Compressor", &COMPRESSOR_PARAMS),
             ModuleKind::Eq => ("EQ", &EQ_PARAMS),
             ModuleKind::MultiSynth => ("MultiSynth", &MULTISYNTH_PARAMS),
+            ModuleKind::Glide => ("Glide", &GLIDE_PARAMS),
             ModuleKind::Modulator => ("Modulator", &MODULATOR_PARAMS),
         }
     }
@@ -1158,6 +1165,7 @@ impl ModuleKind {
                 | ModuleKind::Fmx
                 | ModuleKind::Sampler
                 | ModuleKind::MultiSynth
+                | ModuleKind::Glide
         )
     }
 
@@ -1169,7 +1177,7 @@ impl ModuleKind {
     /// Whether the module only passes notes on and makes no sound, as the
     /// MultiSynth does.
     pub fn notes_only(self) -> bool {
-        self == ModuleKind::MultiSynth
+        matches!(self, ModuleKind::MultiSynth | ModuleKind::Glide)
     }
 
     /// Whether the module's links move other modules' parameters rather
