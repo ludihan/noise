@@ -164,8 +164,8 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, id: u8) {
         text(0.5, format!("{line:02}"), if line % lpb == 0 { theme::PAT_NOTE } else { theme::PAT_LINE_NUMBER });
         let note = cell.note.map_or("---".into(), |n| n.label());
         text(4.0, note, if cell.note.is_some() { theme::PAT_NOTE } else { theme::PAT_EMPTY });
-        let vol = cell.vol.map_or("..".into(), |v| format!("{v:02X}"));
-        text(8.0, vol, if cell.vol.is_some() { theme::PAT_VOLUME } else { theme::PAT_EMPTY });
+        let vol = cell.vol.map_or("..".into(), crate::project::vol_text);
+        text(8.0, vol, pattern::vol_color(cell.vol));
         let fx = cell.fx.map_or("...".into(), |(c, a)| format!("{}{a:02X}", super::block::fx_command(c)));
         text(11.0, fx, if cell.fx.is_some() { theme::PAT_EFFECT } else { theme::PAT_EMPTY });
         if line == cur {
@@ -219,6 +219,10 @@ fn edit(app: &mut App, id: u8, key: Key, repeat: bool, lines: usize) -> bool {
             cell.note = Some(Note::Off);
             true
         }
+        (1, k) if pattern::vol_key(k).is_some() => {
+            cell.vol = pattern::vol_key(k).map(|c| pattern::vol_command_typed(cell.vol, c));
+            true
+        }
         // Zxx, Jxx and Wxx act on the song, so don't apply in phrases.
         (3, k) if pattern::fx_key(k).is_some_and(|c| ![FX_PHRASE, FX_BREAK, FX_WAIT].contains(&c)) => {
             cell.fx = Some((pattern::fx_key(k).unwrap(), cell.fx.map_or(0, |f| f.1)));
@@ -235,7 +239,7 @@ fn edit(app: &mut App, id: u8, key: Key, repeat: bool, lines: usize) -> bool {
             Some(d) => {
                 let (cmd, arg) = cell.fx.unwrap_or((0, 0));
                 match col {
-                    1 | 2 => cell.vol = pattern::set_nibble(cell.vol, col == 1, d).map(|v| v.min(0x80)),
+                    1 | 2 => cell.vol = pattern::type_vol(cell.vol, col == 1, d),
                     3 => cell.fx = Some((d, arg)),
                     _ => cell.fx = Some((cmd, pattern::set_nibble(Some(arg), col == 4, d).unwrap())),
                 }

@@ -38,6 +38,7 @@ const KEYS: &[(&str, &str)] = &[
     ("Ins / Backspace", "Push rows down / pull rows up"),
     ("0–9, A–F", "Hex values in the module, volume and effect columns"),
     ("J, N, R, S, T, W, Y, Z", "The commands written with letters, in the effect column"),
+    ("I, O, U, D, G, C, R", "The volume column's commands, in its first digit"),
     ("Shift+arrows, drag", "Select a block; right-click it for more"),
     ("Ctrl+A", "Select the track, then the whole pattern"),
     ("Ctrl+C / Ctrl+X / Ctrl+V", "Copy / cut / paste the block"),
@@ -91,6 +92,16 @@ const EFFECTS: &[(&str, &str)] = &[
     ("Wxx", "Wait: hold the song on this line for xx lines more, while the line's slides and other effects go on"),
     ("Yxx", "Maybe play the note: with a chance of xx in FF (FF always, 00 never)"),
     ("Zxx", "Play the note with the instrument's phrase xx (from 01), or Z00 without one"),
+];
+
+/// The volume column's commands, as `project::vol_effect` plays them.
+const VOL_COMMANDS: &[(&str, &str)] = &[
+    ("Ix", "Fade in: the volume slides up by x volume steps per tick (as Ax0)"),
+    ("Ox", "Fade out: the volume slides down by x steps per tick (as A0x); with a note it starts from full"),
+    ("Ux / Dx", "Slide the pitch up / down by x/4 semitone per tick"),
+    ("Gx", "Glide to the note at x/4 semitone per tick (as 3xx)"),
+    ("Cx", "Cut the note after x ticks (as Cxx)"),
+    ("Rx", "Play the note again every x ticks (as Exx)"),
 ];
 
 const MODULES: &[(&str, &str)] = &[
@@ -243,7 +254,7 @@ const TOPICS: &[Topic] = &[
                 "The cursor line stays in the middle and the pattern scrolls under it; the wheel moves the cursor. A red outline means edit mode is on: notes are written and the cursor moves on by STEP lines.",
             ),
             Code(
-                "C-4 02 40 F8C\n│   │  │  └─ effect: command + hex argument\n│   │  └──── volume, 00–80\n│   └─────── module that plays the note (hex)\n└─────────── note",
+                "C-4 02 40 F8C\n│   │  │  └─ effect: command + hex argument\n│   │  └──── volume, 00–80, or a command such as O4\n│   └─────── module that plays the note (hex)\n└─────────── note",
             ),
             H("Tracks and columns"),
             P(
@@ -270,6 +281,11 @@ const TOPICS: &[Topic] = &[
         title: "Effect commands",
         blocks: &[
             Table(EFFECTS),
+            H("Volume column"),
+            P(
+                "Besides a volume from 00 to 80, the volume column takes a command: a letter, typed in its first digit, and a hex digit. It acts like the effect it stands for, so the effect column stays free; a command in the effect column on the same line wins.",
+            ),
+            Table(VOL_COMMANDS),
             P(
                 "Each line has TPL ticks, 6 unless changed. Effects work during their line: slides, glides, volume slides and panning stay afterwards, while arpeggio, vibrato, tremolo and auto-pan end with the line. Type J, N, R, S, T, W, Y or Z in the effect column for the commands written with letters. In phrases, Bxx, Fxx, Jxx, Wxx and Zxx do nothing.",
             ),
@@ -584,6 +600,9 @@ mod tests {
             "Rxx", "Sxx", "Txy", "Wxx", "Yxx", "Zxx",
         ] {
             assert!(EFFECTS.iter().any(|(k, _)| k.contains(cmd)), "{cmd}");
+        }
+        for c in crate::project::VOL_COMMANDS {
+            assert!(VOL_COMMANDS.iter().any(|(k, _)| k.contains(&format!("{c}x"))), "{c}x");
         }
         for kind in crate::project::ModuleKind::ADDABLE {
             assert!(MODULES.iter().any(|(k, _)| *k == kind.name()), "{}", kind.name());

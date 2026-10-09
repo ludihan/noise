@@ -132,7 +132,9 @@ pub fn humanize(p: &mut Pattern, b: Block, amount: f32, delays: &[bool], mut see
     };
     let tracks: Vec<usize> = (b.tracks.0..=b.tracks.1).map(|l| p.lane_pos(l).0).collect();
     for (col, t) in columns(p, b).into_iter().zip(tracks) {
-        for cell in col.iter_mut().filter(|c| matches!(c.note, Some(Note::On(_)))) {
+        // Volume column commands are left as they are.
+        let humanized = |c: &Cell| matches!(c.note, Some(Note::On(_))) && c.vol.is_none_or(|v| v <= 0x80);
+        for cell in col.iter_mut().filter(|c| humanized(c)) {
             let vol = cell.vol.unwrap_or(0x80) as f32 * (1.0 + amount * (2.0 * random() - 1.0));
             cell.vol = Some(vol.round().clamp(1.0, 128.0) as u8);
             if delays.get(t).copied().unwrap_or(false) {
@@ -165,7 +167,7 @@ pub fn interpolate(p: &mut Pattern, b: Block) -> bool {
     for col in columns(p, b) {
         let (first, last) = (col[0], col[n]);
         let at = |a: u8, z: u8, i: usize| (a as f32 + (z as f32 - a as f32) * i as f32 / n as f32).round() as u8;
-        if let (Some(a), Some(z)) = (first.vol, last.vol) {
+        if let (Some(a @ ..=0x80), Some(z @ ..=0x80)) = (first.vol, last.vol) {
             for (i, c) in col.iter_mut().enumerate() {
                 c.vol = Some(at(a, z, i));
             }
@@ -223,7 +225,7 @@ pub fn fields(cell: &Cell) -> [String; 4] {
     [
         cell.note.map_or("---".into(), |n| n.label()),
         cell.module.map_or("..".into(), |m| format!("{m:02X}")),
-        cell.vol.map_or("..".into(), |v| format!("{v:02X}")),
+        cell.vol.map_or("..".into(), crate::project::vol_text),
         cell.fx.map_or("...".into(), |(c, a)| format!("{}{a:02X}", fx_command(c))),
     ]
 }
@@ -287,7 +289,7 @@ fn parse_cell(text: &str) -> Option<Cell> {
             n => Some(Note::On((0..120).find(|&i| Note::On(i).label() == n)?)),
         },
         module: hex(module)?,
-        vol: hex(vol)?.map(|v| v.min(0x80)),
+        vol: if vol == ".." { None } else { Some(crate::project::parse_vol(vol)?) },
         fx: match fx {
             "..." => None,
             f if f.len() == 3 && f.is_ascii() => {
@@ -303,6 +305,21 @@ fn parse_cell(text: &str) -> Option<Cell> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn volume_column_commands_are_kept_through_edits_and_text() {
+        let fade = crate::project::vol_command_value('I', 3);
+        let mut p = Pattern::new("t", 1, 8);
+        p.tracks[0][0] = Cell { note: Some(Note::On(48)), vol: fade, ..Cell::default() };
+        p.tracks[0][4] = Cell { note: Some(Note::On(48)), vol: Some(0x20), ..Cell::default() };
+        p.tracks[0][7] = Cell { vol: Some(0x40), ..Cell::default() };
+        let all = Block { tracks: (0, 0), lines: (0, 7) };
+        humanize(&mut p, all, 0.5, &[], 7);
+        assert_eq!(p.tracks[0][0].vol, fade, "humanize leaves commands");
+        assert!(!interpolate(&mut p, all), "nor does interpolating from one");
+        let clip = vec![p.tracks[0].clone()];
+        assert_eq!(from_text(&to_text(&clip)).unwrap()[0][0].vol, fade);
+    }
 
     #[test]
     fn humanize_moves_note_volumes_a_little_and_delays_where_shown() {

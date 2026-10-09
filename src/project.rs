@@ -1430,6 +1430,64 @@ pub fn fx_letter(c: char) -> Option<u8> {
     }
 }
 
+/// The volume column's commands, by letter, kept above the volumes (00
+/// to 80): sixteen values each from 90 up, the letter's hex digit after it.
+pub const VOL_COMMANDS: [char; 7] = ['I', 'O', 'U', 'D', 'G', 'C', 'R'];
+
+/// Where the volume column's commands start.
+const VOL_COMMAND_BASE: u8 = 0x90;
+
+/// The volume column command `v` holds, as its letter and digit, if it
+/// holds one rather than a volume.
+pub fn vol_command(v: u8) -> Option<(char, u8)> {
+    let i = v.checked_sub(VOL_COMMAND_BASE)? as usize / 16;
+    Some((*VOL_COMMANDS.get(i)?, v & 0xF))
+}
+
+/// The volume column value of command `letter` with digit `x`.
+pub fn vol_command_value(letter: char, x: u8) -> Option<u8> {
+    let i = VOL_COMMANDS.iter().position(|&c| c == letter.to_ascii_uppercase())?;
+    Some(VOL_COMMAND_BASE + 16 * i as u8 + (x & 0xF))
+}
+
+/// A volume column value as the editor shows it: two hex digits, or a
+/// command's letter and digit.
+pub fn vol_text(v: u8) -> String {
+    match vol_command(v) {
+        Some((c, x)) => format!("{c}{x:X}"),
+        None => format!("{v:02X}"),
+    }
+}
+
+/// Reads what `vol_text` writes.
+pub fn parse_vol(s: &str) -> Option<u8> {
+    let mut chars = s.chars();
+    let (a, b) = (chars.next()?, chars.next()?);
+    if chars.next().is_some() {
+        return None;
+    }
+    match (vol_command_value(a, 0), b.to_digit(16)) {
+        (Some(base), Some(x)) => Some(base + x as u8),
+        _ => u8::from_str_radix(s, 16).ok().map(|v| v.min(0x80)),
+    }
+}
+
+/// The effect command a volume column command stands for: fades are
+/// volume slides, pitch slides and glides move x/4 semitone a tick, and
+/// cuts and retriggers count x ticks.
+pub fn vol_effect(v: u8) -> Option<(u8, u8)> {
+    let (c, x) = vol_command(v)?;
+    Some(match c {
+        'I' => (0xA, x << 4),
+        'O' => (0xA, x),
+        'U' => (0x1, x * 4),
+        'D' => (0x2, x * 4),
+        'G' => (0x3, x * 4),
+        'C' => (0xC, x),
+        _ => (0xE, x),
+    })
+}
+
 /// The effect command that plays a line's note only sometimes, `Y`: with
 /// a chance of xx in FF.
 pub const FX_MAYBE: u8 = 34;
@@ -2849,6 +2907,19 @@ fn resolve(dir: &Path, path: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn volume_column_commands_read_back_as_written() {
+        for v in 0..=0x80 {
+            assert_eq!(parse_vol(&vol_text(v)), Some(v));
+        }
+        let fade = vol_command_value('O', 0xA).unwrap();
+        assert_eq!((vol_text(fade), vol_command(fade)), ("OA".into(), Some(('O', 0xA))));
+        assert_eq!(parse_vol("OA"), Some(fade));
+        assert_eq!(vol_effect(fade), Some((0xA, 0x0A)));
+        assert_eq!(parse_vol("FF"), Some(0x80), "hex past 80 is full volume, not a command");
+        assert_eq!(parse_vol("XA"), None);
+    }
 
     fn temp_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("noise-test-{name}-{}", std::process::id()));

@@ -392,16 +392,18 @@ fn remember(memory: &mut (u8, u8), arg: u8) -> (u8, u8) {
     *memory
 }
 
-/// A line's effect commands for one note column: its own, then those of
-/// its track's effect columns, which act on every note column.
+/// A line's effect commands for one note column: its volume column's,
+/// its own, then those of its track's effect columns, which act on every
+/// note column. Later ones win.
 #[derive(Clone, Copy, Default)]
-struct Effects([Option<(u8, u8)>; 1 + MAX_FX_COLUMNS]);
+struct Effects([Option<(u8, u8)>; 2 + MAX_FX_COLUMNS]);
 
 impl Effects {
     /// The commands `cell` holds, and `more`.
     fn new(cell: &Cell, more: impl Iterator<Item = (u8, u8)>) -> Self {
         let mut e = Effects::default();
-        for (slot, fx) in e.0.iter_mut().zip(cell.fx.into_iter().chain(more)) {
+        let own = cell.vol.and_then(crate::project::vol_effect).into_iter().chain(cell.fx);
+        for (slot, fx) in e.0.iter_mut().zip(own.chain(more)) {
             *slot = Some(fx);
         }
         e
@@ -459,7 +461,8 @@ impl Track {
         if let Some(m) = cell.module {
             self.module = Some(m);
         }
-        let vel = cell.vol.map(|v| (v.min(0x80) as f32) / 128.0);
+        // Above 80 the volume column holds a command, which `effects` has.
+        let vel = cell.vol.filter(|&v| v <= 0x80).map(|v| v as f32 / 128.0);
         let pan_fx = effects.find(0x8);
         if let Some(p) = pan_fx {
             // 00 is left, 80 the middle and FF right.
@@ -2406,6 +2409,21 @@ mod tests {
         render(&mut e, 6 * TICK);
         assert_eq!(e.shown, (0, 2), "the next line is as long as ever");
         assert_eq!(values(&log.take(), "on"), [48.0, 50.0]);
+    }
+
+    #[test]
+    fn volume_column_commands_act_as_effects() {
+        let vc = |c, x| crate::project::vol_command_value(c, x);
+        // A fade out starts at full volume, not at the command's value.
+        let (mut e, log) = sequencer(&[(0, note(48, vc('O', 4), None)), (1, Cell::default())]);
+        render(&mut e, 6 * TICK + 10);
+        let vels = values(&log.take(), "vel");
+        assert_eq!(vels.len(), 5);
+        assert!((vels[0] - (1.0 - 4.0 / 128.0)).abs() < 1e-6 && vels.windows(2).all(|w| w[1] < w[0]), "{vels:?}");
+        // G4 glides a semitone a tick.
+        let (mut e, log) = sequencer(&[(0, note(48, None, None)), (1, note(52, vc('G', 4), None))]);
+        render(&mut e, 12 * TICK + 10);
+        assert_eq!(values(&log.take(), "pitch"), [49.0, 50.0, 51.0, 52.0]);
     }
 
     #[test]

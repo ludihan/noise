@@ -107,6 +107,37 @@ pub(super) fn fx_key(key: Key) -> Option<u8> {
     crate::project::fx_letter(key.name().chars().next()?)
 }
 
+/// The volume column command a letter key writes.
+pub(super) fn vol_key(key: Key) -> Option<char> {
+    let c = key.name().chars().next()?;
+    (key.name().len() == 1 && crate::project::VOL_COMMANDS.contains(&c)).then_some(c)
+}
+
+/// The volume column with command `letter` typed: its digit kept if it
+/// held a command already.
+pub(super) fn vol_command_typed(vol: Option<u8>, letter: char) -> u8 {
+    let x = vol.and_then(crate::project::vol_command).map_or(0, |c| c.1);
+    crate::project::vol_command_value(letter, x).unwrap_or(0x80)
+}
+
+/// The volume column with hex digit `d` typed, high or low: a volume up
+/// to 80, or a command's digit.
+pub(super) fn type_vol(vol: Option<u8>, hi: bool, d: u8) -> Option<u8> {
+    match vol.and_then(crate::project::vol_command) {
+        Some(_) if !hi => set_nibble(vol, false, d),
+        _ => set_nibble(vol.filter(|&v| v <= 0x80), hi, d).map(|v| v.min(0x80)),
+    }
+}
+
+/// The color the volume column shows `vol` in: commands as effects.
+pub(super) fn vol_color(vol: Option<u8>) -> Color32 {
+    match vol {
+        None => theme::PAT_EMPTY,
+        Some(v) if crate::project::vol_command(v).is_some() => theme::PAT_EFFECT,
+        Some(_) => theme::PAT_VOLUME,
+    }
+}
+
 pub(super) fn hex_digit(key: Key) -> Option<u8> {
     Some(match key {
         Key::Num0 => 0,
@@ -551,6 +582,15 @@ pub fn handle_keys(app: &mut App, ctx: &egui::Context) {
                 app.mark();
             }
             _ if app.cursor.col == 0 => note_key(app, key, repeat, app.edit_mode),
+            // A volume column command's letter, in the volume's first digit.
+            _ if app.edit_mode && app.cursor.col == 3 && vol_key(key).is_some() => {
+                let cur = app.cursor;
+                let letter = vol_key(key).unwrap();
+                let cell = app.pattern_mut().cell_mut(cur.track, cur.column, cur.line);
+                cell.vol = Some(vol_command_typed(cell.vol, letter));
+                app.mark();
+                advance(app);
+            }
             // The commands written with letters past F, in the effect
             // command's place.
             _ if app.edit_mode && app.cursor.col == 9 && fx_key(key).is_some() => {
@@ -568,8 +608,8 @@ pub fn handle_keys(app: &mut App, ctx: &egui::Context) {
                     match cur.col {
                         1 => cell.module = set_nibble(cell.module, true, d),
                         2 => cell.module = set_nibble(cell.module, false, d),
-                        3 => cell.vol = set_nibble(cell.vol, true, d).map(|v| v.min(0x80)),
-                        4 => cell.vol = set_nibble(cell.vol, false, d).map(|v| v.min(0x80)),
+                        3 => cell.vol = type_vol(cell.vol, true, d),
+                        4 => cell.vol = type_vol(cell.vol, false, d),
                         5 => cell.pan = set_nibble(cell.pan, true, d).map(|v| v.min(0x80)),
                         6 => cell.pan = set_nibble(cell.pan, false, d).map(|v| v.min(0x80)),
                         7 => cell.delay = set_nibble(cell.delay, true, d),
@@ -731,13 +771,13 @@ fn advance(app: &mut App) {
 /// A cell's fields that `subs` shows, each in its column's color, or grey
 /// when empty.
 fn cell_text(cell: &crate::project::Cell, subs: SubColumns) -> Vec<(String, Color32)> {
-    use theme::{PAT_DELAY, PAT_EFFECT, PAT_EMPTY, PAT_INSTRUMENT, PAT_NOTE, PAT_PAN, PAT_VOLUME};
+    use theme::{PAT_DELAY, PAT_EFFECT, PAT_EMPTY, PAT_INSTRUMENT, PAT_NOTE, PAT_PAN};
     let [note, module, vol, fx] = block::fields(cell);
     let [pan, delay] = block::mixer_fields(cell);
     let all = [
         (0, note, cell.note.is_some(), PAT_NOTE),
         (1, module, cell.module.is_some(), PAT_INSTRUMENT),
-        (3, vol, cell.vol.is_some(), PAT_VOLUME),
+        (3, vol, cell.vol.is_some(), vol_color(cell.vol)),
         (PAN_COL, pan, cell.pan.is_some(), PAT_PAN),
         (DELAY_COL, delay, cell.delay.is_some(), PAT_DELAY),
         (9, fx, cell.fx.is_some(), PAT_EFFECT),

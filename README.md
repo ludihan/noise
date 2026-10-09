@@ -33,7 +33,7 @@ noise --demo-wav [out.wav]         # render the demo song
   track, panning and delay columns, block edits, a block loop, MIDI input, and effect commands
   for arpeggio, slides, vibrato, tremolo, tremor, auto-pan, cuts, delays, retriggers, tempo,
   pattern breaks, line waits, reversed and sliced samples, `Yxx` (maybe play) and `Zxx`
-  (pick a phrase).
+  (pick a phrase), and fades, slides, glides, cuts and retriggers in the volume column.
 - **Track effects**, on top of each instrument's
   own, and a **master chain** of effects for the whole mix.
 - **Pattern sequencer and matrix** with per-slot mutes, block copying and
