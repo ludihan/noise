@@ -171,6 +171,10 @@ const MODULES: &[(&str, &str)] = &[
         "Analog Filter",
         "A Moog-style ladder with drive and resonance that sings at full: lowpass 24 or 12 dB, bandpass, highpass",
     ),
+    (
+        "Convolver",
+        "The sound through an impulse response: a made-up room, hall, plate, spring or speaker cabinet, or any sample loaded as one (Load Impulse… under its settings), with no delay",
+    ),
     ("Plate Reverb", "A dense plate reverb after Dattorro: predelay, decay, damping and width"),
     ("EQ 5", "A parametric EQ: a low shelf, three peaks and a high shelf, each with its frequency, gain and width"),
     ("Compressor", "Threshold, ratio, attack, release, makeup gain and mix"),

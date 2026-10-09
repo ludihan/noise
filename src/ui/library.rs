@@ -230,7 +230,7 @@ mod tests {
         assert_eq!((m.name.as_str(), m.samples.len()), ("Felt Piano", 2));
         assert!(m.samples.iter().all(|s| s.unsaved && s.path.is_none()), "written next to the song when saved");
         let chain = song.chain(id);
-        assert_eq!(chain.effects.len(), 2, "its EQ and exciter");
+        assert_eq!(chain.effects.len(), 3, "its EQ, exciter and room");
         assert_eq!(chain.outputs, [OUTPUT_ID]);
         std::fs::remove_dir_all(dir).unwrap();
     }

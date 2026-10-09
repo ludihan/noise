@@ -45,7 +45,7 @@ noise --demo-wav [out.wav]         # render the demo song
 - **Modules**: Generator, Wavetable (morphing, band-limited tables with unison), FM, Drums, Kicker, SpectraVoice, FMX, Sampler, Granular (a sample as a cloud of grains), Input (the sound card's input, live), MultiSynth, Glide (portamento between notes) and Modulator (LFO with
   drawn shapes synced to beats, follower, key and velocity tracker,
   envelope, or a knob);
-  Filter, Filter Pro, Analog Filter, Distortion, Delay, Echo, Reverb, Plate Reverb, Amplifier, LFO, Flanger, Chorus, Phaser,
+  Filter, Filter Pro, Analog Filter, Distortion, Delay, Echo, Reverb, Plate Reverb, Convolver (built-in or loaded impulses), Amplifier, LFO, Flanger, Chorus, Phaser,
   Vocal Filter, Repeater, Multitap Delay, Ring Mod, WaveShaper, Scream Filter, Pitch Shifter, Vibrato, Stereo Expander, Comb Filter, Exciter, Cabinet Simulator, DC Blocker, Gate, Compressor, Maximizer, EQ, EQ 5 and EQ 10. Device chains with presets.
 - **Sampler** with keyzones, a waveform editor, a slicer, per-voice pitch
   and filter envelopes and LFOs, beat sync, autoseek and mute groups. Loads WAV, FLAC

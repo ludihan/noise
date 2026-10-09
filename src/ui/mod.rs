@@ -802,7 +802,11 @@ impl App {
                 let secs = sample.seconds();
                 let name = sample.name.clone();
                 if let Some(m) = self.project.module_mut(id) {
-                    if m.name == m.kind.name() && m.samples.is_empty() {
+                    if m.kind == ModuleKind::Convolver {
+                        // Its one impulse, which it then plays.
+                        m.samples.clear();
+                        m.params[0] = (crate::project::IMPULSES.len() - 1) as f32;
+                    } else if m.name == m.kind.name() && m.samples.is_empty() {
                         m.name = name.clone();
                     }
                     m.samples.push(SampleSlot::new(sample, Some(full.to_string_lossy().into_owned())));

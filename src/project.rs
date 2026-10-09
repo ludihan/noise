@@ -477,6 +477,7 @@ pub enum ModuleKind {
     Glide,
     Wavetable,
     Granular,
+    Convolver,
 }
 
 /// How a parameter's value is shown.
@@ -610,6 +611,9 @@ pub const WAVES: &[&str] = &["Saw", "Square", "Triangle", "Sine", "Noise"];
 /// The Wavetable synth's tables: sine to triangle to saw to square, a
 /// narrowing pulse, a hard-synced saw, a folded sine, and vowels.
 pub const WAVETABLES: &[&str] = &["Basic", "Pulse", "Sync", "Fold", "Vocal"];
+/// The Convolver's impulses: made-up spaces and a cabinet, or the sample
+/// loaded into it.
+pub const IMPULSES: &[&str] = &["Room", "Hall", "Plate", "Spring", "Cabinet", "Sample"];
 pub const LOOP_MODES: &[&str] = &["Off", "Forward", "Backward", "Ping-pong"];
 pub const FILTER_MODES: &[&str] = &["Lowpass", "Highpass", "Bandpass"];
 pub const DISTORTION_TYPES: &[&str] = &["Soft clip", "Hard clip", "Wave fold"];
@@ -696,6 +700,8 @@ static GRANULAR_PARAMS: [ParamSpec; 11] = [
     p("Attack", 0.0, 4.0, 0.05).unit(Seconds),
     p("Release", 0.0, 8.0, 0.5).unit(Seconds),
 ];
+static CONVOLVER_PARAMS: [ParamSpec; 3] =
+    [c("Impulse", 0.0, IMPULSES), p("Mix", 0.0, 1.0, 0.3).unit(Percent), p("Gain", 0.0, 2.0, 1.0).unit(Gain)];
 static FM_PARAMS: [ParamSpec; 9] = [
     p("Volume", 0.0, 1.0, 0.5).unit(Gain),
     p("Ratio", 0.25, 8.0, 2.0).unit(Ratio),
@@ -1064,7 +1070,7 @@ pub static MIXER_PAN: ParamSpec = p("Pan", -1.0, 1.0, 0.0).unit(Pan);
 pub static MIXER_GAIN: ParamSpec = p("Fader", 0.0, 2.0, 1.0).unit(Gain);
 
 impl ModuleKind {
-    pub const ADDABLE: [ModuleKind; 45] = [
+    pub const ADDABLE: [ModuleKind; 46] = [
         ModuleKind::Generator,
         ModuleKind::Wavetable,
         ModuleKind::Fm,
@@ -1107,6 +1113,7 @@ impl ModuleKind {
         ModuleKind::Echo,
         ModuleKind::AnalogFilter,
         ModuleKind::PlateReverb,
+        ModuleKind::Convolver,
         ModuleKind::Eq5,
         ModuleKind::Compressor,
         ModuleKind::Eq,
@@ -1155,6 +1162,7 @@ impl ModuleKind {
             ModuleKind::Echo => ("Echo", &ECHO_PARAMS),
             ModuleKind::AnalogFilter => ("Analog Filter", &ANALOG_FILTER_PARAMS),
             ModuleKind::PlateReverb => ("Plate Reverb", &PLATE_PARAMS),
+            ModuleKind::Convolver => ("Convolver", &CONVOLVER_PARAMS),
             ModuleKind::Eq5 => ("EQ 5", &EQ5_PARAMS),
             ModuleKind::Compressor => ("Compressor", &COMPRESSOR_PARAMS),
             ModuleKind::Eq => ("EQ", &EQ_PARAMS),

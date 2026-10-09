@@ -231,6 +231,7 @@ pub fn create(kind: ModuleKind, sr: f32) -> Box<dyn Dsp> {
         ModuleKind::AnalogFilter => Box::new(AnalogFilter::default()),
         ModuleKind::PlateReverb => Box::new(PlateReverb::new(sr)),
         ModuleKind::Eq5 => Box::new(Eq5::default()),
+        ModuleKind::Convolver => Box::new(convolver::Convolver::new()),
         ModuleKind::Compressor => Box::new(Compressor::default()),
         ModuleKind::Eq => Box::new(Eq::default()),
         ModuleKind::MultiSynth | ModuleKind::Glide | ModuleKind::Modulator => Box::new(Silent),
@@ -424,6 +425,7 @@ macro_rules! voice_controls {
 }
 
 // The modules in files of their own come after the macro they use.
+pub mod convolver;
 pub mod granular;
 pub mod wavetable;
 

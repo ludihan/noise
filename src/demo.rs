@@ -608,6 +608,9 @@ fn instruments(p: &mut Project) -> Ids {
     set(p, piano_eq, "Piano Tone", &[(0, 0.8), (1, 1.1), (2, 0.9)]);
     let air = p.chain_insert(piano, 1, K::Exciter).unwrap();
     set(p, air, "Air", &[(0, 5000.0), (1, 2.0), (2, 0.15)]);
+    // A small room around it, convolved, before the shared hall.
+    let room = p.chain_insert(piano, 2, K::Convolver).unwrap();
+    set(p, room, "Piano Room", &[(0, 0.0), (1, 0.2), (2, 0.9)]);
     send(p, piano, hall);
     let haze = add(p, K::Granular);
     set(
@@ -1080,8 +1083,8 @@ const COMMENTS: &str = "Last Light — the demo song. Press Space to play it and
     where a choir-like lead sings; the bridge drops to voices that talk and bells that may or may not ring; \
     the last chorus adds a harmony and bell arpeggios, and the piano slows down to end on D major.\n\n\
     Where to look:\n\
-    • Piano (F4): a Sampler with two velocity layers, rendered by the demo itself, and a filter envelope. \
-    Its chords are strummed with the delay column.\n\
+    • Piano (F4): a Sampler with two velocity layers, rendered by the demo itself, and a filter envelope, \
+    in a small room a Convolver makes. Its chords are strummed with the delay column.\n\
     • Strings: a Wavetable pad whose Sweep brightens each chord, through a chain of Flanger, Phaser and EQ into the shared Hall; the Breath Modulator moves the EQ, \
     and Duck, following the drums, pulls the strings and the arp down under each hit.\n\
     • Arp: two phrases, picked with Z01 and Z02; the second clips its notes with Cxx and leaves one to chance with Yxx.\n\

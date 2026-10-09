@@ -371,6 +371,30 @@ pub fn param_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
     if module.kind == ModuleKind::Modulator && shown[0].round() == 0.0 && shown[1].round() as u32 == DRAWN_SHAPE {
         shape_editor(app, ui, id);
     }
+    if module.kind == ModuleKind::Convolver {
+        impulse_section(app, ui, &module);
+    }
+}
+
+/// A Convolver's own impulse: the sample loaded as one, to load or clear.
+fn impulse_section(app: &mut App, ui: &mut egui::Ui, module: &Module) {
+    ui.add_space(4.0);
+    let what = match module.samples.first() {
+        Some(s) if let Some(d) = &s.data => format!("Impulse: {} ({:.2} s)", s.name, d.seconds()),
+        Some(s) => format!("Impulse: {} (missing)", s.name),
+        None => "No impulse loaded".to_string(),
+    };
+    ui.label(RichText::new(what).small().color(theme::TEXT_WEAK));
+    ui.horizontal(|ui| {
+        let tip = "A recording of a space or a cabinet answering a click: WAV, FLAC or Ogg, up to 6 s";
+        if ui.button("Load Impulse…").on_hover_text(tip).clicked() {
+            app.pick_file(super::files::Purpose::LoadSample(module.id));
+        }
+        if ui.add_enabled(!module.samples.is_empty(), egui::Button::new("Clear")).clicked() {
+            app.project.module_mut(module.id).unwrap().samples.clear();
+            app.mark();
+        }
+    });
 }
 
 /// Whether parameter `i` of a `kind` set to `params` does anything, so
