@@ -31,8 +31,9 @@ noise --demo-wav [out.wav]         # render the demo song
 
 - **Pattern editor** with up to eight note and eight effect columns a
   track, panning and delay columns, block edits, a block loop, MIDI input, and effect commands
-  for arpeggio, slides, vibrato, tremolo, auto-pan, cuts, delays, retriggers, tempo,
-  `Yxx` (maybe play) and `Zxx` (pick a phrase).
+  for arpeggio, slides, vibrato, tremolo, tremor, auto-pan, cuts, delays, retriggers, tempo,
+  pattern breaks, line waits, reversed and sliced samples, `Yxx` (maybe play) and `Zxx`
+  (pick a phrase).
 - **Track effects**, on top of each instrument's
   own, and a **master chain** of effects for the whole mix.
 - **Pattern sequencer and matrix** with per-slot mutes, block copying and

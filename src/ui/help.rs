@@ -37,7 +37,7 @@ const KEYS: &[(&str, &str)] = &[
     ("Del", "Clear the field under the cursor, or the selected block"),
     ("Ins / Backspace", "Push rows down / pull rows up"),
     ("0–9, A–F", "Hex values in the module, volume and effect columns"),
-    ("N, Y, Z", "The Nxy, Yxx and Zxx commands, in the effect column"),
+    ("J, N, R, S, T, W, Y, Z", "The commands written with letters, in the effect column"),
     ("Shift+arrows, drag", "Select a block; right-click it for more"),
     ("Ctrl+A", "Select the track, then the whole pattern"),
     ("Ctrl+C / Ctrl+X / Ctrl+V", "Copy / cut / paste the block"),
@@ -74,7 +74,21 @@ const EFFECTS: &[(&str, &str)] = &[
     ("Dxx", "Delay the note by xx ticks"),
     ("Exx", "Play the note again every xx ticks"),
     ("Fxx", "Set the BPM to xx (20 or more), or the ticks per line (below 20); F00 ends the song after this line"),
+    (
+        "Jxx",
+        "Break off the pattern: the song goes on at line xx (hex: J10 is line 16) of the next slot; with Bxx, of that slot",
+    ),
     ("Nxy", "Auto-pan: swing the note's panning at speed x, depth y/F (0 keeps the last value)"),
+    (
+        "Rxx",
+        "Sampler: play the note backwards, from the sample's end with a note on the line, or from where it is; R00 plays forwards again",
+    ),
+    (
+        "Sxx",
+        "Sampler: play slice xx of the note's sample (00 the first) at the note's pitch, so any note can play any slice",
+    ),
+    ("Txy", "Tremor: the note sounds for x ticks, then is silent for y, over and over through the line"),
+    ("Wxx", "Wait: hold the song on this line for xx lines more, while the line's slides and other effects go on"),
     ("Yxx", "Maybe play the note: with a chance of xx in FF (FF always, 00 never)"),
     ("Zxx", "Play the note with the instrument's phrase xx (from 01), or Z00 without one"),
 ];
@@ -257,7 +271,7 @@ const TOPICS: &[Topic] = &[
         blocks: &[
             Table(EFFECTS),
             P(
-                "Each line has TPL ticks, 6 unless changed. Effects work during their line: slides, glides, volume slides and panning stay afterwards, while arpeggio, vibrato, tremolo and auto-pan end with the line. Type N, Y or Z in the effect column for Nxy, Yxx and Zxx.",
+                "Each line has TPL ticks, 6 unless changed. Effects work during their line: slides, glides, volume slides and panning stay afterwards, while arpeggio, vibrato, tremolo and auto-pan end with the line. Type J, N, R, S, T, W, Y or Z in the effect column for the commands written with letters. In phrases, Bxx, Fxx, Jxx, Wxx and Zxx do nothing.",
             ),
         ],
     },
@@ -566,8 +580,8 @@ mod tests {
         // The effect commands the engine knows, and every module that can
         // be added, each have a row.
         for cmd in [
-            "0xy", "1xx", "3xx", "4xy", "7xy", "8xx", "9xx", "Axy", "Bxx", "Cxx", "Dxx", "Exx", "Fxx", "Nxy", "Yxx",
-            "Zxx",
+            "0xy", "1xx", "3xx", "4xy", "7xy", "8xx", "9xx", "Axy", "Bxx", "Cxx", "Dxx", "Exx", "Fxx", "Jxx", "Nxy",
+            "Rxx", "Sxx", "Txy", "Wxx", "Yxx", "Zxx",
         ] {
             assert!(EFFECTS.iter().any(|(k, _)| k.contains(cmd)), "{cmd}");
         }

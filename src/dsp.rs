@@ -108,6 +108,12 @@ pub trait Dsp: Send {
     fn set_pan(&mut self, _key: u32, _pan: f32) {}
     /// Start the most recent note on `key` at `pos` (0..1) of its sample.
     fn sample_offset(&mut self, _key: u32, _pos: f32) {}
+    /// Play the most recent note on `key` backwards (from the end, if it
+    /// has only just started), or forwards again.
+    fn reverse(&mut self, _key: u32, _on: bool) {}
+    /// Play slice `slice` of the sample the note just played on `key`
+    /// instead, keeping its pitch.
+    fn play_slice(&mut self, _key: u32, _slice: usize) {}
     /// The most recent note on `key` was started `frames` of output ago,
     /// as playback started partway through the song: a sample with
     /// autoseek plays on from where it would be; others stay silent.
@@ -1180,6 +1186,8 @@ struct Zone {
     /// The sample slot the zone plays, and the frames it plays: all of
     /// them, or one slice.
     slot: usize,
+    /// Which slice of the slot this is, if one.
+    slice: Option<usize>,
     start: f64,
     end: f64,
 }
@@ -1199,6 +1207,11 @@ struct SamplerVoice {
     pos: f64,
     /// Playing backwards inside a backward or ping-pong loop.
     backwards: bool,
+    /// Playing the whole sample backwards, as Rxx asks, past its loop.
+    reversed: bool,
+    /// Semitones the note moves by to keep its pitch on a slice Sxx
+    /// switched to.
+    shift: f32,
     /// Fading out after its mute group cut it, from 1 down.
     choke: Option<f32>,
     /// Output frames to move on by before playing, for autoseek.
@@ -1210,6 +1223,8 @@ struct Sampler {
     zones: Vec<Zone>,
     voices: [SamplerVoice; MAX_VOICES],
     clock: u64,
+    /// The last note played: its key, note and velocity, for Sxx.
+    last_on: Option<(u32, f32, f32)>,
     mods: Modulation,
     tap: TrackTap,
 }
@@ -1217,7 +1232,33 @@ struct Sampler {
 impl Sampler {
     fn new() -> Self {
         let voices = [SamplerVoice::default(); MAX_VOICES];
-        Self { zones: Vec::new(), voices, clock: 0, mods: Modulation::default(), tap: TrackTap::new() }
+        Self { zones: Vec::new(), voices, clock: 0, last_on: None, mods: Modulation::default(), tap: TrackTap::new() }
+    }
+
+    /// Starts a voice playing zone `zi`, `shift` semitones from the note,
+    /// cutting the others of its mute group.
+    fn start(&mut self, zi: usize, key: u32, note: f32, vel: f32, shift: f32) {
+        let z = &self.zones[zi];
+        let Some(data) = &z.data else { return };
+        let data = Arc::as_ptr(data) as usize;
+        if z.mute_group > 0 {
+            let zones = &self.zones;
+            let same_group =
+                |v: &SamplerVoice| v.zone != zi && zones.get(v.zone).is_some_and(|o| o.mute_group == z.mute_group);
+            for v in self.voices.iter_mut().filter(|v| v.env.active() && v.choke.is_none() && same_group(v)) {
+                v.choke = Some(1.0);
+            }
+        }
+        let i = alloc_voice(&mut self.voices, |v| (&v.slot, v.env.active()));
+        self.voices[i] = SamplerVoice {
+            slot: VoiceSlot { key, note, vel, pan: 0.0, age: self.clock, released: false },
+            zone: zi,
+            data,
+            pos: z.start,
+            shift,
+            ..Default::default()
+        };
+        self.voices[i].env.trigger();
     }
 }
 
@@ -1249,31 +1290,16 @@ impl Dsp for Sampler {
         // Every sample whose keyzone holds the note plays, so overlapping
         // zones layer.
         self.clock += 1;
+        self.last_on = Some((key, note, vel));
         let (n, v) = (note.round().clamp(0.0, 127.0) as u8, (vel * 127.0).round().clamp(0.0, 127.0) as u8);
         for zi in 0..self.zones.len() {
             let z = &self.zones[zi];
-            let Some(data) = &z.data else { continue };
-            if !((z.keys[0]..=z.keys[1]).contains(&n) && (z.velocities[0]..=z.velocities[1]).contains(&v)) {
-                continue;
+            if z.data.is_some()
+                && (z.keys[0]..=z.keys[1]).contains(&n)
+                && (z.velocities[0]..=z.velocities[1]).contains(&v)
+            {
+                self.start(zi, key, note, vel, 0.0);
             }
-            let data = Arc::as_ptr(data) as usize;
-            if z.mute_group > 0 {
-                let zones = &self.zones;
-                let same_group =
-                    |v: &SamplerVoice| v.zone != zi && zones.get(v.zone).is_some_and(|o| o.mute_group == z.mute_group);
-                for v in self.voices.iter_mut().filter(|v| v.env.active() && v.choke.is_none() && same_group(v)) {
-                    v.choke = Some(1.0);
-                }
-            }
-            let i = alloc_voice(&mut self.voices, |v| (&v.slot, v.env.active()));
-            self.voices[i] = SamplerVoice {
-                slot: VoiceSlot { key, note, vel, pan: 0.0, age: self.clock, released: false },
-                zone: zi,
-                data,
-                pos: z.start,
-                ..Default::default()
-            };
-            self.voices[i].env.trigger();
         }
     }
 
@@ -1284,6 +1310,41 @@ impl Dsp for Sampler {
                 let z = &self.zones[v.zone];
                 v.pos = z.start + pos as f64 * (z.end - z.start).min(data.len() as f64);
             }
+        }
+    }
+
+    fn reverse(&mut self, key: u32, on: bool) {
+        let newest = self.voices.iter().filter(|v| v.slot.key == key && v.env.active()).map(|v| v.slot.age).max();
+        for v in self.voices.iter_mut().filter(|v| v.slot.key == key && v.env.active() && Some(v.slot.age) == newest) {
+            let Some(z) = self.zones.get(v.zone) else { continue };
+            if on && !v.reversed && v.pos <= z.start {
+                let len = z.data.as_ref().map_or(0.0, |d| d.len() as f64);
+                v.pos = (z.end.min(len) - 1.0).max(z.start);
+            }
+            v.reversed = on;
+        }
+    }
+
+    fn play_slice(&mut self, key: u32, slice: usize) {
+        // It follows the note it changes.
+        let Some((_, note, vel)) = self.last_on.filter(|l| l.0 == key) else { return };
+        let clock = self.clock;
+        let mut started = false;
+        for v in self.voices.iter_mut().filter(|v| v.slot.key == key && v.env.active() && v.slot.age == clock) {
+            started = true;
+            let Some(from) = self.zones.get(v.zone) else { continue };
+            let Some(to) = self.zones.iter().position(|z| z.slot == from.slot && z.slice == Some(slice)) else {
+                continue;
+            };
+            v.shift += self.zones[to].base_note - from.base_note;
+            v.zone = to;
+            v.pos = self.zones[to].start;
+        }
+        // A note that played nothing plays the slice of the first sliced
+        // sample, pitched from the sample's base note.
+        if !started && let Some(zi) = self.zones.iter().position(|z| z.slice == Some(slice)) {
+            let whole = self.zones[self.zones[zi].slot].base_note;
+            self.start(zi, key, note, vel, self.zones[zi].base_note - whole);
         }
     }
 
@@ -1332,6 +1393,7 @@ impl Dsp for Sampler {
                 mute_group: s.mute_group,
                 autoseek: s.autoseek,
                 slot: i,
+                slice: None,
                 start: 0.0,
                 end: len,
             });
@@ -1353,6 +1415,7 @@ impl Dsp for Sampler {
                     loop_end: to as f64,
                     oneshot: whole.oneshot || st.oneshot,
                     keys: [note, note],
+                    slice: Some(k),
                     start: from as f64,
                     end: to as f64,
                     ..*whole
@@ -1396,7 +1459,7 @@ impl Dsp for Sampler {
             let (pl, pr) = pan_gains(pan + z.pan + v.slot.pan);
 
             let mut mb = v.md.block(m, !v.slot.released, out.len(), ctx.sr);
-            let semis = v.slot.note + transpose + z.tune - z.base_note + mb.bend;
+            let semis = v.slot.note + v.shift + transpose + z.tune - z.base_note + mb.bend;
             let pitch = 2f64.powf(semis as f64 / 12.0);
             let rate = if z.beat_sync > 0.0 {
                 pitch * len / (z.beat_sync * ctx.samples_per_line as f64)
@@ -1430,7 +1493,9 @@ impl Dsp for Sampler {
                     }
                 }
 
-                if v.backwards {
+                if v.reversed {
+                    pos -= rate;
+                } else if v.backwards {
                     pos -= rate;
                     if pos < ls {
                         if z.loop_mode == 3 {
@@ -1457,7 +1522,7 @@ impl Dsp for Sampler {
                         }
                     }
                 }
-                if pos >= z.end.min(len) || pos < 0.0 {
+                if pos >= z.end.min(len) || pos < 0.0 || (v.reversed && pos < z.start) {
                     v.env = Adsr::default();
                     break;
                 }
@@ -3334,6 +3399,49 @@ mod tests {
         s.note_on(0, 60.0, 1.0);
         let out = render(&mut s, 150);
         assert!((out[100] - 0.5).abs() < 0.02, "{}", out[100]);
+    }
+
+    #[test]
+    fn reverse_plays_from_the_end_or_from_where_it_is() {
+        let mut s = Sampler::new();
+        s.set_samples(&[ramp_slot(100)]);
+        s.note_on(0, 60.0, 1.0);
+        s.reverse(0, true);
+        let out = render(&mut s, 10);
+        assert!((out[0] - 0.99).abs() < 0.02 && out[9] < out[0], "{out:?}");
+        // Forwards again from there.
+        s.reverse(0, false);
+        let out = render(&mut s, 10);
+        assert!(out[9] > out[0], "{out:?}");
+        // Backwards past the start, it stops.
+        s.reverse(0, true);
+        let out = render(&mut s, 200);
+        assert_eq!(out[199], 0.0);
+    }
+
+    #[test]
+    fn a_slice_plays_at_the_pitch_of_the_note() {
+        let mut s = Sampler::new();
+        let mut slot = ramp_slot(100);
+        slot.slices = vec![25, 50, 75];
+        s.set_samples(&[slot]);
+        // The whole sample on its base note, an octave up, switched to the
+        // third slice.
+        s.note_on(0, 72.0, 1.0);
+        s.play_slice(0, 2);
+        let out = render(&mut s, 10);
+        assert!((out[0] - 0.5).abs() < 0.02, "{out:?}");
+        assert!((out[1] - out[0] - 0.02).abs() < 0.002, "still an octave up: {out:?}");
+        // On the sample's base note it plays at the sample's pitch.
+        s.note_on(1, 60.0, 1.0);
+        s.play_slice(1, 1);
+        s.note_off(0);
+        let low = render(&mut s, 3);
+        assert!((low[0] - 0.25).abs() < 0.02 && (low[2] - low[1] - 0.01).abs() < 0.002, "{low:?}");
+        // A slice that isn't there leaves the note alone.
+        s.note_on(2, 60.0, 1.0);
+        s.play_slice(2, 9);
+        assert!(s.voices.iter().any(|v| v.slot.key == 2 && v.zone == 0));
     }
 
     #[test]

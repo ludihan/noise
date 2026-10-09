@@ -5,8 +5,8 @@
 
 use crate::dsp::{self, Ctx, Dsp, Frame, Playhead};
 use crate::project::{
-    Cell, FX_AUTOPAN, FX_MAYBE, FX_PHRASE, MAX_COLUMNS, MAX_FX_COLUMNS, MAX_TRACKS, ModuleKind, Note, OUTPUT_ID,
-    PhraseMode, Project,
+    Cell, FX_AUTOPAN, FX_BREAK, FX_MAYBE, FX_PHRASE, FX_REVERSE, FX_SLICE, FX_TREMOR, FX_WAIT, MAX_COLUMNS,
+    MAX_FX_COLUMNS, MAX_TRACKS, ModuleKind, Note, OUTPUT_ID, PhraseMode, Project,
 };
 use crate::sample::Sample;
 use std::f32::consts::TAU;
@@ -43,6 +43,10 @@ enum NoteEv {
     Vel(f32),
     Pan(f32),
     Offset(f32),
+    /// Play the sample backwards, or forwards again.
+    Reverse(bool),
+    /// Play this slice of the sample instead.
+    Slice(u8),
     Seek(f64),
 }
 
@@ -77,6 +81,8 @@ impl PhrasePlayer {
             NoteEv::Vel(vel) => dsp.set_velocity(key, vel * v),
             NoteEv::Pan(pan) => dsp.set_pan(key, pan),
             NoteEv::Offset(pos) => dsp.sample_offset(key, pos),
+            NoteEv::Reverse(on) => dsp.reverse(key, on),
+            NoteEv::Slice(k) => dsp.play_slice(key, k as usize),
             NoteEv::Seek(frames) => dsp.seek(key, frames),
         }
     }
@@ -370,6 +376,8 @@ struct Track {
     vol_slide: f32,
     /// Play the note again every this many ticks.
     retrigger: Option<u32>,
+    /// Txy: ticks on, then off.
+    tremor: Option<(u32, u32)>,
 }
 
 /// An effect's two nibbles, where a zero picks up the last value given,
@@ -422,6 +430,7 @@ impl Track {
         self.tremolo = None;
         self.vol_slide = 0.0;
         self.retrigger = None;
+        self.tremor = None;
         self.autopan = None;
         let pan = (self.sent_pan != self.pan).then_some(self.pan);
         self.sent_pan = self.pan;
@@ -478,6 +487,9 @@ impl Track {
                         if self.pan != 0.0 {
                             send(m, NoteEv::Pan(self.pan));
                         }
+                        if let Some(k) = effects.find(FX_SLICE) {
+                            send(m, NoteEv::Slice(k));
+                        }
                         if let Some(offset) = effects.find(0x9) {
                             send(m, NoteEv::Offset(offset as f32 / 256.0));
                         }
@@ -509,6 +521,10 @@ impl Track {
         // Panning moves a note that is already playing too.
         if pan_set && let Some(m) = self.sounding {
             send(m, NoteEv::Pan(self.pan));
+        }
+        // So does Rxx, from the end for a note just started.
+        if let (Some(r), Some(m)) = (effects.find(FX_REVERSE), self.sounding) {
+            send(m, NoteEv::Reverse(r != 0));
         }
         self.sent_pan = self.pan;
 
@@ -544,6 +560,7 @@ impl Track {
             }
             (0xC, a) => self.cut_at = Some(a as u32),
             (0xE, a) if a > 0 => self.retrigger = Some(a as u32),
+            (FX_TREMOR, a) => self.tremor = Some(((a >> 4).max(1) as u32, (a & 0xF) as u32)),
             _ => {}
         }
     }
@@ -588,6 +605,11 @@ impl Track {
         if let Some((speed, depth)) = self.tremolo {
             self.tremolo_phase = (self.tremolo_phase + speed).fract();
             vel *= 1.0 - depth * (0.5 - 0.5 * (self.tremolo_phase * TAU).cos());
+        }
+        if let Some((on, off)) = self.tremor
+            && tick % (on + off) >= on
+        {
+            vel = 0.0;
         }
         if let Some((speed, depth)) = self.autopan {
             self.autopan_phase = (self.autopan_phase + speed).fract();
@@ -644,6 +666,10 @@ pub struct Engine {
     tpl: u32,
     /// Order position a Bxx effect jumps to after this line.
     jump: Option<usize>,
+    /// Line a Jxx breaks to, in the next slot, after this line.
+    break_to: Option<usize>,
+    /// Lines a Wxx holds this line for, after its own.
+    wait: u32,
     /// The block loop: order position and first and last line.
     block_loop: Option<(usize, usize, usize)>,
     /// The state of each note column, `column * MAX_TRACKS + track`, which
@@ -702,6 +728,8 @@ impl Engine {
             bpm: project.bpm,
             tpl: project.tpl,
             jump: None,
+            break_to: None,
+            wait: 0,
             block_loop: None,
             project: project.clone(),
             nodes: Vec::new(),
@@ -970,6 +998,8 @@ impl Engine {
                 NoteEv::Vel(vel) => dsp.set_velocity(key, vel),
                 NoteEv::Pan(pan) => dsp.set_pan(key, pan),
                 NoteEv::Offset(pos) => dsp.sample_offset(key, pos),
+                NoteEv::Reverse(on) => dsp.reverse(key, on),
+                NoteEv::Slice(k) => dsp.play_slice(key, k as usize),
                 NoteEv::Seek(frames) => dsp.seek(key, frames),
             }
             return;
@@ -1129,7 +1159,7 @@ impl Engine {
                 self.nodes[i].dsp.note_off(key);
                 true
             }
-            NoteEv::Pan(_) | NoteEv::Offset(_) => false,
+            NoteEv::Pan(_) | NoteEv::Offset(_) | NoteEv::Reverse(_) | NoteEv::Slice(_) => false,
         }
     }
 
@@ -1233,6 +1263,8 @@ impl Engine {
                 self.bpm = self.project.bpm;
                 self.tpl = self.project.tpl;
                 self.jump = None;
+                self.break_to = None;
+                self.wait = 0;
                 self.song_ended = false;
                 self.stop_after_line = false;
                 self.shown = (self.pos_order, line);
@@ -1334,6 +1366,12 @@ impl Engine {
         base + if late { delay } else { 0.0 }
     }
 
+    /// Ticks this line lasts: TPL, and as many again for each line a
+    /// Wxx holds it.
+    fn line_ticks(&self) -> u32 {
+        self.tpl.max(1) * (1 + self.wait)
+    }
+
     fn samples_per_tick(&self) -> f64 {
         self.sr as f64 * 60.0 / (self.bpm.max(1.0) as f64 * self.project.lpb.max(1) as f64 * self.tpl.max(1) as f64)
     }
@@ -1356,6 +1394,7 @@ impl Engine {
         self.shown_tick = self.tick;
         if self.tick == 0 {
             self.shown = (self.pos_order, self.pos_line);
+            self.wait = 0;
             let lpb = self.project.lpb.max(1) as usize;
             if self.metronome && self.pos_line.is_multiple_of(lpb) {
                 let accent = self.pos_line.is_multiple_of(lpb * BEATS_PER_BAR);
@@ -1411,7 +1450,8 @@ impl Engine {
         }
 
         self.tick += 1;
-        if self.tick >= self.tpl.max(1) && std::mem::take(&mut self.stop_after_line) {
+        let line_ticks = self.line_ticks();
+        if self.tick >= line_ticks && std::mem::take(&mut self.stop_after_line) {
             // The song's end: back to its start for the next play, its last
             // notes let go to ring out.
             self.tick = 0;
@@ -1422,22 +1462,29 @@ impl Engine {
             self.stop_notes();
             return;
         }
-        if self.tick >= self.tpl.max(1) {
+        if self.tick >= line_ticks {
             self.tick = 0;
             self.pos_line += 1;
             // Leaving the end of the block loop goes back to its start.
             let looped = self.block_loop.filter(|&(order, from, to)| {
                 order == self.pos_order && from <= to && self.pos_line == to.min(pattern.lines - 1) + 1
             });
+            let (jump, break_to) = (self.jump.take().filter(|_| !self.loop_pattern), self.break_to.take());
             if let Some((_, from, _)) = looped {
                 self.pos_line = from;
-                self.jump = None;
-            } else if let Some(to) = self.jump.take().filter(|_| !self.loop_pattern) {
+            } else if jump.is_some() || break_to.is_some() {
+                // Bxx picks the slot, Jxx the line; a break alone goes on
+                // to the next slot, or stays in a looping pattern.
+                let next = if self.loop_pattern { self.pos_order } else { self.pos_order + 1 };
+                let mut to = jump.map_or(next, |to| to.min(project.order.len() - 1));
+                if to >= project.order.len() {
+                    to = 0;
+                    self.song_ended = true;
+                }
                 // Jumping back to where the song has been ends it for rendering.
-                let to = to.min(project.order.len() - 1);
-                self.song_ended |= to <= self.pos_order;
+                self.song_ended |= jump.is_some() && to <= self.pos_order;
                 self.pos_order = to;
-                self.pos_line = 0;
+                self.pos_line = break_to.unwrap_or(0);
             } else if self.pos_line >= pattern.lines {
                 self.pos_line = 0;
                 if !self.loop_pattern {
@@ -1548,6 +1595,8 @@ impl Engine {
         for fx in effects.iter() {
             match fx {
                 (0xB, a) => self.jump = Some(a as usize),
+                (FX_BREAK, a) => self.break_to = Some(a as usize),
+                (FX_WAIT, a) => self.wait = self.wait.max(a as u32),
                 // F00 ends the song after this line, as in ProTracker.
                 (0xF, 0) => self.stop_after_line = true,
                 (0xF, a) if a >= 0x20 => self.bpm = a as f32,
@@ -1613,7 +1662,7 @@ impl Engine {
     /// Where in the pattern playing this block starts, in lines.
     fn pattern_line(&self) -> f64 {
         let into_tick = (1.0 - self.samples_to_tick / self.samples_per_tick()).clamp(0.0, 1.0);
-        self.shown.1 as f64 + (self.shown_tick as f64 + into_tick) / self.tpl.max(1) as f64
+        self.shown.1 as f64 + (self.shown_tick as f64 + into_tick) / self.line_ticks() as f64
     }
 
     /// While the song plays, where this block starts in it, in lines from
@@ -2327,6 +2376,45 @@ mod tests {
         render(&mut e, 6 * TICK);
         assert_eq!((e.pos_order, e.pos_line), (0, 0));
         assert!(e.song_ended, "jumping back ends the song for rendering");
+    }
+
+    #[test]
+    fn a_break_goes_on_at_a_line_of_the_next_slot() {
+        let mut p = Project::empty();
+        let id = p.add_module(ModuleKind::Generator, [0.0, 0.0]).unwrap();
+        p.connect(id, OUTPUT_ID);
+        p.order.push(crate::project::Slot::new(0));
+        p.patterns[0].tracks[0][0] = effect(FX_BREAK, 0x05);
+        let mut e = engine(p);
+        e.play_song();
+        render(&mut e, 6 * TICK + 10);
+        assert_eq!(e.shown, (1, 5));
+        assert!(!e.song_ended);
+        // The rest of that slot plays, then the song starts over.
+        render(&mut e, (64 - 5) * 6 * TICK);
+        assert_eq!(e.shown, (0, 0));
+        assert!(e.song_ended);
+    }
+
+    #[test]
+    fn a_wait_holds_the_line_while_its_effects_go_on() {
+        let (mut e, log) = sequencer(&[(0, note(48, None, Some((FX_WAIT, 0x02)))), (1, note(50, None, None))]);
+        render(&mut e, 6 * TICK + 10);
+        assert_eq!(e.shown, (0, 0));
+        render(&mut e, 12 * TICK);
+        assert_eq!(e.shown, (0, 1), "three lines' time in all");
+        render(&mut e, 6 * TICK);
+        assert_eq!(e.shown, (0, 2), "the next line is as long as ever");
+        assert_eq!(values(&log.take(), "on"), [48.0, 50.0]);
+    }
+
+    #[test]
+    fn tremor_switches_the_note_on_and_off_by_ticks() {
+        let (mut e, log) = sequencer(&[(0, note(48, None, Some((FX_TREMOR, 0x21)))), (1, Cell::default())]);
+        render(&mut e, 6 * TICK + 10);
+        // On for ticks 0 and 1, off for 2, on for 3 and 4, off for 5, then
+        // back on as the line ends.
+        assert_eq!(values(&log.take(), "vel"), [0.0, 1.0, 0.0, 1.0]);
     }
 
     /// Keeps the last value of parameter 1 that a module processed with.

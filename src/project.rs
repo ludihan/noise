@@ -1395,11 +1395,35 @@ pub const FX_PHRASE: u8 = 35;
 /// speed x, depth y.
 pub const FX_AUTOPAN: u8 = 23;
 
-/// The effect command letters after the hex digits, by key: `N`, `Y`
-/// and `Z`.
+/// The effect command that breaks off the pattern, `J`: the song goes
+/// on at line xx of the next slot.
+pub const FX_BREAK: u8 = 19;
+
+/// The effect command that plays the sample backwards, `R`: from where
+/// it is, or from its end with a note on the line; R00 plays forwards.
+pub const FX_REVERSE: u8 = 27;
+
+/// The effect command that plays a slice, `S`: slice xx of the sample
+/// the note plays (00 the first), at the note's pitch.
+pub const FX_SLICE: u8 = 28;
+
+/// The effect command that stutters the note, `T`, a tremor: on for x
+/// ticks, off for y.
+pub const FX_TREMOR: u8 = 29;
+
+/// The effect command that holds the song on its line, `W`: for xx
+/// lines more, while the line's effects go on.
+pub const FX_WAIT: u8 = 32;
+
+/// The effect command letters after the hex digits, by key.
 pub fn fx_letter(c: char) -> Option<u8> {
     match c.to_ascii_uppercase() {
+        'J' => Some(FX_BREAK),
         'N' => Some(FX_AUTOPAN),
+        'R' => Some(FX_REVERSE),
+        'S' => Some(FX_SLICE),
+        'T' => Some(FX_TREMOR),
+        'W' => Some(FX_WAIT),
         'Y' => Some(FX_MAYBE),
         'Z' => Some(FX_PHRASE),
         _ => None,

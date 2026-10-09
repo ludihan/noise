@@ -102,6 +102,11 @@ fn track_lanes(app: &App, track: usize) -> (usize, usize) {
     (p.lane_of(track, 0), p.lane_of(track, p.width(track) - 1))
 }
 
+/// The effect command a letter key past F writes, as Nxy or Zxx.
+pub(super) fn fx_key(key: Key) -> Option<u8> {
+    crate::project::fx_letter(key.name().chars().next()?)
+}
+
 pub(super) fn hex_digit(key: Key) -> Option<u8> {
     Some(match key {
         Key::Num0 => 0,
@@ -546,11 +551,11 @@ pub fn handle_keys(app: &mut App, ctx: &egui::Context) {
                 app.mark();
             }
             _ if app.cursor.col == 0 => note_key(app, key, repeat, app.edit_mode),
-            // N, Y and Z in the effect command: auto-pan, maybe play and
-            // pick a phrase.
-            Key::N | Key::Y | Key::Z if app.edit_mode && app.cursor.col == 9 => {
+            // The commands written with letters past F, in the effect
+            // command's place.
+            _ if app.edit_mode && app.cursor.col == 9 && fx_key(key).is_some() => {
                 let cur = app.cursor;
-                let cmd = crate::project::fx_letter(key.name().chars().next().unwrap_or(' ')).unwrap();
+                let cmd = fx_key(key).unwrap();
                 let cell = app.pattern_mut().cell_mut(cur.track, cur.column, cur.line);
                 cell.fx = Some((cmd, cell.fx.map_or(0, |f| f.1)));
                 app.mark();
