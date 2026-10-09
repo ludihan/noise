@@ -1,0 +1,25 @@
+[package]
+name = "noise"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+claxon = "0.4.3"
+cpal = "0.18.2"
+directories = "6.0.0"
+eframe = "0.36.2"
+hound = "3.5.1"
+lewton = "0.10.2"
+midir = "0.11.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+soundfont = "0.1.0"
+xsynth-soundfonts = "0.4.0"
+zip = { version = "9.0.0", default-features = false, features = ["deflate-flate2"] }
+
+# Audio DSP is far too slow unoptimized; keep debug builds usable.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
