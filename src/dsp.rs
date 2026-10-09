@@ -68,6 +68,56 @@ pub struct Playhead {
 /// this thread. Filters and reverbs fading out pass through them, and on
 /// most CPUs each sum with one is many times slower, enough to make a busy
 /// song stutter.
+/// Points in a cycle of `sine`'s table.
+const SINE_LEN: usize = 4096;
+
+/// A cycle of a sine, and its first point again at the end, worked out
+/// while compiling.
+static SINE: [f32; SINE_LEN + 1] = sine_table();
+
+const fn sine_table() -> [f32; SINE_LEN + 1] {
+    let mut table = [0.0; SINE_LEN + 1];
+    let mut i = 0;
+    while i <= SINE_LEN {
+        // Taylor's series around 0, after folding the angle into -pi..pi.
+        let mut x = i as f64 / SINE_LEN as f64 * std::f64::consts::TAU;
+        if x > std::f64::consts::PI {
+            x -= std::f64::consts::TAU;
+        }
+        let (mut term, mut sum, mut k) = (x, x, 1);
+        while k < 30 {
+            term *= -x * x / ((2 * k) * (2 * k + 1)) as f64;
+            sum += term;
+            k += 1;
+        }
+        table[i] = sum as f32;
+        i += 1;
+    }
+    table
+}
+
+/// The sine of `cycles` whole turns, `sin(TAU * cycles)`, from a table:
+/// within 2e-6 of it and a little faster, for oscillators and LFOs that
+/// run every sample.
+#[inline]
+fn sine(cycles: f32) -> f32 {
+    // The fraction of a turn: a cast is an instruction where floor() is
+    // a call on most CPUs.
+    let turn = cycles - (cycles as i64) as f32;
+    let at = (if turn < 0.0 { turn + 1.0 } else { turn }) * SINE_LEN as f32;
+    let i = (at as usize).min(SINE_LEN - 1);
+    let (a, b) = (SINE[i], SINE[i + 1]);
+    a + (b - a) * (at - i as f32)
+}
+
+/// The fraction of `x` past its whole part, as `f32::fract` (negative
+/// below zero): a cast is an instruction where `fract` is a call on most
+/// CPUs, and oscillators and delay taps want it every sample.
+#[inline]
+fn fract(x: f32) -> f32 {
+    x - (x as i64) as f32
+}
+
 pub fn flush_denormals() {
     #[cfg(target_arch = "x86_64")]
     // SAFETY: sets the flush-to-zero (bit 15) and denormals-are-zero
@@ -222,6 +272,9 @@ enum Stage {
 struct Adsr {
     stage: Stage,
     level: f32,
+    /// The time and rate in samples the last decay or release step fell
+    /// by, kept so `exp` runs when the time changes, not every sample.
+    fall: (f32, f32, f32),
 }
 
 impl Adsr {
@@ -239,6 +292,15 @@ impl Adsr {
         self.stage != Stage::Idle
     }
 
+    /// What the level is multiplied by each sample to fall over `t`
+    /// seconds: by five time constants.
+    fn fall(&mut self, t: f32, sr: f32) -> f32 {
+        if (self.fall.0, self.fall.1) != (t, sr) {
+            self.fall = (t, sr, (-5.0 / (t.max(0.0005) * sr)).exp());
+        }
+        self.fall.2
+    }
+
     /// `a`, `d`, `r` in seconds.
     fn next(&mut self, sr: f32, a: f32, d: f32, s: f32, r: f32) -> f32 {
         let rate = |t: f32| 1.0 / (t.max(0.0005) * sr);
@@ -253,7 +315,7 @@ impl Adsr {
             }
             Stage::Decay => {
                 // Exponential approach to the sustain level.
-                self.level = s + (self.level - s) * (-5.0 * rate(d)).exp();
+                self.level = s + (self.level - s) * self.fall(d, sr);
                 if (self.level - s).abs() < 0.0005 {
                     self.level = s;
                     self.stage = Stage::Sustain;
@@ -266,7 +328,7 @@ impl Adsr {
                 }
             }
             Stage::Release => {
-                self.level *= (-5.0 * rate(r)).exp();
+                self.level *= self.fall(r, sr);
                 if self.level < 0.0001 {
                     self.level = 0.0;
                     self.stage = Stage::Idle;
@@ -484,21 +546,21 @@ impl Dsp for Generator {
                         1 => {
                             let mut y = if t < pw { 1.0 } else { -1.0 };
                             y += poly_blep(t, dt);
-                            y -= poly_blep((t - pw + 1.0) % 1.0, dt);
+                            y -= poly_blep(fract(t - pw + 1.0), dt);
                             y
                         }
                         2 => {
                             // Integrated band-limited square.
                             let mut sq = if t < 0.5 { 1.0 } else { -1.0 };
                             sq += poly_blep(t, dt);
-                            sq -= poly_blep((t + 0.5) % 1.0, dt);
+                            sq -= poly_blep(fract(t + 0.5), dt);
                             v.tri[u] = dt * 4.0 * sq + (1.0 - dt * 0.5) * v.tri[u];
                             v.tri[u]
                         }
-                        3 => (t * TAU).sin(),
+                        3 => sine(t),
                         _ => self.rng.next(),
                     };
-                    v.phase[u] = (t + dt) % 1.0;
+                    v.phase[u] = fract(t + dt);
                     // Alternate unison voices left/right for width.
                     if unison > 1 && u % 2 == 1 {
                         sr_ += x * 1.3;
@@ -582,12 +644,12 @@ impl Dsp for Fm {
             let dm = f * ratio / ctx.sr;
             for (i, o) in out.iter_mut().enumerate() {
                 let env = v.env.next(ctx.sr, a, d, s, r);
-                let m = (v.modu * TAU + v.last * fb * PI).sin();
+                let m = sine(v.modu + v.last * fb * 0.5);
                 v.last = m;
                 let idx = index * (0.15 + 0.85 * v.mod_env);
-                let x = (v.car * TAU + m * idx).sin() * env * v.slot.vel * vol;
-                v.car = (v.car + dc) % 1.0;
-                v.modu = (v.modu + dm) % 1.0;
+                let x = sine(v.car + m * idx / TAU) * env * v.slot.vel * vol;
+                v.car = fract(v.car + dc);
+                v.modu = fract(v.modu + dm);
                 v.mod_env *= mod_mul;
                 let [l, r] = v.md.apply(&mut mb, [x, x]);
                 o[0] += l * pl;
@@ -687,14 +749,14 @@ impl Dsp for Drums {
                 let (x, done) = match v.kind {
                     DrumKind::Kick => {
                         let f = kick_tone + 350.0 * (-t * 40.0).exp();
-                        v.phase = (v.phase + f * dt) % 1.0;
+                        v.phase = fract(v.phase + f * dt);
                         let env = (-t / kick_decay * 4.0).exp();
                         let click = if t < 0.002 { self.rng.next() * 0.3 } else { 0.0 };
                         ((v.phase * TAU).sin() * env + click, env < 0.001)
                     }
                     DrumKind::Snare => {
                         let f = 160.0 + 60.0 * snare_tone + 100.0 * (-t * 60.0).exp();
-                        v.phase = (v.phase + f * dt) % 1.0;
+                        v.phase = fract(v.phase + f * dt);
                         let body = (v.phase * TAU).sin() * (-t * 25.0).exp() * snare_tone;
                         let n = self.rng.next();
                         // One-pole highpass on the noise.
@@ -718,7 +780,7 @@ impl Dsp for Drums {
                     DrumKind::Tom => {
                         let base = note_to_freq(v.slot.note);
                         let f = base * (1.0 + 0.6 * (-t * 20.0).exp());
-                        v.phase = (v.phase + f * dt) % 1.0;
+                        v.phase = fract(v.phase + f * dt);
                         let env = (-t * 6.0).exp();
                         ((v.phase * TAU).sin() * env, env < 0.001)
                     }
@@ -808,9 +870,9 @@ impl Dsp for Kicker {
             for (i, o) in out.iter_mut().enumerate() {
                 let t = v.t;
                 let f = base * 2f32.powf(drop * (-t / sweep).exp());
-                v.phase = (v.phase + f * dt).fract();
+                v.phase = fract(v.phase + f * dt);
                 let x = match wave {
-                    0 => (v.phase * TAU).sin(),
+                    0 => sine(v.phase),
                     1 => 1.0 - 4.0 * (v.phase - 0.5).abs(),
                     _ => (v.phase * TAU).sin().signum(),
                 };
@@ -907,7 +969,7 @@ impl Dsp for SpectraVoice {
                 let mut amp = h.powf(-slope) * if k % 2 == 1 { even } else { 1.0 };
                 power += amp * amp;
                 let rate = 0.21 + 0.13 * h;
-                amp *= 1.0 - shimmer * 0.5 * (1.0 + (TAU * (v.t * rate + h * 0.37)).sin());
+                amp *= 1.0 - shimmer * 0.5 * (1.0 + sine(v.t * rate + h * 0.37));
                 amps[k] = amp;
                 let (sn, cs) = (TAU * f / ctx.sr).sin_cos();
                 rots[k] = [cs, sn];
@@ -1036,8 +1098,8 @@ impl Dsp for Fmx {
                     if k == OPS - 1 {
                         m += fb * 0.5 * (v.fb[0] + v.fb[1]);
                     }
-                    let y = (TAU * (v.phase[k] + m)).sin() * env * q[0];
-                    v.phase[k] = (v.phase[k] + incs[k]).fract();
+                    let y = sine(v.phase[k] + m) * env * q[0];
+                    v.phase[k] = fract(v.phase[k] + incs[k]);
                     if k == OPS - 1 {
                         v.fb = [y, v.fb[0]];
                     }
@@ -1120,7 +1182,7 @@ impl VoiceMod {
             bend += lfo_shape(m.vibrato.shape as u32, self.vibrato_phase)
                 * m.vibrato.depth
                 * lfo_fade(&m.vibrato, self.age);
-            self.vibrato_phase = (self.vibrato_phase + m.vibrato.rate * block).fract();
+            self.vibrato_phase = fract(self.vibrato_phase + m.vibrato.rate * block);
         }
         let tremolo = |phase: f32, age: f32| {
             let depth = m.tremolo.depth * lfo_fade(&m.tremolo, age);
@@ -1128,7 +1190,7 @@ impl VoiceMod {
         };
         let (from, to) = if m.tremolo.on {
             let from = tremolo(self.tremolo_phase, self.age);
-            self.tremolo_phase = (self.tremolo_phase + m.tremolo.rate * block).fract();
+            self.tremolo_phase = fract(self.tremolo_phase + m.tremolo.rate * block);
             (from, tremolo(self.tremolo_phase, self.age + block))
         } else {
             (1.0, 1.0)
@@ -1598,7 +1660,7 @@ impl Dsp for Filter {
         let lfo_inc = p[3] / ctx.sr;
         for (o, i) in out.iter_mut().zip(input) {
             let lfo = (self.lfo * TAU).sin() * p[4] * 3.0;
-            self.lfo = (self.lfo + lfo_inc) % 1.0;
+            self.lfo = fract(self.lfo + lfo_inc);
             let cutoff = (p[1] * 2f32.powf(lfo)).clamp(20.0, ctx.sr * 0.45);
             let g = (PI * cutoff / ctx.sr).tan();
             for ch in 0..2 {
@@ -1691,7 +1753,10 @@ impl DelayLine {
     /// The frame written `d` frames ago: 1 is the last one.
     fn at(&self, d: usize) -> Frame {
         let len = self.buf.len();
-        self.buf[(self.pos + len - d.clamp(1, len - 1)) % len]
+        // Wrapped with a comparison: a division would cost more than the
+        // rest of a tap.
+        let i = self.pos + len - d.clamp(1, len - 1);
+        self.buf[if i >= len { i - len } else { i }]
     }
 
     /// Channel `ch` `d` frames back, between frames.
@@ -1699,7 +1764,7 @@ impl DelayLine {
         let d = d.clamp(1.0, (self.buf.len() - 2) as f32);
         let back = d as usize;
         let (a, b) = (self.at(back)[ch], self.at(back + 1)[ch]);
-        a + (b - a) * d.fract()
+        a + (b - a) * fract(d)
     }
 
     /// Both channels `d` frames back, between frames.
@@ -1709,7 +1774,10 @@ impl DelayLine {
 
     fn push(&mut self, x: Frame) {
         self.buf[self.pos] = x;
-        self.pos = (self.pos + 1) % self.buf.len();
+        self.pos += 1;
+        if self.pos == self.buf.len() {
+            self.pos = 0;
+        }
     }
 }
 
@@ -1859,7 +1927,7 @@ impl Dsp for Lfo {
         }
         for (o, i) in out.iter_mut().zip(input) {
             let w = lfo_shape(shape, self.phase);
-            self.phase = (self.phase + inc) % 1.0;
+            self.phase = fract(self.phase + inc);
             if pan {
                 let (l, r) = pan_gains(w * depth);
                 *o = [i[0] * l, i[1] * r];
@@ -1905,13 +1973,13 @@ impl Dsp for Flanger {
             for (ch, w) in wet.iter_mut().enumerate() {
                 // The right channel runs a quarter cycle behind.
                 let ph = self.phase + ch as f32 * 0.25;
-                let d = |ph: f32| base + sweep * 0.5 * (1.0 + (ph * TAU).sin());
+                let d = |ph: f32| base + sweep * 0.5 * (1.0 + sine(ph));
                 let tap = |ph| self.line.tap_ch(ch, d(ph));
                 *w = if chorus { 0.5 * (tap(ph) + tap(ph + 0.5)) } else { tap(ph) };
             }
             let fb = if chorus { fb * 0.5 } else { fb };
             self.line.push([i[0] + wet[0] * fb, i[1] + wet[1] * fb]);
-            self.phase = (self.phase + inc) % 1.0;
+            self.phase = fract(self.phase + inc);
             for ch in 0..2 {
                 o[ch] = i[ch] * (1.0 - mix * 0.5) + wet[ch] * mix;
             }
@@ -1948,7 +2016,7 @@ impl Dsp for Phaser {
         let nyquist = ctx.sr * 0.45;
         for (o, i) in out.iter_mut().zip(input) {
             for ch in 0..2 {
-                let lfo = 0.5 + 0.5 * ((self.phase + ch as f32 * 0.25) * TAU).sin();
+                let lfo = 0.5 + 0.5 * sine(self.phase + ch as f32 * 0.25);
                 // Sweeps in octaves around the middle of the range.
                 let f = (low * (high / low).powf(0.5 + (lfo - 0.5) * depth)).clamp(10.0, nyquist);
                 let t = (PI * f / ctx.sr).tan();
@@ -1962,7 +2030,7 @@ impl Dsp for Phaser {
                 self.last[ch] = x;
                 o[ch] = i[ch] * (1.0 - mix) + x * mix;
             }
-            self.phase = (self.phase + inc) % 1.0;
+            self.phase = fract(self.phase + inc);
         }
     }
 }
@@ -2111,10 +2179,10 @@ impl Dsp for RingMod {
         let (inc, shape, stereo, mix) = (p[0] / ctx.sr, p[1].round() as u32, p[2], p[3]);
         for (o, i) in out.iter_mut().zip(input) {
             for ch in 0..2 {
-                let carrier = lfo_shape(shape, (self.phase + ch as f32 * stereo).fract());
+                let carrier = lfo_shape(shape, fract(self.phase + ch as f32 * stereo));
                 o[ch] = i[ch] * (1.0 - mix) + i[ch] * carrier * mix;
             }
-            self.phase = (self.phase + inc).fract();
+            self.phase = fract(self.phase + inc);
         }
     }
 }
@@ -2192,7 +2260,7 @@ impl Dsp for PitchShifter {
         for (o, i) in out.iter_mut().zip(input) {
             let mut wet = [0.0; 2];
             for head in [0.0, 0.5] {
-                let ph = (self.phase + head).fract();
+                let ph = fract(self.phase + head);
                 // sin² windows half a grain apart add up to one.
                 let w = (PI * ph).sin().powi(2);
                 let x = self.line.tap(1.0 + ph * grain);
@@ -2561,10 +2629,10 @@ impl Dsp for Vibrato {
             self.line.push(*i);
             for ch in 0..2 {
                 let ph = self.phase + ch as f32 * stereo;
-                let wet = self.line.tap_ch(ch, 1.0 + swing * (1.0 + (ph * TAU).sin()));
+                let wet = self.line.tap_ch(ch, 1.0 + swing * (1.0 + sine(ph)));
                 o[ch] = i[ch] * (1.0 - mix) + wet * mix;
             }
-            self.phase = (self.phase + inc).fract();
+            self.phase = fract(self.phase + inc);
         }
     }
 }
@@ -2739,7 +2807,7 @@ impl Dsp for Chorus {
             for (ch, w) in sum.iter_mut().enumerate() {
                 for v in 0..voices {
                     let ph = self.phase + v as f32 / n + ch as f32 * stereo;
-                    *w += self.line.tap_ch(ch, base + sweep * (1.0 + (ph * TAU).sin()));
+                    *w += self.line.tap_ch(ch, base + sweep * (1.0 + sine(ph)));
                 }
             }
             // The voices' average goes round again, so the loop stays under
@@ -2748,7 +2816,7 @@ impl Dsp for Chorus {
             let fb = fb / n;
             self.line.push([i[0] + sum[0] * fb, i[1] + sum[1] * fb]);
             let wet = sum.map(|x| x / n.sqrt());
-            self.phase = (self.phase + inc).fract();
+            self.phase = fract(self.phase + inc);
             for ch in 0..2 {
                 o[ch] = i[ch] * (1.0 - mix) + wet[ch] * mix;
             }
@@ -2865,8 +2933,9 @@ impl Ring {
         let len = self.buf.len();
         let d = d.clamp(1.0, (len - 2) as f32);
         let i = d as usize;
-        let (a, b) = (self.buf[(self.pos + len - i) % len], self.buf[(self.pos + len - i - 1) % len]);
-        a + (b - a) * d.fract()
+        let wrap = |i: usize| if i >= len { i - len } else { i };
+        let (a, b) = (self.buf[wrap(self.pos + len - i)], self.buf[wrap(self.pos + len - i - 1)]);
+        a + (b - a) * fract(d)
     }
 
     fn push(&mut self, x: f32) {
@@ -2971,7 +3040,7 @@ impl Dsp for PlateReverb {
             let end = |h: usize| self.tank[h][3].at(PLATE_TANK[h][3] * k);
             let ends = [end(1), end(0)];
             for half in 0..2 {
-                let sweep = PLATE_SWEEP * k * (TAU * (self.phase + half as f32 * 0.25)).sin();
+                let sweep = PLATE_SWEEP * k * sine(self.phase + half as f32 * 0.25);
                 let [n0, n1, n2, _] = PLATE_TANK[half];
                 let rings = &mut self.tank[half];
                 let mut y = x + decay * ends[half];
@@ -2982,7 +3051,7 @@ impl Dsp for PlateReverb {
                 let y = diffuse(&mut rings[2], n2 * k, diffusion2, self.damp[half] * decay);
                 rings[3].push(y);
             }
-            self.phase = (self.phase + inc).fract();
+            self.phase = fract(self.phase + inc);
             let side = |taps: &[(usize, usize, f32, f32); 7], tank: &[[Ring; 4]; 2]| {
                 0.6 * taps.iter().map(|&(h, r, d, s)| s * tank[h][r].at(d * k)).sum::<f32>()
             };
@@ -3399,6 +3468,14 @@ mod tests {
         s.note_on(0, 60.0, 1.0);
         let out = render(&mut s, 150);
         assert!((out[100] - 0.5).abs() < 0.02, "{}", out[100]);
+    }
+
+    #[test]
+    fn the_sine_table_is_a_sine() {
+        for i in -2000..2000 {
+            let x = i as f32 * 0.00377;
+            assert!((sine(x) as f64 - (x as f64 * std::f64::consts::TAU).sin()).abs() < 2e-6, "{x}");
+        }
     }
 
     #[test]
