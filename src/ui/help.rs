@@ -145,7 +145,7 @@ const TOPICS: &[Topic] = &[
                 "noise is a music tracker with modular synths: a pattern editor and an instrument editor over synth and effect modules. Notes in the pattern go straight to synth modules, and each instrument's sound goes through a chain of effect modules.",
             ),
             P(
-                "It opens with a demo song, Last Light: two minutes that use nearly everything noise has. Press Space to hear it; View → Song Comments says what to look at in it. File → Demo Songs opens it again, or Static Heart: glitchy, bitcrushed hyperpop with a fuzz wall, a gliding pitched-up voice, sliced vocal chops and breakbeat, gated and ducked by Modulators, ending in a tape stop; or Clockwork Rain: IDM at eight lines a beat, a music box over a breakbeat sliced at every hit and chopped in 32nds, with rolls, slice walks and phrases in triplets and fives, acid, a fretless bass, a part in 7/8, and a storm that speeds up until the master freezes; or Prism Overdrive: rhythm-game hardcore with a supersaw hook pumping under a hardcore kick, a kit with a sample on keys of its own for each sound, a psytrance part, a half-time growl, a bar at 255 BPM, and a last chorus a whole tone up.",
+                "It opens with a demo song, Last Light: two minutes that use nearly everything noise has. Press Space to hear it; View > Song Comments says what to look at in it. File > Demo Songs opens it again, or Static Heart: glitchy, bitcrushed hyperpop with a fuzz wall, a gliding pitched-up voice, sliced vocal chops and breakbeat, gated and ducked by Modulators, ending in a tape stop; or Clockwork Rain: IDM at eight lines a beat, a music box over a breakbeat sliced at every hit and chopped in 32nds, with rolls, slice walks and phrases in triplets and fives, acid, a fretless bass, a part in 7/8, and a storm that speeds up until the master freezes; or Prism Overdrive: rhythm-game hardcore with a supersaw hook pumping under a hardcore kick, a kit with a sample on keys of its own for each sound, a psytrance part, a half-time growl, a bar at 255 BPM, and a last chorus a whole tone up.",
             ),
             H("The window"),
             List(&[
@@ -161,7 +161,7 @@ const TOPICS: &[Topic] = &[
                 "Notes play on the instrument selected in the instrument list; in edit mode (Esc) they are written to the pattern as well.",
             ),
             P(
-                "Recording live: in edit mode with the song playing and Follow on, notes go to the line playing. Keys held together go to the track's next free note columns, adding one when all are taken, as a chord; releasing a key writes a note-off (Edit → Record Note-Offs). Edit → Record Quantize puts them on the nearest multiple of 1 to 16 lines; off, a track that shows its delay column gets how late in the line each was played.",
+                "Recording live: in edit mode with the song playing and Follow on, notes go to the line playing. Keys held together go to the track's next free note columns, adding one when all are taken, as a chord; releasing a key writes a note-off (Edit > Record Note-Offs). Edit > Record Quantize puts them on the nearest multiple of 1 to 16 lines; off, a track that shows its delay column gets how late in the line each was played.",
             ),
         ],
     },
@@ -170,7 +170,7 @@ const TOPICS: &[Topic] = &[
         blocks: &[
             H("Showing and hiding parts"),
             P(
-                "Parts of the window can be hidden where they are: the arrows at the ends of the Pattern Editor, Mixer and Instrument tabs show and hide the sequencer on the left, the scopes above and the instrument list and disk browser on the right. The lower frame's tabs stay along the bottom, and the frame starts closed: a tab opens it on its page, at the height it had, and clicking the open one closes it. The View menu and Ctrl+1 to Ctrl+5 (upper frame, sequencer, lower frame, instrument list, disk browser) do the same, and View → Transport hides groups of the transport.",
+                "Parts of the window can be hidden where they are: the arrows at the ends of the Pattern Editor, Mixer and Instrument tabs show and hide the sequencer on the left, the scopes above and the instrument list and disk browser on the right. The lower frame's tabs stay along the bottom, and the frame starts closed: a tab opens it on its page, at the height it had, and clicking the open one closes it. The View menu and Ctrl+1 to Ctrl+5 (upper frame, sequencer, lower frame, instrument list, disk browser) do the same, and View > Transport hides groups of the transport.",
             ),
             H("Transport"),
             List(&[
@@ -198,16 +198,16 @@ const TOPICS: &[Topic] = &[
             ),
             H("Files"),
             P(
-                "Open, Save As, Import Project, Export Project, Render to WAV and the Sampler's Load… use the built-in file explorer: browse folders or jump to Home, the song's folder or the working folder, click a file or type a name. Clicking an audio file while loading samples plays it. The window title marks unsaved changes with *, and New, Open and Quit ask whether to save them. While a song has unsaved changes it is backed up every three minutes, in the backups folder of noise's data folder, with the samples it hasn't saved; the newest ten of each song are kept, and File → Open Backup… opens one, to save under a name of its own. Backups keep their samples in one samples folder, named by their hashes as in a project, so each is written once.",
+                "Open, Save As, Import Project, Export Project, Render to WAV and the Sampler's Load… use the built-in file explorer: browse folders or jump to Home, the song's folder or the working folder, click a file or type a name. Clicking an audio file while loading samples plays it. The window title marks unsaved changes with *, and New, Open and Quit ask whether to save them. While a song has unsaved changes it is backed up every three minutes, in the backups folder of noise's data folder, with the samples it hasn't saved; the newest ten of each song are kept, and File > Open Backup… opens one, to save under a name of its own. Backups keep their samples in one samples folder, named by their hashes as in a project, so each is written once.",
             ),
             P(
                 "A song is saved as a project folder: Save As asks for its name, and the folder holds the song in project.json and, in samples, every sample it plays as a WAV file, whatever it was loaded from. Each sample's file is named by a hash of its audio, so the same audio is kept once however many samples play it, and saving deletes the samples nothing plays any more. The folder can be moved or copied as it is. Open (or the disk browser's Songs, which lists project folders as songs) opens a project folder, or a song saved on its own by an earlier version, which Save As then makes into a project folder.",
             ),
             P(
-                "File → Export Project… writes the song and every sample it plays to a .noise file, to share or move: a zip archive of its project folder. File → Import Project…, Open, or a double-click in the disk browser's Songs unpacks one into a project folder beside it, named after the project (with a number if that name is taken), and opens it. Only the song and its samples come out of it, and nothing in it can reach outside that folder.",
+                "File > Export Project… writes the song and every sample it plays to a .noise file, to share or move: a zip archive of its project folder. File > Import Project…, Open, or a double-click in the disk browser's Songs unpacks one into a project folder beside it, named after the project (with a number if that name is taken), and opens it. Only the song and its samples come out of it, and nothing in it can reach outside that folder.",
             ),
             P(
-                "File → Render to WAV… and Render Stems… first ask for the sample rate (the sound device's, or 22.05 to 96 kHz) and the format: 16 or 24 bit, dithered, or 32 bit float, which keeps peaks over 0 dB. The choice is remembered. Render Stems… renders each instrument to a WAV file of its own, soloed with its effects and its share of shared ones, all as long as the song, named after the file picked with the instrument's number and name.",
+                "File > Render to WAV… and Render Stems… first ask for the sample rate (the sound device's, or 22.05 to 96 kHz) and the format: 16 or 24 bit, dithered, or 32 bit float, which keeps peaks over 0 dB. The choice is remembered. Render Stems… renders each instrument to a WAV file of its own, soloed with its effects and its share of shared ones, all as long as the song, named after the file picked with the instrument's number and name.",
             ),
             P(
                 "From a terminal: noise song.json opens a song, noise --export song.json out.wav renders one without a window.",
@@ -218,7 +218,7 @@ const TOPICS: &[Topic] = &[
             ),
             H("Song comments"),
             P(
-                "View → Song Comments holds the song's title, artist and notes, saved with it; the title and artist show in the menu bar.",
+                "View > Song Comments holds the song's title, artist and notes, saved with it; the title and artist show in the menu bar.",
             ),
         ],
     },
@@ -248,7 +248,7 @@ const TOPICS: &[Topic] = &[
             ),
             H("MIDI keyboard"),
             P(
-                "Edit → MIDI Input… picks a keyboard. Its notes play the selected instrument at their velocity and, in edit mode, are written at the cursor with the velocity as the volume (unless switched off there).",
+                "Edit > MIDI Input… picks a keyboard. Its notes play the selected instrument at their velocity and, in edit mode, are written at the cursor with the velocity as the volume (unless switched off there).",
             ),
         ],
     },
@@ -501,11 +501,15 @@ pub fn window(ctx: &egui::Context, open: &mut bool, view: &mut HelpView) {
             });
             ui.separator();
             egui::ScrollArea::vertical().id_salt(view.topic).auto_shrink(false).show(ui, |ui| {
-                let Some(topic) = TOPICS.get(view.topic).filter(|_| !shown.is_empty()) else { return };
-                ui.label(RichText::new(topic.title).heading().color(theme::SELECTED));
-                for (k, block) in topic.blocks.iter().enumerate() {
-                    show(ui, block, k);
-                }
+                // Inside the row, the topic would run on sideways.
+                ui.vertical(|ui| {
+                    ui.set_max_width(ui.available_width());
+                    let Some(topic) = TOPICS.get(view.topic).filter(|_| !shown.is_empty()) else { return };
+                    ui.label(RichText::new(topic.title).heading().color(theme::SELECTED));
+                    for (k, block) in topic.blocks.iter().enumerate() {
+                        show(ui, block, k);
+                    }
+                });
             });
         });
     });
@@ -526,16 +530,20 @@ fn show(ui: &mut egui::Ui, block: &Block, k: usize) {
             for item in *items {
                 ui.horizontal_top(|ui| {
                     ui.label(RichText::new("•").color(theme::SELECTED));
-                    ui.label(*item);
+                    ui.add(egui::Label::new(*item).wrap());
                 });
             }
         }
         Table(rows) => {
             ui.add_space(4.0);
-            egui::Grid::new(("help_table", k)).num_columns(2).striped(true).spacing([16.0, 3.0]).show(ui, |ui| {
+            // A column grows to its widest text unless held to what the
+            // window leaves beside the keys.
+            let most = (ui.available_width() - 230.0).max(200.0);
+            let grid = egui::Grid::new(("help_table", k)).num_columns(2).striped(true).spacing([16.0, 3.0]);
+            grid.max_col_width(most).show(ui, |ui| {
                 for (key, what) in *rows {
                     ui.label(RichText::new(*key).monospace().color(theme::PAT_INSTRUMENT));
-                    ui.label(*what);
+                    ui.add(egui::Label::new(*what).wrap());
                     ui.end_row();
                 }
             });
