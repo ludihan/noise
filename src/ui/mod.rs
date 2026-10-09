@@ -44,8 +44,8 @@ const UNDO_LIMIT: usize = 200;
 /// Makes a demo song.
 pub type DemoSong = fn() -> Project;
 
-/// The demo songs built into the program, by name: the first opens when
-/// noise starts without a song.
+/// The demo songs built into the program, by name. Concrete Hymn opens
+/// when noise starts without a song.
 pub const DEMOS: [(&str, DemoSong); 5] = [
     ("Last Light", Project::demo),
     ("Static Heart", Project::static_heart),
@@ -327,9 +327,9 @@ impl App {
             }
             Some(Err(e)) => {
                 status = format!("Could not open {}: {e}", path.as_deref().unwrap_or_default());
-                Project::demo()
+                Project::concrete_hymn()
             }
-            None => Project::demo(),
+            None => Project::concrete_hymn(),
         };
         let (tx, rx) = mpsc::channel();
         let (gtx, garbage) = mpsc::channel();
