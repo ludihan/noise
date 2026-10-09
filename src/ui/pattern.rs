@@ -572,6 +572,12 @@ pub fn handle_keys(app: &mut App, ctx: &egui::Context) {
                 t[cur.line] = Default::default();
                 app.mark();
             }
+            Key::Backspace if app.edit_mode && app.cursor.line > 0 && !modifiers.shift => {
+                app.cursor.line -= 1;
+                let cur = app.cursor;
+                *app.pattern_mut().cell_mut(cur.track, cur.column, cur.line) = Default::default();
+                app.mark();
+            }
             Key::Backspace if app.edit_mode && app.cursor.line > 0 => {
                 let cur = app.cursor;
                 let lines = app.pattern().lines;
