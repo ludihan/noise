@@ -67,6 +67,10 @@ pub struct Playhead {
 pub struct Ctx {
     pub sr: f32,
     pub samples_per_line: f32,
+    /// While the song plays, where it is at the start of the block, in
+    /// lines from its start: what LFOs synced to lines follow, so they keep
+    /// to the beat however playback started.
+    pub song_line: Option<f64>,
 }
 
 /// Note events are addressed by `key` so a module can tell voices apart:
@@ -1758,8 +1762,12 @@ impl Dsp for Lfo {
     }
 
     fn process(&mut self, ctx: &Ctx, p: &[f32], input: &[Frame], out: &mut [Frame]) {
-        let (pan, shape, depth) = (p[0] >= 0.5, p[1].round() as u32, p[2]);
-        let inc = if p[4] >= 0.5 { 1.0 / (p[5] * ctx.samples_per_line).max(1.0) } else { p[3] / ctx.sr };
+        let (pan, shape, depth, synced) = (p[0] >= 0.5, p[1].round() as u32, p[2], p[4] >= 0.5);
+        let inc = if synced { 1.0 / (p[5] * ctx.samples_per_line).max(1.0) } else { p[3] / ctx.sr };
+        // Synced to lines, its cycle follows the song while it plays.
+        if synced && let Some(at) = ctx.song_line {
+            self.phase = (at / p[5].max(1e-3) as f64).rem_euclid(1.0) as f32;
+        }
         for (o, i) in out.iter_mut().zip(input) {
             let w = lfo_shape(shape, self.phase);
             self.phase = (self.phase + inc) % 1.0;
@@ -3111,13 +3119,28 @@ mod tests {
     }
 
     fn render(s: &mut Sampler, frames: usize) -> Vec<f32> {
-        let ctx = Ctx { sr: SR, samples_per_line: 100.0 };
+        let ctx = Ctx { sr: SR, samples_per_line: 100.0, song_line: None };
         // Volume, pan, transpose, attack, decay, sustain, release.
         let params = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
         let mut out = vec![[0.0; 2]; frames];
         s.process(&ctx, &params, &[], &mut out);
         // Undo the center pan gain.
         out.iter().map(|f| f[0] / pan_gains(0.0).0).collect()
+    }
+
+    #[test]
+    fn an_lfo_synced_to_lines_follows_the_song() {
+        // Tremolo, a sine over 4 lines at full depth: silent a quarter of the
+        // way round the other way, three lines into the song.
+        let mut lfo = Lfo::default();
+        let p = [0.0, 0.0, 1.0, 2.0, 1.0, 4.0];
+        let input = [[1.0; 2]; 4];
+        let mut out = [[0.0; 2]; 4];
+        for (line, gain) in [(1.0, 1.0), (3.0, 0.0)] {
+            let ctx = Ctx { sr: 1000.0, samples_per_line: 100.0, song_line: Some(line) };
+            lfo.process(&ctx, &p, &input, &mut out);
+            assert!((out[0][0] - gain).abs() < 1e-3, "at line {line}: {}", out[0][0]);
+        }
     }
 
     #[test]
@@ -3326,7 +3349,7 @@ mod tests {
     /// of `freq` Hz at 48 kHz, and returns the peak of the second half.
     fn effect_peak(kind: ModuleKind, set: &[(usize, f32)], freq: f32, amp: f32) -> f32 {
         let sr = 48000.0;
-        let ctx = Ctx { sr, samples_per_line: 6000.0 };
+        let ctx = Ctx { sr, samples_per_line: 6000.0, song_line: None };
         let mut params: Vec<f32> = kind.params().iter().map(|p| p.default).collect();
         for &(i, v) in set {
             params[i] = v;
@@ -3369,7 +3392,7 @@ mod tests {
 
     #[test]
     fn repeater_loops_the_input_before_hold() {
-        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0 };
+        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0, song_line: None };
         let mut r = create(ModuleKind::Repeater, ctx.sr);
         // 1/16 line is 375 frames; the input counts up.
         let input: Vec<Frame> = (0..4000).map(|i| [i as f32; 2]).collect();
@@ -3390,7 +3413,7 @@ mod tests {
 
     #[test]
     fn ring_mod_moves_a_tone_to_the_sum_and_difference() {
-        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0 };
+        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0, song_line: None };
         let mut r = create(ModuleKind::RingMod, ctx.sr);
         let n = 48000;
         let input: Vec<Frame> = (0..n).map(|i| [(TAU * 1000.0 * i as f32 / ctx.sr).sin(); 2]).collect();
@@ -3418,7 +3441,7 @@ mod tests {
 
     #[test]
     fn kicker_falls_to_the_note_and_dies_away() {
-        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0 };
+        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0, song_line: None };
         let mut k = create(ModuleKind::Kicker, ctx.sr);
         let params: Vec<f32> = ModuleKind::Kicker.params().iter().map(|p| p.default).collect();
         k.note_on(0, 33.0, 1.0);
@@ -3448,7 +3471,7 @@ mod tests {
 
     #[test]
     fn spectravoice_stacks_harmonics_at_their_slope() {
-        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0 };
+        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0, song_line: None };
         let play = |set: &[(usize, f32)]| {
             let mut params: Vec<f32> = ModuleKind::SpectraVoice.params().iter().map(|p| p.default).collect();
             params[1] = 4.0;
@@ -3475,7 +3498,7 @@ mod tests {
 
     #[test]
     fn pitch_shifter_moves_a_tone_up_an_octave() {
-        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0 };
+        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0, song_line: None };
         let mut s = create(ModuleKind::PitchShifter, ctx.sr);
         let params: Vec<f32> = ModuleKind::PitchShifter.params().iter().map(|p| p.default).collect();
         let input: Vec<Frame> = (0..48000).map(|i| [0.5 * (TAU * 500.0 * i as f32 / ctx.sr).sin(); 2]).collect();
@@ -3488,7 +3511,7 @@ mod tests {
 
     #[test]
     fn stereo_expander_scales_the_side_and_keeps_the_middle() {
-        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0 };
+        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0, song_line: None };
         let run = |width: f32, mono_bass: f32, freq: f32| {
             let input: Vec<Frame> = (0..48000)
                 .map(|i| {
@@ -3539,7 +3562,7 @@ mod tests {
 
     #[test]
     fn dc_blocker_takes_away_an_offset() {
-        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0 };
+        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0, song_line: None };
         let input: Vec<Frame> = (0..48000).map(|i| [0.5 + 0.3 * (TAU * 440.0 * i as f32 / ctx.sr).sin(); 2]).collect();
         let mut out = vec![[0.0; 2]; input.len()];
         create(ModuleKind::DcBlocker, ctx.sr).process(&ctx, &[10.0], &input, &mut out);
@@ -3561,7 +3584,7 @@ mod tests {
 
     #[test]
     fn multitap_echoes_at_each_taps_time_level_and_pan() {
-        let ctx = Ctx { sr: 48000.0, samples_per_line: 1000.0 };
+        let ctx = Ctx { sr: 48000.0, samples_per_line: 1000.0, song_line: None };
         let mut params: Vec<f32> = ModuleKind::Multitap.params().iter().map(|p| p.default).collect();
         params[12] = 0.0;
         params[13] = 1.0;
@@ -3598,7 +3621,7 @@ mod tests {
 
     #[test]
     fn vibrato_bends_a_tone_up_and_down_around_it() {
-        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0 };
+        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0, song_line: None };
         let input: Vec<Frame> = (0..48000).map(|i| [(TAU * 1000.0 * i as f32 / ctx.sr).sin(); 2]).collect();
         let run = |depth: f32| {
             let mut out = vec![[0.0; 2]; input.len()];
@@ -3611,7 +3634,7 @@ mod tests {
 
     #[test]
     fn every_module_stays_finite_at_the_ends_of_its_parameters() {
-        let ctx = Ctx { sr: 44100.0, samples_per_line: 5512.0 };
+        let ctx = Ctx { sr: 44100.0, samples_per_line: 5512.0, song_line: None };
         let mut rng = Rng(0x2468_ace1);
         let noise: Vec<Frame> = (0..MAX_BLOCK).map(|_| [rng.next(), rng.next()]).collect();
         for kind in ModuleKind::ADDABLE {
@@ -3645,7 +3668,7 @@ mod tests {
 
     #[test]
     fn fmx_operators_modulate_by_their_algorithm() {
-        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0 };
+        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0, song_line: None };
         let play = |set: &[(usize, f32)]| {
             let mut params: Vec<f32> = ModuleKind::Fmx.params().iter().map(|p| p.default).collect();
             // Sustained operators, so the tone holds still.
@@ -3679,7 +3702,7 @@ mod tests {
 
     #[test]
     fn input_plays_what_arrives_on_its_tape() {
-        let ctx = Ctx { sr: 1000.0, samples_per_line: 100.0 };
+        let ctx = Ctx { sr: 1000.0, samples_per_line: 100.0, song_line: None };
         let tape = Arc::new(Tape::default());
         tape.start(4096);
         let mut input = LiveInput::new(tape.clone());
@@ -3733,7 +3756,7 @@ mod tests {
 
     #[test]
     fn chorus_voices_spread_a_tone_around_itself() {
-        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0 };
+        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0, song_line: None };
         let input: Vec<Frame> = (0..48000).map(|i| [(TAU * 1000.0 * i as f32 / ctx.sr).sin(); 2]).collect();
         let run = |set: &[(usize, f32)]| {
             let mut params: Vec<f32> = ModuleKind::Chorus.params().iter().map(|p| p.default).collect();
@@ -3754,7 +3777,7 @@ mod tests {
 
     #[test]
     fn echo_repeats_after_its_time_and_fades() {
-        let ctx = Ctx { sr: 1000.0, samples_per_line: 100.0 };
+        let ctx = Ctx { sr: 1000.0, samples_per_line: 100.0, song_line: None };
         let mut params: Vec<f32> = ModuleKind::Echo.params().iter().map(|p| p.default).collect();
         params[2] = 0.0;
         params[3] = 0.0;
@@ -3779,7 +3802,7 @@ mod tests {
         assert!(at(&dry, 100.0) > 0.25 && at(&dry, 8000.0) < 0.01, "a 24 dB lowpass");
         assert!(at(&[(0, 3.0), (2, 0.0)], 100.0) < 0.05, "the highpass cuts the lows");
         // At full resonance an impulse leaves it ringing at the cutoff.
-        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0 };
+        let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0, song_line: None };
         let mut input = vec![[0.0; 2]; 24000];
         input[0] = [0.5; 2];
         let mut out = vec![[0.0; 2]; input.len()];
@@ -3790,7 +3813,7 @@ mod tests {
 
     #[test]
     fn plate_reverb_rings_on_longer_with_more_decay() {
-        let ctx = Ctx { sr: 44100.0, samples_per_line: 5512.0 };
+        let ctx = Ctx { sr: 44100.0, samples_per_line: 5512.0, song_line: None };
         let tail = |decay: f32| {
             let mut input = vec![[0.0; 2]; 88200];
             input[0] = [1.0; 2];
@@ -3840,7 +3863,7 @@ mod tests {
     #[test]
     fn distortion_crushes_bits() {
         let sr = 48000.0;
-        let ctx = Ctx { sr, samples_per_line: 6000.0 };
+        let ctx = Ctx { sr, samples_per_line: 6000.0, song_line: None };
         // Drive 1 and full tone keep the shape; 2 bits leave 2 levels a side.
         let params = [1.0, 1.0, 1.0, 1.0, 2.0, 1.0];
         let input: Vec<Frame> = (0..1000).map(|i| [(i as f32 / 1000.0) * 2.0 - 1.0; 2]).collect();
@@ -3856,7 +3879,7 @@ mod tests {
     #[test]
     fn lfo_tremolo_and_sync() {
         // Full depth: the volume dips to 0 and back once per period.
-        let ctx = Ctx { sr: 1000.0, samples_per_line: 10.0 };
+        let ctx = Ctx { sr: 1000.0, samples_per_line: 10.0, song_line: None };
         // Tremolo, sine, depth 1, rate ignored, synced to 10 lines.
         let params = [0.0, 0.0, 1.0, 2.0, 1.0, 10.0];
         let input = vec![[1.0; 2]; 100];
@@ -3896,7 +3919,7 @@ mod tests {
         assert!((v.md.pitch_t - 0.1).abs() < 1e-6, "held at the sustain point");
         s.note_off(0);
         // A second's release keeps the voice going.
-        let ctx = Ctx { sr: SR, samples_per_line: 100.0 };
+        let ctx = Ctx { sr: SR, samples_per_line: 100.0, song_line: None };
         let mut out = vec![[0.0; 2]; 300];
         s.process(&ctx, &[1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0], &[], &mut out);
         let v = s.voices.iter().find(|v| v.env.active()).unwrap();
@@ -3943,7 +3966,7 @@ mod tests {
     /// and the peak of a second of the left channel, past the attack.
     fn synth_with(kind: ModuleKind, m: &Modulation) -> (usize, f32) {
         let sr = 48000.0;
-        let ctx = Ctx { sr, samples_per_line: 6000.0 };
+        let ctx = Ctx { sr, samples_per_line: 6000.0, song_line: None };
         let mut params: Vec<f32> = kind.params().iter().map(|p| p.default).collect();
         if kind == ModuleKind::Generator {
             params[1] = 3.0; // sine

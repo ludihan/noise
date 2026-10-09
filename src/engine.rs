@@ -1581,9 +1581,7 @@ impl Engine {
         let Some(pattern) = project.order.get(self.shown.0).and_then(|s| project.patterns.get(s.pattern)) else {
             return;
         };
-        // Where in the pattern this block starts, in lines.
-        let into_tick = (1.0 - self.samples_to_tick / self.samples_per_tick()).clamp(0.0, 1.0) as f32;
-        let pos = self.shown.1 as f32 + (self.shown_tick as f32 + into_tick) / self.tpl.max(1) as f32;
+        let pos = self.pattern_line() as f32;
         for env in &pattern.automation {
             let Some(module) = project.module(env.module) else { continue };
             let (Some(spec), Some(t)) = (module.kind.automatable(env.param), env.value_in(pos, pattern.lines)) else {
@@ -1610,6 +1608,25 @@ impl Engine {
                 self.live.push((env.module, env.param, value));
             }
         }
+    }
+
+    /// Where in the pattern playing this block starts, in lines.
+    fn pattern_line(&self) -> f64 {
+        let into_tick = (1.0 - self.samples_to_tick / self.samples_per_tick()).clamp(0.0, 1.0);
+        self.shown.1 as f64 + (self.shown_tick as f64 + into_tick) / self.tpl.max(1) as f64
+    }
+
+    /// While the song plays, where this block starts in it, in lines from
+    /// its start: the slots before the one playing in full, then the lines
+    /// of its pattern played. LFOs synced to lines or beats follow it, so
+    /// they keep to the beat wherever playback started.
+    fn song_line(&self) -> Option<f64> {
+        if !self.playing {
+            return None;
+        }
+        let project = &self.project;
+        let before = project.order.iter().take(self.shown.0).filter_map(|s| project.patterns.get(s.pattern));
+        Some(before.map(|p| p.lines).sum::<usize>() as f64 + self.pattern_line())
     }
 
     /// Runs Modulator `i` for a block of `frames` and moves the parameters
@@ -1675,6 +1692,10 @@ impl Engine {
                 1 => Some(period),
                 _ => Some(beats * project.lpb.max(1) as f32),
             };
+            // Synced, its cycle follows the song while it plays.
+            if let (Some(l), Some(at)) = (lines, ctx.song_line) {
+                node.phase = (at / l.max(1e-3) as f64).rem_euclid(1.0) as f32;
+            }
             let inc = match lines {
                 Some(l) => frames as f32 / (l * ctx.samples_per_line).max(1.0),
                 None => rate * frames as f32 / ctx.sr,
@@ -1725,7 +1746,8 @@ impl Engine {
 
     fn render_block(&mut self, out: &mut [Frame]) {
         let n = out.len();
-        let ctx = Ctx { sr: self.sr, samples_per_line: (self.samples_per_tick() * self.tpl.max(1) as f64) as f32 };
+        let samples_per_line = (self.samples_per_tick() * self.tpl.max(1) as f64) as f32;
+        let ctx = Ctx { sr: self.sr, samples_per_line, song_line: self.song_line() };
         let project = &self.project;
         for oi in 0..self.order.len() {
             let i = self.order[oi];
@@ -2576,6 +2598,32 @@ mod tests {
             "down in its second half: {}",
             *cutoff.lock().unwrap()
         );
+    }
+
+    #[test]
+    fn synced_modulators_keep_to_the_song_wherever_it_starts() {
+        // The drawn gate above, a beat long: up for the first half of each
+        // beat, down for the second, at the same lines of the song whether
+        // it plays from the top or from its second line, and however long
+        // the program ran before.
+        let line = 6 * TICK;
+        for start in [0, 1] {
+            let (mut e, cutoff, f, mut p) =
+                modulated(&[(1, crate::project::DRAWN_SHAPE as f32), (3, 2.0), (5, 1.0), (8, 4.0)]);
+            let m = p.modules.iter().find(|m| m.kind == ModuleKind::Modulator).unwrap().id;
+            p.module_mut(m).unwrap().shape = vec![(0.0, 1.0), (0.49, 1.0), (0.51, 0.0), (1.0, 0.0)];
+            e.handle(Cmd::Project(Arc::new(p.clone())));
+            e.node_mut(f).unwrap().dsp = Box::new(Probe(cutoff.clone()));
+            let spec = &ModuleKind::Filter.params()[1];
+            let (up, down) = (spec.value_at(spec.position(2000.0) + 0.5), spec.value_at(spec.position(2000.0) - 0.5));
+            render(&mut e, 5 * TICK + 70);
+            e.handle(Cmd::Play { order: 0, line: start, loop_pattern: false });
+            // To the middle of the song's second line, then of its fourth.
+            render(&mut e, (1 - start) * line + line / 2);
+            assert!((*cutoff.lock().unwrap() / up - 1.0).abs() < 0.01, "from line {start}: up in line 1");
+            render(&mut e, 2 * line);
+            assert!((*cutoff.lock().unwrap() / down - 1.0).abs() < 0.01, "from line {start}: down in line 3");
+        }
     }
 
     #[test]
