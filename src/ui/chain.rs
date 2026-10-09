@@ -129,9 +129,9 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
                     arrow(ui, h);
                     device(app, ui, OUTPUT_ID, Place::Output, h, &mut action);
                 }
-                if track.is_some() {
+                if let Some(t) = track {
                     arrow(ui, h);
-                    to_master(app, ui, h);
+                    to_master(app, ui, t, h);
                 }
                 for &e in &shared {
                     arrow(ui, h);
@@ -238,12 +238,25 @@ fn track_panel(app: &mut App, ui: &mut egui::Ui, t: usize, h: f32) {
         ui.label(RichText::new(routing::label(app, m)).small());
     }
     ui.add_space(6.0);
-    let hint = "What the track plays goes through its effects after each instrument's own, then on to the master.";
+    let hint = "What the track plays goes through its effects after each instrument's own, then on to the master, or through another track's effects first if the track menu's Group picks one.";
     ui.label(RichText::new(hint).small().color(theme::TEXT_WEAK));
 }
 
-/// Where a track's chain ends: the master chain, a click away.
-fn to_master(app: &mut App, ui: &mut egui::Ui, h: f32) {
+/// Where track `t`'s chain ends: its group's effects or the master chain,
+/// a click away.
+fn to_master(app: &mut App, ui: &mut egui::Ui, t: usize, h: f32) {
+    if let Some(g) = app.project.group_of(t) {
+        ui.vertical(|ui| {
+            ui.set_width(110.0);
+            ui.set_max_height(h);
+            theme::caption(ui, "TO GROUP");
+            ui.label(RichText::new(format!("{:02} {}", g + 1, app.project.track_name(g))).small());
+            if ui.button("Show Group").clicked() {
+                app.show_track_fx(g);
+            }
+        });
+        return;
+    }
     ui.vertical(|ui| {
         ui.set_width(110.0);
         ui.set_max_height(h);

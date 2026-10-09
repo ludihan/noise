@@ -1079,6 +1079,8 @@ enum TrackAction {
     ShowDelay,
     /// Open its effects in the lower frame's Track FX tab.
     Effects,
+    /// Send its sound on through another track's effects, or the master.
+    Group(Option<usize>),
 }
 
 /// Track headers: the name on the track's color, with a
@@ -1219,8 +1221,11 @@ fn track_headers(app: &mut App, ui: &mut egui::Ui, layout: &Layout, h: f32) {
                 action = Some((t, a));
             }
         }
+        // The tracks it can go through, with their names.
+        let groups: Vec<(usize, String)> =
+            (0..tracks).filter(|&g| app.project.can_group(t, g)).map(|g| (g, app.project.track_name(g))).collect();
         resp.context_menu(|ui| {
-            if let Some(a) = track_menu(ui, &info, columns, fx) {
+            if let Some(a) = track_menu(ui, &info, &groups, columns, fx) {
                 action = Some((t, a));
                 ui.close();
             }
@@ -1250,6 +1255,7 @@ fn track_headers(app: &mut App, ui: &mut egui::Ui, layout: &Layout, h: f32) {
             app.show_track_fx(t);
             return;
         }
+        TrackAction::Group(g) => app.project.tracks[t].group = g.filter(|&g| app.project.can_group(t, g)),
     }
     if !matches!(action, TrackAction::Rename) {
         app.clamp_cursor();
@@ -1260,7 +1266,13 @@ fn track_headers(app: &mut App, ui: &mut egui::Ui, layout: &Layout, h: f32) {
 /// The height of the row of column buttons under each track's name.
 const COLUMN_BUTTONS_H: f32 = 12.0;
 
-fn track_menu(ui: &mut egui::Ui, info: &crate::project::Track, columns: usize, fx: usize) -> Option<TrackAction> {
+fn track_menu(
+    ui: &mut egui::Ui,
+    info: &crate::project::Track,
+    groups: &[(usize, String)],
+    columns: usize,
+    fx: usize,
+) -> Option<TrackAction> {
     let mut action = None;
     if ui.button("Rename").clicked() {
         action = Some(TrackAction::Rename);
@@ -1270,6 +1282,18 @@ fn track_menu(ui: &mut egui::Ui, info: &crate::project::Track, columns: usize, f
     if ui.button(label).on_hover_text("Effects for what this track plays, in the lower frame").clicked() {
         action = Some(TrackAction::Effects);
     }
+    ui.menu_button("Group", |ui| {
+        let tip = "Send this track's sound on through another track's effects, as a bus";
+        ui.label(egui::RichText::new(tip).small().color(theme::TEXT_WEAK));
+        if ui.add(egui::Button::selectable(info.group.is_none(), "None (to the master)")).clicked() {
+            action = Some(TrackAction::Group(None));
+        }
+        for (g, name) in groups {
+            if ui.add(egui::Button::selectable(info.group == Some(*g), format!("{:02} {name}", g + 1))).clicked() {
+                action = Some(TrackAction::Group(Some(*g)));
+            }
+        }
+    });
     if ui.button(if info.mute { "Unmute" } else { "Mute" }).clicked() {
         action = Some(TrackAction::Mute);
     }

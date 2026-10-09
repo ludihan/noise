@@ -5,8 +5,8 @@
 
 use crate::dsp::{self, Ctx, Dsp, Frame, Playhead};
 use crate::project::{
-    Cell, FX_AUTOPAN, FX_BREAK, FX_MAYBE, FX_PHRASE, FX_REVERSE, FX_SLICE, FX_TREMOR, FX_WAIT, MAX_COLUMNS,
-    MAX_FX_COLUMNS, MAX_TRACKS, ModuleKind, Note, OUTPUT_ID, PhraseMode, Project,
+    Cell, FX_AUTOPAN, FX_BREAK, FX_MAYBE, FX_PHRASE, FX_REVERSE, FX_SLICE, FX_TRACK_VOLUME, FX_TREMOR, FX_WAIT,
+    MAX_COLUMNS, MAX_FX_COLUMNS, MAX_TRACKS, ModuleKind, Note, OUTPUT_ID, PhraseMode, Project,
 };
 use crate::sample::Sample;
 use std::f32::consts::TAU;
@@ -673,6 +673,8 @@ pub struct Engine {
     break_to: Option<usize>,
     /// Lines a Wxx holds this line for, after its own.
     wait: u32,
+    /// Each track's volume, as Lxx sets it, scaling its notes' velocity.
+    track_volume: [f32; MAX_TRACKS],
     /// The block loop: order position and first and last line.
     block_loop: Option<(usize, usize, usize)>,
     /// The state of each note column, `column * MAX_TRACKS + track`, which
@@ -733,6 +735,7 @@ impl Engine {
             jump: None,
             break_to: None,
             wait: 0,
+            track_volume: [1.0; MAX_TRACKS],
             block_loop: None,
             project: project.clone(),
             nodes: Vec::new(),
@@ -1268,6 +1271,7 @@ impl Engine {
                 self.jump = None;
                 self.break_to = None;
                 self.wait = 0;
+                self.track_volume = [1.0; MAX_TRACKS];
                 self.song_ended = false;
                 self.stop_after_line = false;
                 self.shown = (self.pos_order, line);
@@ -1510,8 +1514,35 @@ impl Engine {
     /// Ends track `t`'s per-line effects.
     fn end_line_effects(&mut self, t: usize) {
         let mut track = self.tracks[t];
-        track.end_line(&mut |m, ev| self.note(m, t as u32, ev));
+        track.end_line(&mut |m, ev| self.track_note(m, t, ev));
         self.tracks[t] = track;
+    }
+
+    /// Sends a note event of channel `ch` to module `m`, its velocity
+    /// scaled by its track's volume.
+    fn track_note(&mut self, m: u8, ch: usize, ev: NoteEv) {
+        let v = self.track_volume[ch % MAX_TRACKS];
+        let ev = match ev {
+            NoteEv::On(note, vel) => NoteEv::On(note, vel * v),
+            NoteEv::Vel(vel) => NoteEv::Vel(vel * v),
+            ev => ev,
+        };
+        self.note(m, ch as u32, ev);
+    }
+
+    /// Sets track `t`'s volume from an Lxx, moving the notes it has
+    /// sounding.
+    fn set_track_volume(&mut self, t: usize, arg: u8) {
+        let v = arg.min(0x80) as f32 / 128.0;
+        if self.track_volume[t] == v {
+            return;
+        }
+        self.track_volume[t] = v;
+        for ch in (0..MAX_COLUMNS).map(|c| c * MAX_TRACKS + t) {
+            if let Some(m) = self.tracks[ch].sounding {
+                self.track_note(m, ch, NoteEv::Vel(self.tracks[ch].sent_vel));
+            }
+        }
     }
 
     /// Playback starting partway through the song: each column's last
@@ -1587,11 +1618,14 @@ impl Engine {
         // Notes sent to effects are ignored.
         let plays = cell.module.or(track.module).is_some_and(|m| self.plays_notes(m));
         let picked = effects.find(FX_PHRASE);
+        if let Some(l) = effects.find(FX_TRACK_VOLUME) {
+            self.set_track_volume(t % MAX_TRACKS, l);
+        }
         track.trigger(cell, effects, plays, &mut |m, ev| {
             if let NoteEv::On(..) = ev {
                 self.picked_phrase = picked;
             }
-            self.note(m, key, ev);
+            self.track_note(m, key as usize, ev);
             self.picked_phrase = None;
         });
         self.tracks[t] = track;
@@ -1611,7 +1645,7 @@ impl Engine {
 
     fn tick_effects(&mut self, t: usize) {
         let (tick, mut track) = (self.tick, self.tracks[t]);
-        track.tick_effects(tick, &mut |m, ev| self.note(m, t as u32, ev));
+        track.tick_effects(tick, &mut |m, ev| self.track_note(m, t, ev));
         self.tracks[t] = track;
     }
 
@@ -2424,6 +2458,19 @@ mod tests {
         let (mut e, log) = sequencer(&[(0, note(48, None, None)), (1, note(52, vc('G', 4), None))]);
         render(&mut e, 12 * TICK + 10);
         assert_eq!(values(&log.take(), "pitch"), [49.0, 50.0, 51.0, 52.0]);
+    }
+
+    #[test]
+    fn track_volume_scales_the_track_s_notes() {
+        let (mut e, log) = sequencer(&[
+            (0, note(48, Some(0x40), None)),
+            (1, effect(FX_TRACK_VOLUME, 0x40)),
+            (2, Cell { vol: Some(0x80), ..Cell::default() }),
+        ]);
+        render(&mut e, 18 * TICK + 10);
+        // Half the track's volume halves the note playing, and a new
+        // volume on the line after.
+        assert_eq!(values(&log.take(), "vel"), [0.25, 0.5]);
     }
 
     #[test]

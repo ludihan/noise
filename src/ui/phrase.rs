@@ -4,7 +4,9 @@
 //! pattern. Edited with the keyboard in edit mode, like the pattern.
 
 use super::{App, pattern, theme};
-use crate::project::{Cell, FX_BREAK, FX_PHRASE, FX_WAIT, MAX_PHRASE_LINES, MAX_PHRASES, Note, Phrase, PhraseMode};
+use crate::project::{
+    Cell, FX_BREAK, FX_PHRASE, FX_TRACK_VOLUME, FX_WAIT, MAX_PHRASE_LINES, MAX_PHRASES, Note, Phrase, PhraseMode,
+};
 use eframe::egui::{self, Align2, FontId, Key, Pos2, Rect, RichText, Sense, Vec2};
 
 /// Where the phrase editor's cursor is: the line, and the note (0), a
@@ -223,8 +225,8 @@ fn edit(app: &mut App, id: u8, key: Key, repeat: bool, lines: usize) -> bool {
             cell.vol = pattern::vol_key(k).map(|c| pattern::vol_command_typed(cell.vol, c));
             true
         }
-        // Zxx, Jxx and Wxx act on the song, so don't apply in phrases.
-        (3, k) if pattern::fx_key(k).is_some_and(|c| ![FX_PHRASE, FX_BREAK, FX_WAIT].contains(&c)) => {
+        // Zxx, Jxx, Lxx and Wxx act on the song, so don't apply in phrases.
+        (3, k) if pattern::fx_key(k).is_some_and(|c| ![FX_PHRASE, FX_BREAK, FX_TRACK_VOLUME, FX_WAIT].contains(&c)) => {
             cell.fx = Some((pattern::fx_key(k).unwrap(), cell.fx.map_or(0, |f| f.1)));
             true
         }

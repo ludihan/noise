@@ -35,7 +35,9 @@ noise --demo-wav [out.wav]         # render the demo song
   pattern breaks, line waits, reversed and sliced samples, `Yxx` (maybe play) and `Zxx`
   (pick a phrase), and fades, slides, glides, cuts and retriggers in the volume column.
 - **Track effects**, on top of each instrument's
-  own, and a **master chain** of effects for the whole mix.
+  own, **groups** that send tracks on through another track's effects as a
+  bus, a per-track volume command (`Lxx`), and a **master chain** of
+  effects for the whole mix.
 - **Pattern sequencer and matrix** with per-slot mutes, block copying and
   sections, drag and drop and a right-click menu for slots; a **mixer**
   strip for every module; **automation** envelopes of a pattern or part of

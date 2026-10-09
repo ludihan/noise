@@ -1399,6 +1399,10 @@ pub const FX_AUTOPAN: u8 = 23;
 /// on at line xx of the next slot.
 pub const FX_BREAK: u8 = 19;
 
+/// The effect command that sets the track's volume, `L`: 00 silent to
+/// 80 full, for every note the track plays until it changes again.
+pub const FX_TRACK_VOLUME: u8 = 21;
+
 /// The effect command that plays the sample backwards, `R`: from where
 /// it is, or from its end with a note on the line; R00 plays forwards.
 pub const FX_REVERSE: u8 = 27;
@@ -1419,6 +1423,7 @@ pub const FX_WAIT: u8 = 32;
 pub fn fx_letter(c: char) -> Option<u8> {
     match c.to_ascii_uppercase() {
         'J' => Some(FX_BREAK),
+        'L' => Some(FX_TRACK_VOLUME),
         'N' => Some(FX_AUTOPAN),
         'R' => Some(FX_REVERSE),
         'S' => Some(FX_SLICE),
@@ -2003,6 +2008,10 @@ pub struct Track {
     /// chain's effects are.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effects: Vec<u8>,
+    /// The track whose effects this track's sound goes on through, as a
+    /// bus, rather than straight to the master.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<usize>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -2316,7 +2325,9 @@ impl Project {
             self.audio_links().into_iter().map(|(a, b)| ((a, None), (b, None))).collect();
         let out = (self.master.first().copied().unwrap_or(OUTPUT_ID), None);
         for (t, track) in self.tracks.iter().enumerate() {
-            let Some(&first) = track.effects.first() else { continue };
+            // A track in a group without effects of its own goes straight
+            // into the group's.
+            let Some(first) = self.track_entry(t) else { continue };
             for m in self.track_instruments(t) {
                 let chain = self.chain(m);
                 let mut at = (m, Some(t));
@@ -2330,10 +2341,52 @@ impl Project {
                     links.push((at, if o == OUTPUT_ID { (first, None) } else { (o, None) }));
                 }
             }
-            links.extend(track.effects.windows(2).map(|w| ((w[0], None), (w[1], None))));
-            links.push(((*track.effects.last().unwrap(), None), out));
+            if let Some(&last) = track.effects.last() {
+                links.extend(track.effects.windows(2).map(|w| ((w[0], None), (w[1], None))));
+                links.push(((last, None), self.track_after(t).map_or(out, |e| (e, None))));
+            }
         }
         (nodes, links)
+    }
+
+    /// The group track `t` is in, if it names another track.
+    pub fn group_of(&self, t: usize) -> Option<usize> {
+        self.tracks.get(t)?.group.filter(|&g| g != t && g < self.tracks.len())
+    }
+
+    /// The first effect track `t`'s sound goes through: its own first, or
+    /// else its group's (or that group's group's); `None` when there are
+    /// none on the way to the master.
+    fn track_entry(&self, t: usize) -> Option<u8> {
+        let mut at = Some(t);
+        for _ in 0..MAX_TRACKS {
+            let track = self.tracks.get(at?)?;
+            if let Some(&first) = track.effects.first() {
+                return Some(first);
+            }
+            at = self.group_of(at?);
+        }
+        None
+    }
+
+    /// Where track `t`'s sound goes after its own effects: into its
+    /// group's, or `None` for the master.
+    fn track_after(&self, t: usize) -> Option<u8> {
+        self.track_entry(self.group_of(t)?)
+    }
+
+    /// Whether track `t` can go through group `g`: not itself, nor a
+    /// track whose sound already comes through `t`.
+    pub fn can_group(&self, t: usize, g: usize) -> bool {
+        let mut at = Some(g);
+        for _ in 0..MAX_TRACKS {
+            match at {
+                Some(x) if x == t => return false,
+                Some(x) => at = self.group_of(x),
+                None => return g < self.tracks.len(),
+            }
+        }
+        false
     }
 
     /// Whether links from module `id` carry sound, rather than notes or
@@ -2620,6 +2673,9 @@ impl Project {
         }
         self.tracks.insert(track, Track::default());
         self.tracks.truncate(MAX_TRACKS);
+        for t in &mut self.tracks {
+            t.group = t.group.map(|g| if g >= track { g + 1 } else { g }).filter(|&g| g < MAX_TRACKS);
+        }
         true
     }
 
@@ -2634,6 +2690,14 @@ impl Project {
         if track < self.tracks.len() {
             let gone = self.tracks.remove(track);
             self.tracks.push(Track::default());
+            // Tracks in its group go to the master again.
+            for t in &mut self.tracks {
+                t.group = match t.group {
+                    Some(g) if g == track => None,
+                    Some(g) if g > track => Some(g - 1),
+                    g => g,
+                };
+            }
             // Its effects go with it.
             for e in gone.effects {
                 self.remove_module(e);
@@ -3413,6 +3477,36 @@ mod tests {
         // A track that goes takes its effects with it.
         back.remove_track(2);
         assert!(back.module(echo).is_none());
+    }
+
+    #[test]
+    fn grouped_tracks_go_on_through_the_group_s_effects() {
+        let mut p = Project::empty();
+        for _ in 0..3 {
+            p.insert_track(0, 0);
+        }
+        let synth = p.add_module(ModuleKind::Generator, [0.0; 2]).unwrap();
+        p.connect(synth, OUTPUT_ID);
+        for t in [0, 1] {
+            p.patterns[0].tracks[t][0] = Cell { note: Some(Note::On(60)), module: Some(synth), ..Cell::default() };
+        }
+        let echo = p.chain_insert(Owner::Track(0), 0, ModuleKind::Echo).unwrap();
+        let bus = p.chain_insert(Owner::Track(2), 0, ModuleKind::Compressor).unwrap();
+        p.tracks[0].group = Some(2);
+        p.tracks[1].group = Some(2);
+        let (nodes, links) = p.signal_graph();
+        // Track 0's echo goes into the bus; track 1, without effects of its
+        // own, goes straight in; the bus goes to the output.
+        assert!(links.contains(&((echo, None), (bus, None))));
+        assert!(nodes.contains(&(synth, Some(1))) && links.contains(&((synth, Some(1)), (bus, None))));
+        assert!(links.contains(&((bus, None), (OUTPUT_ID, None))));
+        // No loops: track 2 can't go through track 0, which goes through it.
+        assert!(!p.can_group(2, 0) && !p.can_group(2, 2) && p.can_group(2, 3));
+        // Tracks moving keep their groups; the group's going ends them.
+        p.insert_track(0, 0);
+        assert_eq!((p.tracks[1].group, p.tracks[2].group), (Some(3), Some(3)));
+        p.remove_track(3);
+        assert_eq!((p.tracks[1].group, p.tracks[2].group), (None, None));
     }
 
     #[test]

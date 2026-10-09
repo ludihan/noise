@@ -37,7 +37,7 @@ const KEYS: &[(&str, &str)] = &[
     ("Del", "Clear the field under the cursor, or the selected block"),
     ("Ins / Backspace", "Push rows down / pull rows up"),
     ("0–9, A–F", "Hex values in the module, volume and effect columns"),
-    ("J, N, R, S, T, W, Y, Z", "The commands written with letters, in the effect column"),
+    ("J, L, N, R, S, T, W, Y, Z", "The commands written with letters, in the effect column"),
     ("I, O, U, D, G, C, R", "The volume column's commands, in its first digit"),
     ("Shift+arrows, drag", "Select a block; right-click it for more"),
     ("Ctrl+A", "Select the track, then the whole pattern"),
@@ -78,6 +78,10 @@ const EFFECTS: &[(&str, &str)] = &[
     (
         "Jxx",
         "Break off the pattern: the song goes on at line xx (hex: J10 is line 16) of the next slot; with Bxx, of that slot",
+    ),
+    (
+        "Lxx",
+        "Track volume: 00 silent to 80 full, for every note the track plays, sounding or to come, until changed; it starts full each time the song plays",
     ),
     ("Nxy", "Auto-pan: swing the note's panning at speed x, depth y/F (0 keeps the last value)"),
     (
@@ -287,7 +291,7 @@ const TOPICS: &[Topic] = &[
             ),
             Table(VOL_COMMANDS),
             P(
-                "Each line has TPL ticks, 6 unless changed. Effects work during their line: slides, glides, volume slides and panning stay afterwards, while arpeggio, vibrato, tremolo and auto-pan end with the line. Type J, N, R, S, T, W, Y or Z in the effect column for the commands written with letters. In phrases, Bxx, Fxx, Jxx, Wxx and Zxx do nothing.",
+                "Each line has TPL ticks, 6 unless changed. Effects work during their line: slides, glides, volume slides and panning stay afterwards, while arpeggio, vibrato, tremolo and auto-pan end with the line. Type J, L, N, R, S, T, W, Y or Z in the effect column for the commands written with letters. In phrases, Bxx, Fxx, Jxx, Lxx, Wxx and Zxx do nothing.",
             ),
         ],
     },
@@ -391,6 +395,10 @@ const TOPICS: &[Topic] = &[
             ),
             P(
                 "+ Add Effect adds one at the end; drag one by its name, or use its arrows, to move it; the bin removes it. Modulators and automation move them like any other effect, and the mixer shows a strip for each. A track with effects shows their sound in its track scope.",
+            ),
+            H("Groups"),
+            P(
+                "A track can go through another track's effects before the master, as a bus: pick that track in the Group submenu of the track's header menu. Its sound goes through its own effects, if it has any, then the group's, so several tracks share a compressor or reverb and one fader. A group can be in a group of its own; a track can't go through one whose sound already comes through it. The end of a grouped track's chain in the Track FX tab says which group it goes to, with Show Group to open its effects.",
             ),
             P(
                 "An instrument played on several tracks keeps them apart: each track with effects gets its own copy of the instrument and its own effects, so a delay on the hats track echoes the hats but not the kicks the same drum kit plays on another track. Tracks without effects share the one instrument, at no cost.",
@@ -596,8 +604,8 @@ mod tests {
         // The effect commands the engine knows, and every module that can
         // be added, each have a row.
         for cmd in [
-            "0xy", "1xx", "3xx", "4xy", "7xy", "8xx", "9xx", "Axy", "Bxx", "Cxx", "Dxx", "Exx", "Fxx", "Jxx", "Nxy",
-            "Rxx", "Sxx", "Txy", "Wxx", "Yxx", "Zxx",
+            "0xy", "1xx", "3xx", "4xy", "7xy", "8xx", "9xx", "Axy", "Bxx", "Cxx", "Dxx", "Exx", "Fxx", "Jxx", "Lxx",
+            "Nxy", "Rxx", "Sxx", "Txy", "Wxx", "Yxx", "Zxx",
         ] {
             assert!(EFFECTS.iter().any(|(k, _)| k.contains(cmd)), "{cmd}");
         }
