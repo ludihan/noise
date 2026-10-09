@@ -124,6 +124,10 @@ const MODULES: &[(&str, &str)] = &[
     ("FMX", "Four-operator FM: eight algorithms, each operator with its ratio, level and envelope, and feedback"),
     ("Sampler", "Samples mapped across the keyboard, with loops and slices, or a soundfont (see Sampler)"),
     (
+        "Granular",
+        "Plays its sample as a cloud of short grains around a point Scan moves through it (0 holds still), as pads and textures: grain Size and Density, Spray, random pitch, stereo spread and reversed grains",
+    ),
+    (
         "Input",
         "Plays the sound card's input, live: a microphone or an instrument through the effects. The input is open while the song has an Input module",
     ),
@@ -480,6 +484,10 @@ const TOPICS: &[Topic] = &[
             H("Modulation"),
             P(
                 "Changes every voice while it plays: a pitch envelope, a filter with a cutoff envelope, and vibrato and tremolo LFOs. Envelopes run in seconds from the note's start: click to add a point, drag it, right-click to delete it, double-click to make it the sustain point. Generators and FM have the same page.",
+            ),
+            H("Granular"),
+            P(
+                "A Granular instrument loads and edits samples in the same editor. A note plays the first sample whose keyzone holds it as a cloud of grains, at its pitch from the sample's base note, transpose and finetune, with the sample's volume and panning; loops, slices and the Sampler's other settings don't apply. Position is where grains start, Scan how fast that point moves through the sample (1 at the sample's own speed, 0 frozen, below 0 backwards), and Spray scatters each grain around it. Size and Density set how long grains are and how many start a second; Random pitch, Stereo and Reverse vary each one.",
             ),
         ],
     },

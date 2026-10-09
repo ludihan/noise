@@ -22,7 +22,7 @@ pub fn shown(app: &App) -> bool {
     use super::sampler::{SynthTab, Tab};
     let Some(m) = app.instrument().and_then(|id| app.project.module(id)) else { return false };
     app.view == super::View::Sampler
-        && if m.kind == crate::project::ModuleKind::Sampler {
+        && if m.kind.holds_samples() {
             app.sampler.tab == Tab::Phrase
         } else {
             app.sampler.synth_tab == SynthTab::Phrase

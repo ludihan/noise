@@ -66,7 +66,7 @@ pub fn params_panel(app: &mut App, ui: &mut egui::Ui) {
         let drums = "C kick · D snare · F# closed hat · A# open hat · others tom";
         ui.label(RichText::new(drums).small().color(theme::TEXT_WEAK));
     }
-    if module.kind == ModuleKind::Sampler {
+    if module.kind.holds_samples() {
         sample_section(app, ui, &module);
     } else if module.kind.has_modulation() {
         ui.horizontal(|ui| {

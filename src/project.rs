@@ -476,6 +476,7 @@ pub enum ModuleKind {
     Eq5,
     Glide,
     Wavetable,
+    Granular,
 }
 
 /// How a parameter's value is shown.
@@ -681,6 +682,19 @@ static WAVETABLE_PARAMS: [ParamSpec; 12] = [
     p("Sustain", 0.0, 1.0, 0.7).unit(Percent),
     p("Release", 0.0, 4.0, 0.3).unit(Seconds),
     p("Pan", -1.0, 1.0, 0.0).unit(Pan),
+];
+static GRANULAR_PARAMS: [ParamSpec; 11] = [
+    p("Volume", 0.0, 1.0, 0.6).unit(Gain),
+    p("Position", 0.0, 1.0, 0.0).unit(Percent),
+    p("Scan", -2.0, 2.0, 0.25),
+    p("Size", 0.01, 0.5, 0.08).unit(Seconds),
+    p("Density", 1.0, 200.0, 30.0).unit(Hz),
+    p("Spray", 0.0, 0.5, 0.02).unit(Seconds),
+    p("Random pitch", 0.0, 100.0, 0.0).unit(Cents),
+    p("Stereo", 0.0, 1.0, 0.5).unit(Percent),
+    p("Reverse", 0.0, 1.0, 0.0).unit(Percent),
+    p("Attack", 0.0, 4.0, 0.05).unit(Seconds),
+    p("Release", 0.0, 8.0, 0.5).unit(Seconds),
 ];
 static FM_PARAMS: [ParamSpec; 9] = [
     p("Volume", 0.0, 1.0, 0.5).unit(Gain),
@@ -1050,7 +1064,7 @@ pub static MIXER_PAN: ParamSpec = p("Pan", -1.0, 1.0, 0.0).unit(Pan);
 pub static MIXER_GAIN: ParamSpec = p("Fader", 0.0, 2.0, 1.0).unit(Gain);
 
 impl ModuleKind {
-    pub const ADDABLE: [ModuleKind; 44] = [
+    pub const ADDABLE: [ModuleKind; 45] = [
         ModuleKind::Generator,
         ModuleKind::Wavetable,
         ModuleKind::Fm,
@@ -1059,6 +1073,7 @@ impl ModuleKind {
         ModuleKind::SpectraVoice,
         ModuleKind::Fmx,
         ModuleKind::Sampler,
+        ModuleKind::Granular,
         ModuleKind::Input,
         ModuleKind::MultiSynth,
         ModuleKind::Glide,
@@ -1106,6 +1121,7 @@ impl ModuleKind {
             ModuleKind::Fm => ("FM", &FM_PARAMS),
             ModuleKind::Drums => ("Drums", &DRUM_PARAMS),
             ModuleKind::Sampler => ("Sampler", &SAMPLER_PARAMS),
+            ModuleKind::Granular => ("Granular", &GRANULAR_PARAMS),
             ModuleKind::Filter => ("Filter", &FILTER_PARAMS),
             ModuleKind::Distortion => ("Distortion", &DISTORTION_PARAMS),
             ModuleKind::Delay => ("Delay", &DELAY_PARAMS),
@@ -1185,9 +1201,16 @@ impl ModuleKind {
                 | ModuleKind::SpectraVoice
                 | ModuleKind::Fmx
                 | ModuleKind::Sampler
+                | ModuleKind::Granular
                 | ModuleKind::MultiSynth
                 | ModuleKind::Glide
         )
+    }
+
+    /// Whether the module plays samples the instrument editor loads and
+    /// edits.
+    pub fn holds_samples(self) -> bool {
+        matches!(self, ModuleKind::Sampler | ModuleKind::Granular)
     }
 
     /// Whether the module's voices take a `Modulation`.

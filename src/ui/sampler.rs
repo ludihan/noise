@@ -120,7 +120,7 @@ pub fn editor(app: &mut App, ui: &mut egui::Ui) {
         return;
     };
     let Some(m) = app.project.module(id).cloned() else { return };
-    if m.kind != ModuleKind::Sampler {
+    if !m.kind.holds_samples() {
         // A synth: its device chain, and its modulation.
         ui.horizontal(|ui| {
             theme::caption(ui, &format!("INSTRUMENT {id:02X} · {}", m.name));
@@ -161,7 +161,9 @@ pub fn editor(app: &mut App, ui: &mut egui::Ui) {
                 app.sampler.tab = Tab::Keyzones;
             }
             let tip = "Pitch and filter envelopes, vibrato and tremolo for every voice";
-            if theme::toggle(ui, app.sampler.tab == Tab::Modulation, "Modulation").on_hover_text(tip).clicked() {
+            if m.kind.has_modulation()
+                && theme::toggle(ui, app.sampler.tab == Tab::Modulation, "Modulation").on_hover_text(tip).clicked()
+            {
                 app.sampler.tab = Tab::Modulation;
             }
             let tip = "The Sampler's own settings and the effects it goes through";
@@ -201,7 +203,8 @@ pub fn editor(app: &mut App, ui: &mut egui::Ui) {
             match app.sampler.tab {
                 Tab::Waveform => waveform_tab(app, ui, id),
                 Tab::Keyzones => keyzones_tab(app, ui, id),
-                Tab::Modulation => super::modulation::page(app, ui, id),
+                Tab::Modulation if m.kind.has_modulation() => super::modulation::page(app, ui, id),
+                Tab::Modulation => waveform_tab(app, ui, id),
                 Tab::Phrase => super::phrase::page(app, ui, id),
                 Tab::Effects => {}
             }

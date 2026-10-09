@@ -802,7 +802,7 @@ impl App {
                 let secs = sample.seconds();
                 let name = sample.name.clone();
                 if let Some(m) = self.project.module_mut(id) {
-                    if m.name == ModuleKind::Sampler.name() && m.samples.is_empty() {
+                    if m.name == m.kind.name() && m.samples.is_empty() {
                         m.name = name.clone();
                     }
                     m.samples.push(SampleSlot::new(sample, Some(full.to_string_lossy().into_owned())));
@@ -839,7 +839,7 @@ impl App {
         if wavs.is_empty() && fonts.is_empty() {
             return;
         }
-        let is_sampler = |id: &u8| self.project.module(*id).is_some_and(|m| m.kind == ModuleKind::Sampler);
+        let is_sampler = |id: &u8| self.project.module(*id).is_some_and(|m| m.kind.holds_samples());
         let selected = self.instrument().filter(is_sampler);
         let id = match selected {
             Some(id) => id,

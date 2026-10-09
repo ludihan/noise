@@ -399,6 +399,7 @@ struct Ids {
     pad: u8,
     voices: u8,
     piano: u8,
+    haze: u8,
     swell: u8,
     arp: u8,
     lead: u8,
@@ -594,6 +595,8 @@ fn instruments(p: &mut Project) -> Ids {
     soft.velocities = [0, 84];
     let mut hard = rendered(felt_piano(sr, true));
     hard.velocities = [85, 127];
+    // The bridge's haze: the soft piano as a cloud of grains.
+    let haze_sample = soft.clone();
     let m = p.module_mut(piano).unwrap();
     m.samples = vec![soft, hard];
     m.modulation.filter = true;
@@ -606,6 +609,27 @@ fn instruments(p: &mut Project) -> Ids {
     let air = p.chain_insert(piano, 1, K::Exciter).unwrap();
     set(p, air, "Air", &[(0, 5000.0), (1, 2.0), (2, 0.15)]);
     send(p, piano, hall);
+    let haze = add(p, K::Granular);
+    set(
+        p,
+        haze,
+        "Haze",
+        &[
+            (0, 0.35),
+            (1, 0.15),
+            (2, 0.05),
+            (3, 0.15),
+            (4, 25.0),
+            (5, 0.08),
+            (6, 8.0),
+            (7, 0.8),
+            (8, 0.3),
+            (9, 1.0),
+            (10, 2.5),
+        ],
+    );
+    p.module_mut(haze).unwrap().samples = vec![haze_sample];
+    send(p, haze, hall);
 
     // The swell: one shot, stretched over four beats whatever the tempo.
     let swell_id = add(p, K::Sampler);
@@ -733,6 +757,7 @@ fn instruments(p: &mut Project) -> Ids {
         pad,
         voices,
         piano,
+        haze,
         swell: swell_id,
         arp,
         lead,
@@ -969,7 +994,6 @@ fn chorus(ids: &Ids, last: bool) -> Pattern {
 
 fn bridge(ids: &Ids) -> Pattern {
     let mut pat = Pattern::new("", 8, 64);
-    pat.tracks[LEAD][0] = off();
     pat.set_columns(PAD, 3);
     pat.set_columns(PIANO, 5);
     // Voices instead of strings, trembling with 7xy, and talking: their
@@ -984,6 +1008,8 @@ fn bridge(ids: &Ids) -> Pattern {
         }
         pat.tracks[BASS][bar * 16] = n(ch.root, ids.bass, 0x50);
         pat.tracks[BASS][bar * 16 + 15] = off();
+        // Where the lead was, the piano blurred into a haze of grains.
+        pat.tracks[LEAD][bar * 16] = n(ch.root + 24, ids.haze, 0x60);
         // A few piano notes from the tune.
         *pat.cell_mut(PIANO, 4, bar * 16) = n(ch.tones[2] + 12, ids.piano, 0x40);
         *pat.cell_mut(PIANO, 4, bar * 16 + 6) = n(ch.tones[1] + 12, ids.piano, 0x34);
@@ -1063,7 +1089,7 @@ const COMMENTS: &str = "Last Light — the demo song. Press Space to play it and
     Glide that slides tied notes, a saw through a Vocal Filter, whose vowel is automated in the chorus.\n\
     • Build: the bass filter opens, the bass slides up with 1xx, the snare rolls with Exx, and the Stutter \
     Repeater's Hold is automated at the end.\n\
-    • Bridge: Voices talk through a Vocal Filter and tremble with 7xy; Bells use Yxx, Nxy and 8xx, through a Ring Mod and an LFO.\n\
+    • Bridge: Voices talk through a Vocal Filter and tremble with 7xy; Haze, a Granular, blurs the piano into grains; Bells use Yxx, Nxy and 8xx, through a Ring Mod and an LFO.\n\
     • The swell is a one-shot, beat-synced sample; in the bridge it starts a quarter in with 9xx.\n\
     • Outro: Fxx slows the song, Axy fades the last chord, 2xx sinks the bass and the master volume is automated.\n\
     • The matrix holds back the hats and arp in the first verse, and the sections name the parts.";

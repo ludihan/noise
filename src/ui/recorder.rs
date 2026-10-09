@@ -5,7 +5,7 @@ use super::{App, theme};
 use crate::audio::{self, Input};
 use crate::dsp::Frame;
 use crate::engine::{Cmd, Shared, Tape};
-use crate::project::{ModuleKind, SampleSlot};
+use crate::project::SampleSlot;
 use crate::sample::Sample;
 use eframe::egui::{self, RichText};
 use std::sync::Arc;
@@ -107,7 +107,7 @@ pub fn window(app: &mut App, ctx: &egui::Context) {
 }
 
 fn body(app: &mut App, ui: &mut egui::Ui) {
-    let target = app.instrument().filter(|&id| app.project.module(id).is_some_and(|m| m.kind == ModuleKind::Sampler));
+    let target = app.instrument().filter(|&id| app.project.module(id).is_some_and(|m| m.kind.holds_samples()));
     let recording = app.recorder.take.is_some();
     ui.add_enabled_ui(!recording, |ui| {
         ui.horizontal(|ui| {

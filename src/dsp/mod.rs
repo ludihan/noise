@@ -196,6 +196,7 @@ pub fn create(kind: ModuleKind, sr: f32) -> Box<dyn Dsp> {
         ModuleKind::Fm => Box::new(Fm::new()),
         ModuleKind::Drums => Box::new(Drums::new()),
         ModuleKind::Sampler => Box::new(Sampler::new()),
+        ModuleKind::Granular => Box::new(granular::Granular::new()),
         ModuleKind::Filter => Box::new(Filter::default()),
         ModuleKind::Distortion => Box::new(Distortion::default()),
         ModuleKind::Delay => Box::new(Delay::new(sr)),
@@ -423,6 +424,7 @@ macro_rules! voice_controls {
 }
 
 // The modules in files of their own come after the macro they use.
+pub mod granular;
 pub mod wavetable;
 
 // ---------------------------------------------------------------- output / amp
