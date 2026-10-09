@@ -1073,8 +1073,11 @@ fn drill(ids: &Ids) -> Pattern {
     // thrown hard left and right (8xx).
     pat.tracks[BEAT][32] = fx(n(48, brk, 0x78), FX_PHRASE, 1);
     chops(&mut pat, brk, BEAT, 48, 1, "K...S... KK..S.SS");
+    // Cut short by the volume column (C2).
+    let clipped = vol_command_value('C', 2);
     for (k, l) in [50, 54, 58, 62].into_iter().enumerate() {
-        pat.tracks[CHOPS][l] = fx(n(RIM, brk, 0x68), 0x8, if k % 2 == 0 { 0x00 } else { 0xFF });
+        let rim = Cell { vol: clipped, ..n(RIM, brk, 0) };
+        pat.tracks[CHOPS][l] = fx(rim, 0x8, if k % 2 == 0 { 0x00 } else { 0xFF });
     }
     // Twelve ticks a line (F0C): a snare buzzing on every tick (E01) and
     // diving as the break's Transpose falls, a rim walking back through
@@ -1087,7 +1090,32 @@ fn drill(ids: &Ids) -> Pattern {
     let dive = [(0.0, 0.0), (66.0, 0.0), (68.0, -3.0), (70.0, -6.0), (72.0, -10.0), (74.0, 0.0)];
     pat.automation.push(envelope(brk, s, 2, &dive, true, false));
     walk(&mut pat, 76, 4, n(RIM, brk, 0x60), 0x02, (0x2, 0x04));
-    chops(&mut pat, brk, BEAT, 80, 1, "K.S.K.S. KKSSKKSS");
+    // A bar played from the kick's key alone, each line picking its
+    // slice (Sxx), the snare at the end backwards (Rxx).
+    const RESEQUENCED: [Option<u8>; 16] = [
+        Some(KICK),
+        None,
+        Some(SNARE),
+        Some(GHOST),
+        Some(KICK),
+        None,
+        Some(SNARE3),
+        Some(HAT),
+        Some(KICK),
+        Some(DRY_KICK),
+        Some(SNARE),
+        Some(SNARE2),
+        Some(KICK),
+        Some(GHOST2),
+        Some(SNARE),
+        Some(SNARE),
+    ];
+    for (k, hit) in RESEQUENCED.into_iter().enumerate() {
+        if let Some(note) = hit {
+            pat.tracks[BEAT][80 + k] = fx(n(KICK, brk, if k % 4 == 0 { 0x78 } else { 0x64 }), FX_SLICE, note - KICK);
+        }
+    }
+    pat.cell_mut(BEAT, BEAT_FX, 95).fx = Some((FX_REVERSE, 0x01));
     roll(&mut pat, BEAT, 92, 4, n(SNARE, brk, 0x68), 0x06, 0x7F);
     // Six ticks again (F06): the phrase in fives (Z03), caught in the
     // Stutter; the big snare from partway in (9xx), a crash diving (2xx)
@@ -1123,6 +1151,10 @@ fn unwound(ids: &Ids) -> Pattern {
     let mut pat = pattern(LINES);
     // The drums stop; rain is left, thrown into the Chops track's echo.
     drops(&mut pat, ids.brk, 0, 2, 0x48);
+    // It starts far off and comes closer: the track's volume (Lxx).
+    for (l, vol) in [(1, 0x28), (33, 0x40), (65, 0x58), (97, 0x70), (121, 0x80)] {
+        pat.tracks[CHOPS][l].fx = Some((FX_TRACK_VOLUME, vol));
+    }
     // The fog holds E minor, then C, trembling (7xy) as it turns; the room
     // opens; the music box plays the tune at half speed and now and then
     // spins a chord (0xy); bleeps come and go.
@@ -1191,6 +1223,8 @@ fn build(ids: &Ids) -> Pattern {
         *pat.cell_mut(BEAT, 1, l) = n(KICK, brk, 0x70);
     }
     hold(&mut pat, ids.stutter, &[(124.0, 128.0)], &[(124.0, 8.0)]);
+    // The last line holds two more (Wxx), stuttering, before the storm.
+    pat.cell_mut(FX, 1, LINES - 1).fx = Some((FX_WAIT, 0x02));
     // The sub holds B and climbs an octave in the last bar (1xx); the
     // strings swell in on B7; the music box spins faster and faster; and
     // the acid holds B, its ladder opening.
@@ -1263,20 +1297,26 @@ fn storm(ids: &Ids, second: bool) -> Pattern {
         }
     }
     // The strings, chopped by the Gate from the third bar, and from the
-    // start the second time, when they tremble (7xy) at the end; the lead
+    // start the second time, when they stutter (Txy) at the end; the lead
     // cries the tune an octave under the music box.
     strings(&mut pat, ids.strings, 0x68);
     let m = ModuleKind::Modulator;
     let gate: &[(f32, f32)] = if second { &[(0.0, 1.0)] } else { &[(0.0, 0.0), (64.0, 1.0)] };
     pat.automation.push(envelope(ids.gate, m, 5, gate, true, false));
+    if !second {
+        // The first storm breaks off (Jxx) two lines early, into the next.
+        pat.cell_mut(FX, 1, LINES - 3).fx = Some((FX_BREAK, 0x00));
+    }
     let tune_of: &[(usize, u8)] = if second { &ANSWER } else { &THEME };
     cry(&mut pat, ids.lead, tune_of, 0x70);
     tune(&mut pat, BOX, 0, ids.music_box, tune_of, 0x60);
     sub(&mut pat, ids.sub, &LOOP, &[(0, false, false), (16, false, false), (28, true, true)], 0x78);
     if second {
+        // The strings stutter on and off (Txy), faster in the last beat.
         for c in 0..3 {
             for l in 3 * BAR..LINES {
-                pat.cell_mut(STRINGS, c, l).fx = Some((0x7, 0x18));
+                let rate = if l >= LINES - LPB { 0x11 } else { 0x21 };
+                pat.cell_mut(STRINGS, c, l).fx = Some((FX_TREMOR, rate));
             }
         }
         acid(&mut pat, ids.acid, &ACID_TONES);
@@ -1468,7 +1508,11 @@ const COMMENTS: &str = "Clockwork Rain — the third demo song: IDM in E minor a
     • Its phrases play finer than the grid: Z01 stumbles in triplets, Z02 fires 64ths, Z03 limps in fives.\n\
     • Chops: the same break on its own track, through the track's highpass and multitap (track effects); in \
     Unwound it is the rain, maybe there and thrown about by the panning column.\n\
-    • Drill: F0C gives lines twelve ticks, for buzzing E01 rolls; F06 puts six back.\n\
+    • Drill: F0C gives lines twelve ticks, for buzzing E01 rolls; F06 puts six back. One bar is played from the \
+    kick's key alone, Sxx picking each slice, its last snare reversed with R01; rims are cut short with C2 in the \
+    volume column.\n\
+    • Unwound: the rain comes closer as L28 to L80 raise the Chops track's volume. Build holds its last line two \
+    more with W02; the first Storm breaks off early into the next with J00, and Storm 2's strings stutter with Txy.\n\
     • Stutter, the break's Repeater, and Freeze, on the master, hold what they heard and loop it ever shorter; \
     Freeze ends the song.\n\
     • Acid Line: a saw with a filter envelope (its Modulation page), gliding with 3xx and cut with Cxx like a \
@@ -1498,7 +1542,30 @@ mod tests {
                 commands.extend(pat.lane(lane)[..pat.lines].iter().filter_map(|c| c.fx));
             }
         }
-        for cmd in [0x0, 0x1, 0x2, 0x3, 0x4, 0x7, 0x8, 0x9, 0xA, 0xC, 0xD, 0xE, 0xF, FX_AUTOPAN, FX_MAYBE, FX_PHRASE] {
+        for cmd in [
+            0x0,
+            0x1,
+            0x2,
+            0x3,
+            0x4,
+            0x7,
+            0x8,
+            0x9,
+            0xA,
+            0xC,
+            0xD,
+            0xE,
+            0xF,
+            FX_AUTOPAN,
+            FX_MAYBE,
+            FX_PHRASE,
+            FX_BREAK,
+            FX_TRACK_VOLUME,
+            FX_REVERSE,
+            FX_SLICE,
+            FX_TREMOR,
+            FX_WAIT,
+        ] {
             assert!(commands.iter().any(|c| c.0 == cmd), "effect {:?}", char::from_digit(cmd as u32, 36));
         }
         // Lines of twelve ticks, a storm at 200 BPM, and a part in 7/8.
