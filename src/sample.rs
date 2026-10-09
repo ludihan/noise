@@ -170,9 +170,100 @@ impl Sample {
     }
 }
 
+/// `frames` made `ratio` times as long without changing their pitch, by
+/// waveform-similarity overlap-add: windows of 50 ms laid down at the new
+/// spacing, each taken from near where it would be in time, moved by up
+/// to a quarter window to where it best continues the one before, so the
+/// waveforms line up and nothing beats or flutters.
+pub fn time_stretch(frames: &[Frame], ratio: f64, sample_rate: f32) -> Vec<Frame> {
+    let out_len = (frames.len() as f64 * ratio).round() as usize;
+    let n = ((sample_rate * 0.05) as usize / 2 * 2).max(64);
+    if frames.len() < 2 * n || ratio <= 0.0 {
+        // Too short to stretch: as it was, cut or padded to the length.
+        let mut out = frames.to_vec();
+        out.resize(out_len, [0.0; 2]);
+        return out;
+    }
+    let half = n / 2;
+    let hop_in = half as f64 / ratio;
+    let tolerance = n / 4;
+    let window: Vec<f32> = (0..n).map(|i| 0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / n as f32).cos()).collect();
+    let mono: Vec<f32> = frames.iter().map(|f| f[0] + f[1]).collect();
+    let last = frames.len() - n;
+    let mut out = vec![[0.0f32; 2]; out_len + n];
+    let mut weight = vec![0.0f32; out_len + n];
+    // How well the input at `pos` matches `target`, over every `step`th
+    // frame.
+    let score = |target: usize, pos: usize, step: usize| -> f32 {
+        (0..n).step_by(step).map(|k| mono[target + k] * mono[pos + k]).sum()
+    };
+    let mut prev = 0usize;
+    let mut k = 0;
+    while k * half < out_len {
+        let nominal = ((k as f64 * hop_in) as usize).min(last);
+        let pos = if k == 0 {
+            0
+        } else {
+            // Where the last window would have gone on to.
+            let target = (prev + half).min(last);
+            let (lo, hi) = (nominal.saturating_sub(tolerance), (nominal + tolerance).min(last));
+            // Coarse, then fine around the best.
+            let mut best = (nominal, f32::MIN);
+            for pos in (lo..=hi).step_by(4) {
+                let s = score(target, pos, 4);
+                if s > best.1 {
+                    best = (pos, s);
+                }
+            }
+            let (lo, hi) = (best.0.saturating_sub(4).max(lo), (best.0 + 4).min(hi));
+            best.1 = f32::MIN;
+            for pos in lo..=hi {
+                let s = score(target, pos, 1);
+                if s > best.1 {
+                    best = (pos, s);
+                }
+            }
+            best.0
+        };
+        let at = k * half;
+        for j in 0..n {
+            let w = window[j];
+            out[at + j][0] += frames[pos + j][0] * w;
+            out[at + j][1] += frames[pos + j][1] * w;
+            weight[at + j] += w;
+        }
+        prev = pos;
+        k += 1;
+    }
+    out.truncate(out_len);
+    for (f, w) in out.iter_mut().zip(&weight) {
+        if *w > 1e-3 {
+            *f = [f[0] / w, f[1] / w];
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stretching_keeps_the_pitch() {
+        let sr = 44100.0;
+        let tone: Vec<Frame> =
+            (0..sr as usize).map(|i| [(std::f32::consts::TAU * 440.0 * i as f32 / sr).sin() * 0.5; 2]).collect();
+        let crossings = |x: &[Frame]| x.windows(2).filter(|w| w[0][0] < 0.0 && w[1][0] >= 0.0).count() as f32;
+        for ratio in [0.5, 0.8, 1.5, 2.0] {
+            let out = time_stretch(&tone, ratio, sr);
+            assert_eq!(out.len(), (sr as f64 * ratio).round() as usize);
+            // As many cycles a second as before, and about as loud.
+            let hz = crossings(&out) / (out.len() as f32 / sr);
+            assert!((hz - 440.0).abs() < 6.0, "{ratio}: {hz} Hz");
+            let peak = out[2000..out.len() - 2000].iter().fold(0f32, |m, f| m.max(f[0].abs()));
+            assert!((0.4..0.55).contains(&peak), "{ratio}: peak {peak}");
+        }
+    }
 
     #[test]
     fn flac_and_ogg_load() {

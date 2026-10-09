@@ -782,6 +782,8 @@ fn edit_toolbar(app: &mut App, ui: &mut egui::Ui, id: u8, i: usize, len: usize, 
                     ui.close();
                 }
             }
+            ui.separator();
+            stretch_menu(app, ui, id, i, sel.map_or(len, |(a, b)| b - a));
         });
         ui.separator();
         if ui.add_enabled(sel.is_some(), egui::Button::new("Crop")).on_hover_text("Keep only the selection").clicked() {
@@ -878,6 +880,8 @@ enum Op {
     /// Change the level by this many decibels.
     Gain(f32),
     CrossfadeLoop,
+    /// Make it this many times as long, at the same pitch.
+    Stretch(f64),
 }
 
 /// The processes in the Process menu.
@@ -894,6 +898,43 @@ const PROCESSES: [(&str, &str, Op); 7] = [
         Op::CrossfadeLoop,
     ),
 ];
+
+/// Time Stretch: the selection, or the whole sample, made longer or
+/// shorter at the same pitch, by a ratio or to fill lines of the song.
+fn stretch_menu(app: &mut App, ui: &mut egui::Ui, id: u8, i: usize, frames: usize) {
+    let tip = "Longer or shorter without changing the pitch (the selection, or the whole sample)";
+    ui.menu_button("Time Stretch", |ui| {
+        let mut ratio = None;
+        for (label, r) in [("Half as Long", 0.5), ("75%", 0.75), ("90%", 0.9), ("110%", 1.1), ("125%", 1.25)] {
+            if ui.button(label).clicked() {
+                ratio = Some(r);
+            }
+        }
+        for (label, r) in [("150%", 1.5), ("Twice as Long", 2.0)] {
+            if ui.button(label).clicked() {
+                ratio = Some(r);
+            }
+        }
+        ui.separator();
+        // A line at the song's tempo, in the sample's frames.
+        let rate = slots(app, id).get(i).and_then(|s| s.data.as_ref()).map_or(44100.0, |d| d.sample_rate);
+        let line = 60.0 / (app.project.bpm.max(1.0) as f64 * app.project.lpb.max(1) as f64) * rate as f64;
+        for lines in [1, 2, 4, 8, 16, 32, 64] {
+            let r = lines as f64 * line / frames.max(1) as f64;
+            let label = format!("Fit to {lines} Line{} ({:.0}%)", if lines == 1 { "" } else { "s" }, r * 100.0);
+            if ui.add_enabled((0.25..=4.0).contains(&r), egui::Button::new(label)).clicked() {
+                ratio = Some(r);
+            }
+        }
+        if let Some(r) = ratio {
+            edit(app, id, i, Op::Stretch(r));
+            app.set_status(format!("Stretched to {:.0}%", r * 100.0));
+            ui.close();
+        }
+    })
+    .response
+    .on_hover_text(tip);
+}
 
 /// The Slices menu: markers made evenly or at the beats, cleared, or
 /// turned into samples of their own.
@@ -1148,6 +1189,21 @@ fn edit(app: &mut App, id: u8, i: usize, op: Op) {
                 app.set_status("Crossfade Loop needs a loop with audio before its start");
                 return;
             }
+        }
+        Op::Stretch(ratio) => {
+            let stretched = crate::sample::time_stretch(&frames[a..b], ratio, data.sample_rate);
+            let n = stretched.len();
+            frames.splice(a..b, stretched);
+            map = Box::new(move |x| {
+                if x < a {
+                    x
+                } else if x >= b {
+                    x - (b - a) + n
+                } else {
+                    a + ((x - a) as f64 * ratio) as usize
+                }
+            });
+            new_sel = sel.map(|_| (a, a + n));
         }
         Op::Copy => unreachable!(),
     }
