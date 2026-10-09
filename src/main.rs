@@ -1,5 +1,6 @@
 mod audio;
 mod clockwork_rain;
+mod concrete_hymn;
 mod demo;
 mod dsp;
 mod engine;

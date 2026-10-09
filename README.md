@@ -79,6 +79,7 @@ noise --demo-wav [out.wav]         # render the demo song
 | `src/static_heart.rs` | The second demo song, and the vocal and breakbeat samples it renders |
 | `src/clockwork_rain.rs` | The third demo song, and the breakbeat and crackle samples it renders |
 | `src/prism_overdrive.rs` | The fourth demo song, and the kit and orchestra hit it renders |
+| `src/concrete_hymn.rs` | The fifth demo song, and the kit it renders |
 | `src/project.rs` | Song data (patterns and their automation, the order list, tracks, modules, links); saved as JSON |
 | `src/project_dir.rs` | Project folders: saving a song with its samples named by hashes, deleting the unused ones; export and import as `.noise` files (zip archives) |
 | `src/dsp/` | The audio code for every module, a file to each family (`filters.rs`, `delays.rs`, `fm.rs`, `sampler.rs`…); `mod.rs` holds the `Dsp` trait, `create`, envelopes and voices, `tests.rs` the tests they share |
