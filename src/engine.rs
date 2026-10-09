@@ -1826,6 +1826,7 @@ impl Engine {
     /// Renders `out.len()` frames, running the sequencer on tick boundaries.
     pub fn render(&mut self, out: &mut [Frame]) {
         let started = std::time::Instant::now();
+        crate::dsp::flush_denormals();
         if let Some(rx) = self.rx.take() {
             while let Ok(cmd) = rx.try_recv() {
                 self.handle(cmd);

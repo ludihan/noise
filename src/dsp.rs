@@ -64,6 +64,30 @@ pub struct Playhead {
     pub envelopes: [f32; 2],
 }
 
+/// Has the CPU treat numbers too small to matter (denormals) as zero on
+/// this thread. Filters and reverbs fading out pass through them, and on
+/// most CPUs each sum with one is many times slower, enough to make a busy
+/// song stutter.
+pub fn flush_denormals() {
+    #[cfg(target_arch = "x86_64")]
+    // SAFETY: sets the flush-to-zero (bit 15) and denormals-are-zero
+    // (bit 6) bits of this thread's SSE control register.
+    unsafe {
+        let mut csr = 0u32;
+        std::arch::asm!("stmxcsr [{}]", in(reg) &mut csr, options(nostack, preserves_flags));
+        csr |= 0x8040;
+        std::arch::asm!("ldmxcsr [{}]", in(reg) &csr, options(nostack, preserves_flags, readonly));
+    }
+    #[cfg(target_arch = "aarch64")]
+    // SAFETY: sets the flush-to-zero bit (24) of this thread's
+    // floating-point control register.
+    unsafe {
+        let fpcr: u64;
+        std::arch::asm!("mrs {}, fpcr", out(reg) fpcr, options(nomem, nostack, preserves_flags));
+        std::arch::asm!("msr fpcr, {}", in(reg) fpcr | 1 << 24, options(nomem, nostack, preserves_flags));
+    }
+}
+
 pub struct Ctx {
     pub sr: f32,
     pub samples_per_line: f32,
@@ -3126,6 +3150,13 @@ mod tests {
         s.process(&ctx, &params, &[], &mut out);
         // Undo the center pan gain.
         out.iter().map(|f| f[0] / pan_gains(0.0).0).collect()
+    }
+
+    #[test]
+    fn numbers_too_small_to_matter_are_zero() {
+        flush_denormals();
+        let tiny = std::hint::black_box(f32::MIN_POSITIVE);
+        assert_eq!(std::hint::black_box(tiny * 0.5), 0.0);
     }
 
     #[test]
