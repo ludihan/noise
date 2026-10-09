@@ -81,7 +81,7 @@ noise --demo-wav [out.wav]         # render the demo song
 | `src/prism_overdrive.rs` | The fourth demo song, and the kit and orchestra hit it renders |
 | `src/project.rs` | Song data (patterns and their automation, the order list, tracks, modules, links); saved as JSON |
 | `src/project_dir.rs` | Project folders: saving a song with its samples named by hashes, deleting the unused ones; export and import as `.noise` files (zip archives) |
-| `src/dsp.rs` | The audio code for every module |
+| `src/dsp/` | The audio code for every module: most in `mod.rs`, the larger ones (wavetable, granular, convolver) and the FFT in files of their own |
 | `src/sample.rs` | Loading WAV, FLAC and Ogg Vorbis samples; saving WAV |
 | `src/soundfont.rs` | SF2, SF3 and SFZ soundfonts turned into Sampler samples |
 | `src/engine.rs` | The sequencer, effects, automation, mixer and modules, run on the audio thread |
@@ -143,9 +143,12 @@ keep sounding while you edit during playback.
   holds a `Track`) share the effects. A `Zxx` reaches `phrase_event`
   through `Engine::picked_phrase`, set while its note is sent.
 - Adding a module: a `ModuleKind` with a `ParamSpec` table (with units) in
-  `project.rs`, added to `ADDABLE` and `info`, and a `Dsp` in
-  `dsp.rs` made in `dsp::create`. `Ctx::samples_per_line` gives the tempo
-  for synced rates.
+  `project.rs`, added to `ADDABLE` and `info`, and a `Dsp` in `dsp/` made
+  in `dsp::create`. A module in a file of its own is declared after the
+  `voice_controls!` macro in `dsp/mod.rs`, so it can use it.
+  `Ctx::samples_per_line` gives the tempo for synced rates. The demo song
+  (`demo.rs`) must use it, and the manual (`ui/help.rs`) describe it:
+  tests check both.
 - The audio thread must not block: the UI sends a new `Project` snapshot
   after each edit, and the engine publishes its state through atomics and
   `try_lock` in `Shared`. Slow work on the UI side, such as decoding a
