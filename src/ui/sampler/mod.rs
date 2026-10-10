@@ -223,7 +223,8 @@ pub fn editor(app: &mut App, ui: &mut egui::Ui) {
 // ---------------------------------------------------------------- sample list
 
 fn sample_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
-    theme::caption(ui, "SAMPLES");
+    let n = slots(app, id).len();
+    theme::caption(ui, &if n == 0 { "SAMPLES".to_string() } else { format!("SAMPLES · {n}") });
     let mut select = None;
     egui::Frame::new().fill(theme::INSET).inner_margin(2).show(ui, |ui| {
         let list = egui::ScrollArea::vertical().id_salt("samples").max_height(ui.available_height() - 60.0);
@@ -232,11 +233,26 @@ fn sample_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
             ui.spacing_mut().item_spacing.y = 0.0;
             ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
                 for (i, s) in slots(app, id).iter().enumerate() {
+                    let on = i == app.sampler.sample;
                     let mut text = RichText::new(format!("{i:02}  {}", s.name));
                     if s.data.is_none() {
                         text = text.color(theme::RECORD);
                     }
-                    let resp = ui.selectable_label(i == app.sampler.sample, text);
+                    let resp = ui.selectable_label(on, text);
+                    // The keys it plays on, at the right of its row.
+                    let [lo, hi] = s.keys;
+                    let keys = if lo == hi {
+                        Note::On(lo).label()
+                    } else {
+                        format!("{}–{}", Note::On(lo).label(), Note::On(hi).label())
+                    };
+                    ui.painter().text(
+                        resp.rect.right_center() - Vec2::new(6.0, 0.0),
+                        egui::Align2::RIGHT_CENTER,
+                        keys,
+                        egui::FontId::monospace(10.0),
+                        if on { theme::SELECTED_TEXT } else { theme::TEXT_WEAK },
+                    );
                     let resp = match &s.path {
                         Some(p) if s.data.is_none() => resp.on_hover_text(format!("Missing: {p}")),
                         _ => resp,
@@ -257,7 +273,7 @@ fn sample_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
                 }
                 if slots(app, id).is_empty() {
                     ui.label(
-                        RichText::new("No samples. Load one or a soundfont, or drop audio files onto the window.")
+                        RichText::new("No samples yet. Load… adds one, or a whole soundfont; or drop audio files onto the window, or double-click one in the disk browser.")
                             .color(theme::TEXT_WEAK),
                     );
                 }
@@ -291,7 +307,12 @@ fn sample_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
         if ui.button("Record…").on_hover_text(tip).clicked() {
             app.recorder.open = true;
         }
-        if ui.add_enabled(has, egui::Button::new("Dup")).on_hover_text("Duplicate the sample").clicked() {
+        if ui
+            .add_enabled_ui(has, |ui| super::icons::button(ui, super::icons::Icon::Clone))
+            .inner
+            .on_hover_text("Duplicate the sample")
+            .clicked()
+        {
             let m = app.project.module_mut(id).unwrap();
             let mut copy = m.samples[cur].clone();
             copy.name.push_str(" copy");
@@ -300,7 +321,12 @@ fn sample_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
             app.sampler.slice = None;
             app.mark();
         }
-        if ui.add_enabled(has, egui::Button::new("−")).on_hover_text("Delete the sample").clicked() {
+        if ui
+            .add_enabled_ui(has, |ui| super::icons::button(ui, super::icons::Icon::Bin))
+            .inner
+            .on_hover_text("Delete the sample")
+            .clicked()
+        {
             app.project.module_mut(id).unwrap().samples.remove(cur);
             app.mark();
         }

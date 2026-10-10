@@ -39,7 +39,7 @@ pub(super) fn waveform_tab(app: &mut App, ui: &mut egui::Ui, id: u8) {
     let slice = app.sampler.slice.filter(|&k| k < slot.slice_ranges().len());
     // Their height last frame, which grows when they wrap in a narrow window.
     let props_id = ui.id().with(("sample_props_h", slice.is_some()));
-    let props_h = ui.data(|d| d.get_temp::<f32>(props_id)).unwrap_or(if slice.is_some() { 140.0 } else { 112.0 });
+    let props_h = ui.data(|d| d.get_temp::<f32>(props_id)).unwrap_or(if slice.is_some() { 160.0 } else { 132.0 });
     // The waveform keeps a useful height; what doesn't fit below it scrolls.
     let avail = ui.available_height();
     let size = Vec2::new(ui.available_width(), (avail - props_h).max((avail * 0.45).min(160.0)).max(80.0));
@@ -432,7 +432,9 @@ pub fn draw_channel(
     }
 }
 
-/// Buttons above the waveform: playback, edits and zoom.
+/// Buttons above the waveform, in groups: playing it, what to do with the
+/// selection, changes to the selection or the whole sample, and zoom, with
+/// how long the selection is.
 pub(super) fn edit_toolbar(
     app: &mut App,
     ui: &mut egui::Ui,
@@ -443,6 +445,7 @@ pub(super) fn edit_toolbar(
     vlen: &mut f64,
 ) {
     let sel = app.sampler.selection;
+    let rate = slots(app, id).get(i).and_then(|s| s.data.as_ref()).map_or(44100.0, |d| d.sample_rate);
     ui.horizontal_wrapped(|ui| {
         if icons::button(ui, icons::Icon::Play).on_hover_text("Play the selection, or the whole sample").clicked() {
             play(app, id, i);
@@ -451,55 +454,26 @@ pub(super) fn edit_toolbar(
             app.stop_preview();
         }
         ui.separator();
-        let ops: [(&str, &str, Op); 5] = [
-            ("Reverse", "Play backwards", Op::Reverse),
-            ("Normalize", "Raise the level so the loudest peak is at 0 dB", Op::Normalize),
-            ("Fade in", "Fade in from silence", Op::FadeIn),
-            ("Fade out", "Fade out to silence", Op::FadeOut),
-            ("Silence", "Replace with silence", Op::Silence),
+        // What a selection can be: cut, copied, pasted over, deleted, kept
+        // alone or looped.
+        let with_sel = [
+            ("Cut", "Ctrl+X", Op::Cut),
+            ("Copy", "Ctrl+C", Op::Copy),
+            ("Delete", "Del", Op::Delete),
+            ("Crop", "Keep only the selection", Op::Crop),
         ];
-        for (label, tip, op) in ops {
-            if ui.button(label).on_hover_text(format!("{tip} (the selection, or the whole sample)")).clicked() {
+        for (label, tip, op) in with_sel {
+            if ui.add_enabled(sel.is_some(), egui::Button::new(label)).on_hover_text(tip).clicked() {
                 edit(app, id, i, op);
             }
-        }
-        ui.menu_button("Slices", |ui| slices_menu(app, ui, id, i));
-        ui.menu_button("Process", |ui| {
-            for (label, tip, op) in PROCESSES {
-                let tip = if op == Op::CrossfadeLoop {
-                    tip.to_string()
-                } else {
-                    format!("{tip} (the selection, or the whole sample)")
-                };
-                if ui.button(label).on_hover_text(tip).clicked() {
-                    edit(app, id, i, op);
-                    ui.close();
-                }
-            }
-            ui.separator();
-            stretch_menu(app, ui, id, i, sel.map_or(len, |(a, b)| b - a));
-        });
-        ui.separator();
-        if ui.add_enabled(sel.is_some(), egui::Button::new("Crop")).on_hover_text("Keep only the selection").clicked() {
-            edit(app, id, i, Op::Crop);
-        }
-        if ui.add_enabled(sel.is_some(), egui::Button::new("Delete")).on_hover_text("Del").clicked() {
-            edit(app, id, i, Op::Delete);
-        }
-        if ui.add_enabled(sel.is_some(), egui::Button::new("Cut")).on_hover_text("Ctrl+X").clicked() {
-            edit(app, id, i, Op::Cut);
-        }
-        if ui.add_enabled(sel.is_some(), egui::Button::new("Copy")).on_hover_text("Ctrl+C").clicked() {
-            edit(app, id, i, Op::Copy);
         }
         let paste_tip = "Ctrl+V: replace the selection, or insert at the start";
         let paste = ui.add_enabled(app.sampler.clipboard.is_some(), egui::Button::new("Paste"));
         if paste.on_hover_text(paste_tip).clicked() {
             edit(app, id, i, Op::Paste);
         }
-        ui.separator();
         if ui
-            .add_enabled(sel.is_some(), egui::Button::new("Loop selection"))
+            .add_enabled(sel.is_some(), egui::Button::new("Loop It"))
             .on_hover_text("Set the loop to the selection")
             .clicked()
         {
@@ -514,15 +488,48 @@ pub(super) fn edit_toolbar(
             }
         }
         ui.separator();
-        if ui.button("Show all").clicked() {
+        let which = if sel.is_some() { "the selection" } else { "the whole sample" };
+        ui.menu_button("Edit", |ui| {
+            let ops: [(&str, &str, Op); 5] = [
+                ("Reverse", "Play backwards", Op::Reverse),
+                ("Normalize", "Raise the level so the loudest peak is at 0 dB", Op::Normalize),
+                ("Fade In", "Fade in from silence", Op::FadeIn),
+                ("Fade Out", "Fade out to silence", Op::FadeOut),
+                ("Silence", "Replace with silence", Op::Silence),
+            ];
+            for (label, tip, op) in ops.into_iter().chain(PROCESSES) {
+                let tip = if op == Op::CrossfadeLoop { tip.to_string() } else { format!("{tip} ({which})") };
+                if ui.button(label).on_hover_text(tip).clicked() {
+                    edit(app, id, i, op);
+                    ui.close();
+                }
+            }
+            ui.separator();
+            stretch_menu(app, ui, id, i, sel.map_or(len, |(a, b)| b - a));
+        })
+        .response
+        .on_hover_text(format!("Reverse, normalize, fade, stretch and more, on {which}"));
+        ui.menu_button("Slices", |ui| slices_menu(app, ui, id, i))
+            .response
+            .on_hover_text("Cut the sample into slices, each on a key of its own");
+        ui.separator();
+        if ui.button("Show All").on_hover_text("Zoom out to the whole sample").clicked() {
             *v0 = 0.0;
             *vlen = len as f64;
         }
-        if ui.add_enabled(sel.is_some(), egui::Button::new("Zoom to selection")).clicked() {
+        if ui.add_enabled(sel.is_some(), egui::Button::new("Zoom In")).on_hover_text("Zoom to the selection").clicked()
+        {
             let (a, b) = sel.unwrap();
             *v0 = a as f64;
             *vlen = ((b - a) as f64).max(16.0);
         }
+        // How long the sample, or the selection, is.
+        let secs = |f: usize| f as f32 / rate;
+        let text = match sel {
+            Some((a, b)) => format!("Selected {:.3}–{:.3} s ({:.3} s)", secs(a), secs(b), secs(b - a)),
+            None => format!("{:.3} s · drag to select", secs(len)),
+        };
+        ui.label(RichText::new(text).small().color(theme::TEXT_WEAK));
     });
 }
 
@@ -587,7 +594,10 @@ pub(super) fn properties(app: &mut App, ui: &mut egui::Ui, id: u8, i: usize, slo
                     gaps.push(ui.cursor().min.x + 6.0);
                     ui.add_space(12.0);
                 }
-                let r = ui.scope(|ui| GROUPS[k](ui, &mut s));
+                let r = ui.vertical(|ui| {
+                    theme::caption(ui, ["SAMPLE", "PITCH", "LOOP", "KEYZONE"][k]);
+                    GROUPS[k](ui, &mut s)
+                });
                 changed |= r.inner;
                 ui.data_mut(|d| d.insert_temp(width_id(k), r.response.rect.width()));
             }
@@ -681,13 +691,24 @@ pub(super) fn sample_loop(ui: &mut egui::Ui, s: &mut SampleSlot) -> bool {
             }
         });
         ui.end_row();
+        // In seconds, typed or dragged a frame at a time.
+        let rate = s.data.as_ref().map_or(44100.0, |d| d.sample_rate) as f64;
+        let secs = move |v: f64, _| format!("{:.3} s", v / rate);
+        let parse = move |t: &str| t.trim().trim_end_matches('s').trim().parse::<f64>().ok().map(|v| v * rate);
+        let tip = "In seconds: drag it, type a time, or drag the loop markers over the waveform";
+        let speed = (len as f64 / 1000.0).max(1.0);
         ui.label("Loop start");
         let end = s.loop_end;
-        changed |= ui.add(egui::DragValue::new(&mut s.loop_start).range(0..=end.saturating_sub(1))).changed();
+        let field = egui::DragValue::new(&mut s.loop_start)
+            .range(0..=end.saturating_sub(1))
+            .speed(speed)
+            .custom_formatter(secs);
+        changed |= ui.add(field.custom_parser(parse)).on_hover_text(tip).changed();
         ui.end_row();
         ui.label("Loop end");
         let start = s.loop_start;
-        changed |= ui.add(egui::DragValue::new(&mut s.loop_end).range(start + 1..=len)).changed();
+        let field = egui::DragValue::new(&mut s.loop_end).range(start + 1..=len).speed(speed).custom_formatter(secs);
+        changed |= ui.add(field.custom_parser(parse)).on_hover_text(tip).changed();
         ui.end_row();
         ui.label("");
         let oneshot = ui.checkbox(&mut s.oneshot, "One-shot");
