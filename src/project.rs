@@ -479,6 +479,7 @@ pub enum ModuleKind {
     Granular,
     Convolver,
     Analog,
+    PluckedString,
 }
 
 /// How a parameter's value is shown.
@@ -1091,6 +1092,17 @@ static ANALOG_PARAMS: [ParamSpec; 34] = [
     p("Spread", 0.0, 50.0, 12.0).unit(Cents),
     p("Pan", -1.0, 1.0, 0.0).unit(Pan),
 ];
+static PLUCKED_STRING_PARAMS: [ParamSpec; 9] = [
+    p("Volume", 0.0, 1.0, 0.5).unit(Gain),
+    p("Position", 0.02, 0.5, 0.15).unit(Percent),
+    p("Brightness", 0.0, 1.0, 0.7).unit(Percent),
+    p("Decay", 0.05, 30.0, 4.0).unit(Seconds),
+    p("Damping", 0.0, 0.95, 0.3).unit(Percent),
+    p("Release", 0.01, 4.0, 0.3).unit(Seconds),
+    i("Strings", 1.0, 3.0, 1.0),
+    p("Detune", 0.0, 30.0, 6.0).unit(Cents),
+    p("Pan", -1.0, 1.0, 0.0).unit(Pan),
+];
 static GLIDE_PARAMS: [ParamSpec; 2] = [c("Mode", 0.0, GLIDE_MODES), p("Time", 0.005, 2.0, 0.12).unit(Seconds)];
 static MODULATOR_PARAMS: [ParamSpec; 9] = [
     c("Mode", 0.0, MODULATOR_MODES),
@@ -1125,9 +1137,10 @@ pub static MIXER_PAN: ParamSpec = p("Pan", -1.0, 1.0, 0.0).unit(Pan);
 pub static MIXER_GAIN: ParamSpec = p("Fader", 0.0, 2.0, 1.0).unit(Gain);
 
 impl ModuleKind {
-    pub const ADDABLE: [ModuleKind; 47] = [
+    pub const ADDABLE: [ModuleKind; 48] = [
         ModuleKind::Generator,
         ModuleKind::Analog,
+        ModuleKind::PluckedString,
         ModuleKind::Wavetable,
         ModuleKind::Fm,
         ModuleKind::Drums,
@@ -1182,6 +1195,7 @@ impl ModuleKind {
             ModuleKind::Generator => ("Generator", &GENERATOR_PARAMS),
             ModuleKind::Wavetable => ("Wavetable", &WAVETABLE_PARAMS),
             ModuleKind::Analog => ("Analog Synth", &ANALOG_PARAMS),
+            ModuleKind::PluckedString => ("Plucked String", &PLUCKED_STRING_PARAMS),
             ModuleKind::Fm => ("FM", &FM_PARAMS),
             ModuleKind::Drums => ("Drums", &DRUM_PARAMS),
             ModuleKind::Sampler => ("Sampler", &SAMPLER_PARAMS),
@@ -1262,6 +1276,7 @@ impl ModuleKind {
             ModuleKind::Generator
                 | ModuleKind::Wavetable
                 | ModuleKind::Analog
+                | ModuleKind::PluckedString
                 | ModuleKind::Fm
                 | ModuleKind::Drums
                 | ModuleKind::Kicker

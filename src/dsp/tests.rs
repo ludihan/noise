@@ -1105,3 +1105,63 @@ fn analog_synth_mono_voices_glide_and_legato_keeps_the_envelope() {
     };
     assert!(second(&retrig) > 4.0 * second(&legato), "{} {}", second(&legato), second(&retrig));
 }
+
+/// The pitch of `x` at 48 kHz in Hz, by where it best matches itself
+/// shifted, between 40 Hz and 2 kHz.
+fn autocorrelated_pitch(x: &[f32]) -> f32 {
+    let r = |lag: usize| x.iter().zip(&x[lag..]).map(|(a, b)| a * b).sum::<f32>();
+    let lags: Vec<f32> = (0..=1200).map(|l| if l < 24 { 0.0 } else { r(l) }).collect();
+    // The first peak nearly as high as the best, then its top by a parabola.
+    let best = lags.iter().cloned().fold(0f32, f32::max);
+    let k = (25..1200).find(|&l| lags[l] > 0.9 * best && lags[l] >= lags[l - 1] && lags[l] >= lags[l + 1]).unwrap();
+    let (a, b, c) = (lags[k - 1], lags[k], lags[k + 1]);
+    48000.0 / (k as f32 + 0.5 * (a - c) / (a - 2.0 * b + c))
+}
+
+#[test]
+fn plucked_strings_ring_in_tune_and_die_away() {
+    let params = |set: &[(usize, f32)]| {
+        let mut p: Vec<f32> = ModuleKind::PluckedString.params().iter().map(|p| p.default).collect();
+        for &(i, v) in set {
+            p[i] = v;
+        }
+        p
+    };
+    let pluck = |p: &[f32], note: f32| {
+        let mut s = create(ModuleKind::PluckedString, 48000.0);
+        // A block first, so it knows the sample rate and settings.
+        left(s.as_mut(), p, 64);
+        s.note_on(0, note, 1.0);
+        left(s.as_mut(), p, 96000)
+    };
+    for note in [45.0, 69.0, 81.0] {
+        let x = pluck(&params(&[]), note);
+        let hz = autocorrelated_pitch(&x[4800..14400]);
+        let want = 440.0 * 2f32.powf((note - 69.0) / 12.0);
+        assert!((hz / want - 1.0).abs() < 0.02, "{note}: {hz} for {want}");
+    }
+    let peak = |x: &[f32]| x.iter().fold(0f32, |m, v| m.max(v.abs()));
+    // A short decay dies sooner than a long one.
+    let short = pluck(&params(&[(3, 0.5)]), 57.0);
+    let long = pluck(&params(&[(3, 8.0)]), 57.0);
+    // Decay is how long the fundamental takes to fall 60 dB.
+    let fundamental = |x: &[f32]| level_at(&x.iter().map(|&v| [v, v]).collect::<Vec<_>>(), 220.0, 48000.0);
+    assert!(peak(&short[48000..]) < 0.01 * peak(&short[..4800]));
+    let fallen = fundamental(&long[48000..52800]) / fundamental(&long[..4800]);
+    assert!((0.3..0.6).contains(&fallen), "7.5 dB down after a second of eight: {fallen}");
+    // Damping takes the highs first: the fifth harmonic against the first.
+    let bright = |x: &[f32]| {
+        let f: Vec<Frame> = x.iter().map(|&v| [v, v]).collect();
+        level_at(&f, 1100.0, 48000.0) / level_at(&f, 220.0, 48000.0)
+    };
+    let soft = pluck(&params(&[(4, 0.8)]), 57.0);
+    let hard = pluck(&params(&[(4, 0.0)]), 57.0);
+    assert!(bright(&soft[24000..33600]) < 0.5 * bright(&hard[24000..33600]));
+    // A rung-out string frees its voice.
+    let mut s = create(ModuleKind::PluckedString, 48000.0);
+    let fast = params(&[(3, 0.1)]);
+    left(s.as_mut(), &fast, 64);
+    s.note_on(0, 57.0, 1.0);
+    left(s.as_mut(), &fast, 48000);
+    assert!(left(s.as_mut(), &fast, 64).iter().all(|v| *v == 0.0));
+}

@@ -701,6 +701,16 @@ fn instruments(p: &mut Project) -> Ids {
     p.connect(lead, slide);
     p.connect(slide, lead_saw);
     p.connect(lead_fm, lead_echo);
+    // And a twelve-string's pluck under each note.
+    let lead_pluck = add(p, K::PluckedString);
+    set(
+        p,
+        lead_pluck,
+        "Lead Pluck",
+        &[(0, 0.1), (1, 0.18), (2, 0.6), (3, 2.5), (4, 0.35), (5, 0.4), (6, 2.0), (7, 7.0)],
+    );
+    p.connect(lead, lead_pluck);
+    p.connect(lead_pluck, lead_echo);
     let warm = p.chain_insert(lead_fm, 0, K::AnalogFilter).unwrap();
     set(p, warm, "Warm", &[(1, 3800.0), (2, 0.25), (3, 1.4)]);
     send(p, lead_saw, lead_echo);
