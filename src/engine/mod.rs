@@ -386,10 +386,11 @@ impl Engine {
                 self.nodes[a].targets.push(b);
             } else if self.nodes[a].kind.controls() {
                 // A Modulator moves its target's copies too.
-                let param = project.control_param(from.0, to.0);
-                self.nodes[a].controls.push((b, param));
-                for c in self.copies[b].into_iter().flatten() {
-                    self.nodes[a].controls.push((c, param));
+                for c in project.controls_of(from.0, to.0) {
+                    self.nodes[a].controls.push((b, c.param, c.depth));
+                    for copy in self.copies[b].into_iter().flatten() {
+                        self.nodes[a].controls.push((copy, c.param, c.depth));
+                    }
                 }
             } else {
                 self.nodes[b].inputs.push(a);
@@ -437,7 +438,7 @@ impl Engine {
         for (j, node) in self.nodes.iter().enumerate() {
             edges.extend(node.inputs.iter().map(|&i| (i, j)));
             edges.extend(node.key.iter().map(|&i| (i, j)));
-            edges.extend(node.controls.iter().map(|&(t, _)| (j, t)));
+            edges.extend(node.controls.iter().map(|&(t, ..)| (j, t)));
         }
         let mut indeg = vec![0; n];
         for &(_, j) in &edges {

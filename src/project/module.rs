@@ -28,10 +28,11 @@ pub struct Module {
     /// `None` for the color of its kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<[u8; 3]>,
-    /// A Modulator's targets: which automatable parameter (see
-    /// `ModuleKind::automatable`) of each module it links to it moves.
+    /// A Modulator's targets: which automatable parameters (see
+    /// `ModuleKind::automatable`) of the modules it links to it moves, and
+    /// how far. A linked module with none listed has its first moved.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub controls: Vec<(u8, usize)>,
+    pub controls: Vec<Control>,
     /// The module whose sound a Compressor, Gate or Vocoder listens to, its key
     /// input, instead of its own: the sidechain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -198,4 +199,44 @@ pub struct MacroTarget {
     pub param: usize,
     pub from: f32,
     pub to: f32,
+}
+
+/// A parameter a Modulator moves: automatable parameter `param` of
+/// `module`, by `depth` (-1..1) of the Modulator's swing, upside down when
+/// negative.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(from = "ControlRepr")]
+pub struct Control {
+    pub module: u8,
+    pub param: usize,
+    pub depth: f32,
+}
+
+impl Control {
+    pub fn new(module: u8, param: usize) -> Self {
+        Control { module, param, depth: 1.0 }
+    }
+}
+
+/// A `Control` as songs keep it: a (module, parameter) pair before
+/// Modulators had depths and several parameters a module.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ControlRepr {
+    Pair(u8, usize),
+    Full {
+        module: u8,
+        param: usize,
+        #[serde(default = "unity")]
+        depth: f32,
+    },
+}
+
+impl From<ControlRepr> for Control {
+    fn from(r: ControlRepr) -> Self {
+        match r {
+            ControlRepr::Pair(module, param) => Control::new(module, param),
+            ControlRepr::Full { module, param, depth } => Control { module, param, depth },
+        }
+    }
 }

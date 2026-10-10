@@ -125,11 +125,11 @@ impl Engine {
             return;
         }
         for k in 0..nodes[i].controls.len() {
-            let (j, param) = nodes[i].controls[k];
+            let (j, param, depth) = nodes[i].controls[k];
             let target = &mut nodes[j];
             let m = &project.modules[target.module];
             let Some(spec) = m.kind.automatable(param) else { continue };
-            let value = spec.value_at(spec.position(target.param(m, param)) + offset);
+            let value = spec.value_at(spec.position(target.param(m, param)) + offset * depth);
             target.set_param(m, param, value);
             if live.len() < MAX_AUTOMATED {
                 live.push((m.id, param, value));

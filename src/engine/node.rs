@@ -43,9 +43,9 @@ pub(super) struct Node {
     pub(super) next_target: usize,
     /// For a Glide: the last note on each key, sliding.
     pub(super) glides: Vec<GlideVoice>,
-    /// For a Modulator: the nodes and automatable parameters it moves,
-    /// its LFO's phase and the level it follows.
-    pub(super) controls: Vec<(usize, usize)>,
+    /// For a Modulator: the nodes and automatable parameters it moves and
+    /// by how much, its LFO's phase and the level it follows.
+    pub(super) controls: Vec<(usize, usize, f32)>,
     pub(super) phase: f32,
     pub(super) follow: f32,
     /// The last note an instrument was played, how hard (0..1), and when

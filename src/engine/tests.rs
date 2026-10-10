@@ -748,6 +748,23 @@ fn modulators_move_parameters() {
 }
 
 #[test]
+fn modulators_move_several_parameters_each_by_its_depth() {
+    // A square LFO at full amount, its first half up: the cutoff goes
+    // half the slider up, the resonance a quarter down.
+    let (_, _, f, mut p) = modulated(&[(1, 2.0), (3, 1.0), (4, 4.0), (5, 1.0)]);
+    let m = p.modules.iter().find(|m| m.kind == ModuleKind::Modulator).unwrap().id;
+    assert!(p.add_control(m, f, 2));
+    p.module_mut(m).unwrap().controls[1].depth = -0.5;
+    let mut e = engine(p);
+    render(&mut e, 64);
+    let live = e.shared.automated.lock().unwrap().clone();
+    let at = |param: usize| live.iter().find(|a| a.0 == f && a.1 == param).unwrap().2;
+    let (cutoff, res) = (&ModuleKind::Filter.params()[1], &ModuleKind::Filter.params()[2]);
+    assert_eq!(at(1), cutoff.value_at(cutoff.position(2000.0) + 0.5));
+    assert!((at(2) - res.value_at(res.position(0.3) - 0.25)).abs() < 1e-6, "{}", at(2));
+}
+
+#[test]
 fn modulators_follow_their_input() {
     let (mut e, cutoff, f, mut p) = modulated(&[(0, 1.0), (5, 1.0)]);
     let synth = p.add_module(ModuleKind::Generator, [0.0, 0.0]).unwrap();

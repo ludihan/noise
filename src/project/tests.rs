@@ -754,3 +754,38 @@ fn missing_samples_are_warnings() {
     assert!(p.module(id).unwrap().samples[0].data.is_none());
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn modulators_move_several_parameters_of_a_module() {
+    let dir = temp_dir("controls");
+    let mut p = Project::empty();
+    let f = p.add_module(ModuleKind::Filter, [0.0; 2]).unwrap();
+    let lfo = p.add_module(ModuleKind::Modulator, [0.0; 2]).unwrap();
+    let other = p.add_module(ModuleKind::Modulator, [0.0; 2]).unwrap();
+    // Linked, it moves the first parameter until another is picked, and
+    // keeps moving it when a second is added.
+    assert!(p.connect(lfo, f));
+    assert_eq!(p.controls_of(lfo, f), [Control::new(f, 0)]);
+    assert!(p.add_control(lfo, f, 2));
+    assert!(!p.add_control(lfo, f, 2), "once each");
+    assert_eq!(p.controls_of(lfo, f), [Control::new(f, 0), Control::new(f, 2)]);
+    // Adding one links the module; a Modulator can move another.
+    assert!(p.add_control(other, lfo, 5) && p.links.contains(&(other, lfo)));
+    assert_eq!(p.modulated_by(f, 2), [(lfo, 1.0)]);
+    p.module_mut(lfo).unwrap().controls[1].depth = -0.5;
+    // Saved and loaded, depths and all; songs from before kept pairs.
+    let song = dir.join("song.json");
+    std::fs::write(&song, serde_json::to_string(&p).unwrap()).unwrap();
+    let (q, _) = Project::load(song.to_str().unwrap()).unwrap();
+    assert_eq!(q.controls_of(lfo, f)[1], Control { module: f, param: 2, depth: -0.5 });
+    let old = serde_json::to_string(&p)
+        .unwrap()
+        .replace(&format!(r#"{{"module":{f},"param":2,"depth":-0.5}}"#), &format!("[{f},1]"));
+    std::fs::write(&song, old).unwrap();
+    let (q, _) = Project::load(song.to_str().unwrap()).unwrap();
+    assert_eq!(q.controls_of(lfo, f)[1], Control::new(f, 1));
+    // Letting go of the last parameter lets go of the module.
+    p.set_controls(lfo, f, Vec::new());
+    assert!(!p.links.contains(&(lfo, f)) && p.module(lfo).unwrap().controls.is_empty());
+    std::fs::remove_dir_all(dir).unwrap();
+}

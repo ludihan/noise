@@ -145,7 +145,10 @@ const MODULES: &[(&str, &str)] = &[
         "Glide",
         "Passes notes on to the instruments it is connected to, sliding each from the last note on its column in Time, whatever the distance; Legato slides only a note played over the last one, without starting it again",
     ),
-    ("Modulator", "Moves a parameter of each module it links to, with an LFO or by following its input"),
+    (
+        "Modulator",
+        "Moves any parameters of any modules, each by a depth of its own, with an LFO or by following its input",
+    ),
     ("Filter", "Lowpass, highpass or bandpass with resonance and an LFO"),
     ("Distortion", "Soft clip, hard clip or wave fold with a tone control, bit crushing and downsampling"),
     ("Delay", "Ping-pong delay, timed in pattern lines"),
@@ -449,6 +452,9 @@ const TOPICS: &[Topic] = &[
             H("Modulator"),
             P(
                 "A controller: its links move parameters (or a mixer fader or pan) instead of carrying sound. As an LFO it swings them with one of five shapes, or one you draw (Drawn: click to add points, drag to move them, right-click to remove them), in Hz for a constant time, or synced to a period in lines or a length in beats from 1/16 to 32; only the settings the mode uses are shown; set to Follow input it raises them with the level of the sound fed into it, for sidechain effects. In Key and Velocity modes it moves them by the last note played on the instruments it follows: up for notes above C-4 and down for those below, or by how hard the note was played. In Envelope mode each note on them starts an envelope that rises over the attack and falls over the release; in Manual mode its Amount alone moves every parameter it is linked to, as one knob for them all. Amount sets how far; negative moves the other way.",
+            ),
+            P(
+                "Under MOVES it lists each module it moves with the parameters it moves there: any number of them, of any module, the instrument, its effects, the master's, mixer faders and pans, macros and other Modulators. Each has a Depth, how far of the Modulator's swing it moves that parameter, below zero the other way, so one LFO can open a filter while it closes another. + beside a module moves another of its parameters, + Add Target one of any module, and the bins let go of them. Right-click any parameter's bar, anywhere, and choose Modulate With to have a Modulator move it, or a New Modulator; a purple mark on the right of a bar says a Modulator moves it, and its tip says which and how far.",
             ),
             H("Repeater"),
             P(

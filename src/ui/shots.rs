@@ -10,8 +10,12 @@ use std::path::PathBuf;
 /// The app on the demo song, drawn at the size the window opens at, after
 /// `setup` has picked what to show.
 fn shot(name: &str, setup: impl FnOnce(&mut App)) {
-    let mut harness =
-        Harness::builder().with_size([1400.0, 900.0]).wgpu().build_eframe(|cc| App::start(cc, None, false));
+    shot_at(name, [1400.0, 900.0], setup);
+}
+
+/// `shot` with the window at `size`, to show more of the lower frame.
+fn shot_at(name: &str, size: [f32; 2], setup: impl FnOnce(&mut App)) {
+    let mut harness = Harness::builder().with_size(size).wgpu().build_eframe(|cc| App::start(cc, None, false));
     setup(harness.state_mut());
     harness.run_steps(4);
     let image = harness.render().expect("render");
@@ -61,8 +65,25 @@ fn shots() {
         p.map_macro(inst, 0, fx, 0);
         p.module_mut(inst).unwrap().macro_mut(0).name = "Brightness".into();
         p.module_mut(inst).unwrap().macro_mut(1).value = 0.4;
+        // A Modulator moving two parameters of the effect, one upside down.
+        let lfo = p.add_module(crate::project::ModuleKind::Modulator, [0.0, 0.0]).unwrap();
+        p.add_control(lfo, fx, 1);
+        p.add_control(lfo, fx, 2);
+        p.module_mut(lfo).unwrap().controls[1].depth = -0.6;
         app.selected_module = Some(inst);
         app.view = View::Sampler;
         app.sampler.synth_tab = sampler::SynthTab::Synth;
+    });
+    shot_at("modulator", [1400.0, 1300.0], |app| {
+        // A Modulator moving two parameters of an effect, selected in the
+        // module list.
+        let p = &mut app.project;
+        let fx = p.modules.iter().find(|m| m.kind == crate::project::ModuleKind::Distortion).expect("a Distortion").id;
+        let lfo = p.add_module(crate::project::ModuleKind::Modulator, [0.0, 0.0]).unwrap();
+        p.add_control(lfo, fx, 1);
+        p.add_control(lfo, fx, 2);
+        p.module_mut(lfo).unwrap().controls[1].depth = -0.6;
+        app.selected_module = Some(lfo);
+        (app.lower, app.show_lower, app.lower_height) = (super::Lower::Modules, true, 640.0);
     });
 }

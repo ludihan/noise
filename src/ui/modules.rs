@@ -55,7 +55,7 @@ pub fn params_panel(app: &mut App, ui: &mut egui::Ui) {
     if module.kind.notes_only() {
         about.push_str(" · passes the notes it gets to the instruments it is connected to");
     } else if module.kind.controls() {
-        about.push_str(" · moves a parameter of each module it is connected to");
+        about.push_str(" · moves parameters of the modules it is connected to");
     } else if module.kind.is_instrument() {
         about.push_str(" · notes you play are sent here");
     } else if module.kind == ModuleKind::Input {
@@ -340,6 +340,10 @@ pub fn param_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
         .and_then(|o| app.project.module(o))
         .map_or(Vec::new(), |o| (0..MACROS).map(|k| o.macro_name(k)).collect());
     let mut map = None;
+    // The Modulators that could move these, any but this one.
+    let modulators: Vec<u8> =
+        app.project.modules.iter().filter(|m| m.kind.controls() && m.id != id).map(|m| m.id).collect();
+    let mut modulate = None;
     ui.spacing_mut().item_spacing.y = 3.0;
     for (i, (spec, v)) in module.kind.params().iter().zip(&mut params).enumerate() {
         if !in_use(module.kind, &shown, i) {
@@ -360,8 +364,32 @@ pub fn param_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
                     }
                 });
             }
+            ui.menu_button("Modulate With", |ui| {
+                if ui.button("New Modulator").on_hover_text("An LFO moving it, to set up in the chain").clicked() {
+                    modulate = Some((None, i));
+                    ui.close();
+                }
+                for &m in &modulators {
+                    if ui.button(routing::label(app, m)).clicked() {
+                        modulate = Some((Some(m), i));
+                        ui.close();
+                    }
+                }
+            });
         });
         changed |= resp.changed();
+        let by = app.project.modulated_by(id, i);
+        if !by.is_empty() {
+            // A mark on the right of parameters Modulators move.
+            let mark = Rect::from_min_size(
+                Pos2::new(resp.rect.right() - 4.0, resp.rect.top() + 3.0),
+                Vec2::new(3.0, resp.rect.height() - 6.0),
+            );
+            ui.painter().rect_filled(mark, 1.0, CONTROL_LINK);
+            let names: Vec<String> =
+                by.iter().map(|&(m, depth)| format!("{} ({:+.0}%)", routing::label(app, m), depth * 100.0)).collect();
+            resp.clone().on_hover_text(format!("Moved by {}", names.join(", ")));
+        }
         if automated.contains(&i) {
             // A mark on the left of automated parameters.
             let mark =
@@ -388,6 +416,9 @@ pub fn param_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
         super::automation::add(app, id, i);
         app.lower = super::Lower::Automation;
     }
+    if let Some((by, i)) = modulate {
+        modulate_with(app, by, id, i);
+    }
     if module.kind == ModuleKind::Modulator && shown[0].round() == 0.0 && shown[1].round() as u32 == DRAWN_SHAPE {
         shape_editor(app, ui, id);
     }
@@ -398,6 +429,21 @@ pub fn param_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
         ui.add_space(3.0);
         routing::key_picker(app, ui, id);
     }
+}
+
+/// Makes Modulator `by`, or a new one, move parameter `param` of module
+/// `id`.
+pub fn modulate_with(app: &mut App, by: Option<u8>, id: u8, param: usize) {
+    let by = match by {
+        Some(by) => by,
+        None => match app.project.add_module(ModuleKind::Modulator, [0.0, 0.0]) {
+            Some(new) => new,
+            None => return app.set_status("Too many modules"),
+        },
+    };
+    routing::add_control(app, by, id, param);
+    let what = app.project.module(id).map(|m| m.automatable_name(param)).unwrap_or_default();
+    app.set_status(format!("{} moves {} · {what}", routing::label(app, by), routing::label(app, id)));
 }
 
 /// A Convolver's own impulse: the sample loaded as one, to load or clear.

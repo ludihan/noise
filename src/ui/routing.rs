@@ -24,7 +24,8 @@ pub fn candidates(app: &App, id: u8) -> Vec<u8> {
             if kind.notes_only() {
                 m.kind.is_instrument()
             } else if kind.controls() {
-                !m.kind.controls()
+                // Anything with parameters, other Modulators too.
+                m.kind.num_automatable() > 0
             } else {
                 m.kind.has_input()
             }
@@ -92,53 +93,120 @@ pub fn sources_checklist(app: &mut App, ui: &mut egui::Ui, id: u8) {
     }
 }
 
-/// What Modulator `id` moves: each target with the parameter picked for it
-/// and a button to let go of it, and a menu to add one.
+/// What Modulator `id` moves: each module it links to with the parameters
+/// it moves there, how far and a button to let go of each, and menus to
+/// move more of them or another module's.
 pub fn control_targets(app: &mut App, ui: &mut egui::Ui, id: u8) {
     let targets: Vec<u8> = app.project.links.iter().filter(|l| l.0 == id).map(|l| l.1).collect();
     if targets.is_empty() {
         ui.label(RichText::new("It moves nothing yet: add a target.").small().color(theme::TEXT_WEAK));
     }
-    let mut remove = None;
+    let mut changed = None;
+    let mut add = None;
     for to in targets {
         let Some(m) = app.project.module(to).cloned() else { continue };
-        let kind = m.kind;
-        let current = app.project.control_param(id, to);
-        let param = |i: usize| m.automatable_name(i);
-        let mut pick = current;
+        let controls = app.project.controls_of(id, to);
+        let mut edited = controls.clone();
         ui.horizontal(|ui| {
             ui.label(RichText::new(label(app, to)).small().color(theme::PAT_EFFECT));
-            egui::ComboBox::from_id_salt(("control", id, to)).selected_text(param(current)).width(110.0).show_ui(
-                ui,
-                |ui| {
-                    for i in 0..kind.num_automatable() {
-                        ui.selectable_value(&mut pick, i, param(i));
-                    }
-                },
-            );
-            if super::icons::button(ui, super::icons::Icon::Bin).on_hover_text("Stop moving it").clicked() {
-                remove = Some(to);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if super::icons::button(ui, super::icons::Icon::Bin).on_hover_text("Stop moving this module").clicked()
+                {
+                    edited.clear();
+                }
+                ui.menu_button("+", |ui| {
+                    egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+                        for i in (0..m.kind.num_automatable()).filter(|i| !controls.iter().any(|c| c.param == *i)) {
+                            if ui.button(m.automatable_name(i)).clicked() {
+                                add = Some((to, i));
+                                ui.close();
+                            }
+                        }
+                    });
+                })
+                .response
+                .on_hover_text("Move another of its parameters too");
+            });
+        });
+        let mut remove = None;
+        for (k, c) in edited.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.add_space(8.0);
+                let mut param = c.param;
+                egui::ComboBox::from_id_salt(("control", id, to, k))
+                    .selected_text(m.automatable_name(c.param))
+                    .width(84.0)
+                    .show_ui(ui, |ui| {
+                        egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+                            for i in 0..m.kind.num_automatable() {
+                                ui.selectable_value(&mut param, i, m.automatable_name(i));
+                            }
+                        });
+                    });
+                c.param = param;
+                let w = (ui.available_width() - 22.0).max(30.0);
+                ui.allocate_ui(Vec2::new(w, 18.0), |ui| {
+                    let spec = &crate::project::CONTROL_DEPTH;
+                    super::widgets::named_bar(ui, spec, "", &mut c.depth, |_| {}).on_hover_text(
+                        "How far it moves this parameter, of its swing; below zero, the other way. Double-click for all of it",
+                    );
+                });
+                if super::icons::button(ui, super::icons::Icon::Bin).on_hover_text("Stop moving it").clicked() {
+                    remove = Some(k);
+                }
+            });
+        }
+        if let Some(k) = remove {
+            edited.remove(k);
+        }
+        // A parameter picked twice is moved once.
+        let mut seen = Vec::new();
+        edited.retain(|c| {
+            !seen.contains(&c.param) && {
+                seen.push(c.param);
+                true
             }
         });
-        if pick != current {
-            app.project.set_control_param(id, to, pick);
-            app.mark();
+        if edited != controls {
+            changed = Some((to, edited));
         }
     }
-    if let Some(to) = remove {
-        set_link(app, id, to, false);
+    if let Some((to, controls)) = changed {
+        app.project.set_controls(id, to, controls);
+        app.mark();
     }
-    let mut add = None;
     ui.menu_button("+ Add Target", |ui| {
-        for to in candidates(app, id) {
-            if !app.project.links.contains(&(id, to)) && ui.button(label(app, to)).clicked() {
-                add = Some(to);
-                ui.close();
+        egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
+            for to in candidates(app, id) {
+                let Some(m) = app.project.module(to) else { continue };
+                let moved = app.project.controls_of(id, to);
+                ui.menu_button(label(app, to), |ui| {
+                    egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
+                        for i in (0..m.kind.num_automatable()).filter(|i| !moved.iter().any(|c| c.param == *i)) {
+                            if ui.button(m.automatable_name(i)).clicked() {
+                                add = Some((to, i));
+                                ui.close();
+                            }
+                        }
+                    });
+                });
             }
-        }
-    });
-    if let Some(to) = add {
-        set_link(app, id, to, true);
+        });
+    })
+    .response
+    .on_hover_text("A parameter of any module for it to move, Modulators' included");
+    if let Some((to, param)) = add {
+        add_control(app, id, to, param);
+    }
+}
+
+/// Makes Modulator `id` move parameter `param` of module `to` too, saying
+/// why when it can't.
+pub fn add_control(app: &mut App, id: u8, to: u8, param: usize) {
+    if app.project.add_control(id, to, param) {
+        app.mark();
+    } else if !app.project.links.contains(&(id, to)) {
+        app.set_status(format!("{} can't move {}: that would make a loop", label(app, id), label(app, to)));
     }
 }
 

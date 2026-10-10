@@ -717,6 +717,9 @@ static MACRO_PARAMS: [ParamSpec; MACROS] = [
     macro_knob("Macro 7"),
     macro_knob("Macro 8"),
 ];
+/// How far a Modulator moves one of its parameters, of its own swing;
+/// below zero, upside down.
+pub static CONTROL_DEPTH: ParamSpec = p("Depth", -1.0, 1.0, 1.0).unit(Percent);
 /// The pan control of a mixer strip.
 pub static MIXER_PAN: ParamSpec = p("Pan", -1.0, 1.0, 0.0).unit(Pan);
 /// The fader of a mixer strip, as automation sees it.

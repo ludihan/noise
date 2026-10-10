@@ -276,6 +276,7 @@ impl Project {
         self.modules.retain(|m| m.id != id);
         for m in &mut self.modules {
             m.key = m.key.filter(|&k| k != id);
+            m.controls.retain(|c| c.module != id);
             for mac in &mut m.macros {
                 mac.targets.retain(|t| t.module != id);
             }
@@ -314,23 +315,73 @@ impl Project {
         true
     }
 
-    /// The parameter Modulator `from` moves on module `to`; the first one
-    /// until another is picked.
-    pub fn control_param(&self, from: u8, to: u8) -> usize {
-        self.module(from).and_then(|m| m.controls.iter().find(|c| c.0 == to)).map_or(0, |c| c.1)
+    /// What Modulator `from` moves on module `to`: the parameters picked,
+    /// or the first one until any is, while it links to it.
+    pub fn controls_of(&self, from: u8, to: u8) -> Vec<Control> {
+        let Some(m) = self.module(from) else { return Vec::new() };
+        let picked: Vec<Control> = m.controls.iter().filter(|c| c.module == to).copied().collect();
+        match (picked.is_empty(), self.links.contains(&(from, to))) {
+            (false, _) => picked,
+            (true, true) => vec![Control::new(to, 0)],
+            (true, false) => Vec::new(),
+        }
     }
 
-    /// Makes Modulator `from` move parameter `param` of module `to`.
+    /// The Modulators moving parameter `param` of module `to`, and by how
+    /// much.
+    pub fn modulated_by(&self, to: u8, param: usize) -> Vec<(u8, f32)> {
+        let modulators = self.modules.iter().filter(|m| m.kind.controls());
+        modulators
+            .flat_map(|m| self.controls_of(m.id, to).into_iter().map(move |c| (m.id, c)))
+            .filter(|(_, c)| c.param == param)
+            .map(|(id, c)| (id, c.depth))
+            .collect()
+    }
+
+    /// Makes Modulator `from` move parameter `param` of module `to` and
+    /// nothing else of it.
     pub fn set_control_param(&mut self, from: u8, to: u8, param: usize) {
         let Some(m) = self.module_mut(from) else { return };
-        match m.controls.iter_mut().find(|c| c.0 == to) {
-            Some(c) => c.1 = param,
-            None => m.controls.push((to, param)),
+        let depth = m.controls.iter().find(|c| c.module == to).map_or(1.0, |c| c.depth);
+        m.controls.retain(|c| c.module != to);
+        m.controls.push(Control { module: to, param, depth });
+    }
+
+    /// Makes Modulator `from` move parameter `param` of module `to` as
+    /// well as what it moves already, linking it there; false when it
+    /// can't link, or moves it already.
+    pub fn add_control(&mut self, from: u8, to: u8, param: usize) -> bool {
+        let linked = self.links.contains(&(from, to));
+        let before = self.controls_of(from, to);
+        if before.iter().any(|c| c.param == param) || (!linked && !self.connect(from, to)) {
+            return false;
         }
+        let Some(m) = self.module_mut(from) else { return false };
+        // The first parameter it moved without being picked stays.
+        if linked && !m.controls.iter().any(|c| c.module == to) {
+            m.controls.extend(before);
+        }
+        m.controls.push(Control::new(to, param));
+        true
+    }
+
+    /// Changes what Modulator `from` moves on module `to`: `controls`,
+    /// letting go of the module when it is empty.
+    pub fn set_controls(&mut self, from: u8, to: u8, controls: Vec<Control>) {
+        if controls.is_empty() {
+            self.disconnect(from, to);
+            return;
+        }
+        let Some(m) = self.module_mut(from) else { return };
+        m.controls.retain(|c| c.module != to);
+        m.controls.extend(controls.into_iter().map(|c| Control { module: to, ..c }));
     }
 
     pub fn disconnect(&mut self, from: u8, to: u8) {
         self.links.retain(|&l| l != (from, to));
+        if let Some(m) = self.module_mut(from) {
+            m.controls.retain(|c| c.module != to);
+        }
     }
 
     fn reaches(&self, from: u8, to: u8) -> bool {
@@ -1074,9 +1125,19 @@ impl Project {
         let (links, kinds) = (p.links.clone(), kinds);
         for m in &mut p.modules {
             let id = m.id;
-            m.controls.retain(|&(to, param)| {
-                links.contains(&(id, to)) && kinds.iter().any(|&(k, kind)| k == to && param < kind.num_automatable())
+            let mut seen = Vec::new();
+            m.controls.retain(|c| {
+                links.contains(&(id, c.module))
+                    && kinds.iter().any(|&(k, kind)| k == c.module && c.param < kind.num_automatable())
+                    && !seen.contains(&(c.module, c.param))
+                    && {
+                        seen.push((c.module, c.param));
+                        true
+                    }
             });
+            for c in &mut m.controls {
+                c.depth = c.depth.clamp(-1.0, 1.0);
+            }
         }
         Ok((p, warnings))
     }

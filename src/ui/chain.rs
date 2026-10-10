@@ -515,6 +515,8 @@ fn macros_panel(app: &mut App, ui: &mut egui::Ui, id: u8, h: f32) {
     ui.add_space(3.0);
     let n = m.kind.params().len();
     let mut automate = None;
+    let mut modulate = None;
+    let modulators: Vec<u8> = app.project.modules.iter().filter(|m| m.kind.controls()).map(|m| m.id).collect();
     egui::ScrollArea::vertical().id_salt(("macro_list", id)).auto_shrink(false).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 3.0;
         for k in 0..MACROS {
@@ -531,6 +533,18 @@ fn macros_panel(app: &mut App, ui: &mut egui::Ui, id: u8, h: f32) {
                     automate = Some(n + 2 + k);
                     ui.close();
                 }
+                ui.menu_button("Modulate With", |ui| {
+                    if ui.button("New Modulator").clicked() {
+                        modulate = Some((None, n + 2 + k));
+                        ui.close();
+                    }
+                    for &by in &modulators {
+                        if ui.button(routing::label(app, by)).clicked() {
+                            modulate = Some((Some(by), n + 2 + k));
+                            ui.close();
+                        }
+                    }
+                });
                 if !mac.targets.is_empty() && ui.button("Clear Targets").clicked() {
                     clear = true;
                     ui.close();
@@ -588,5 +602,8 @@ fn macros_panel(app: &mut App, ui: &mut egui::Ui, id: u8, h: f32) {
     if let Some(i) = automate {
         super::automation::add(app, id, i);
         app.lower = super::Lower::Automation;
+    }
+    if let Some((by, i)) = modulate {
+        modules::modulate_with(app, by, id, i);
     }
 }
