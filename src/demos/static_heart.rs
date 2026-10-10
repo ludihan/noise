@@ -12,7 +12,7 @@
 //! have slices without audio files; they are written next to the song
 //! when it is saved.
 
-use super::{Rng, envelope, fx, n, normalize, off, rendered};
+use super::*;
 use crate::dsp::Frame;
 use crate::project::*;
 use crate::sample::Sample;
@@ -297,25 +297,10 @@ struct Ids {
 /// Makes every module and wires them up.
 fn instruments(p: &mut Project) -> Ids {
     use ModuleKind as K;
-    let set = |p: &mut Project, id: u8, name: &str, params: &[(usize, f32)]| {
-        let m = p.module_mut(id).unwrap();
-        m.name = name.into();
-        for &(i, v) in params {
-            m.params[i] = v;
-        }
-    };
-    let add = |p: &mut Project, kind: ModuleKind| p.add_module(kind, [0.0, 0.0]).unwrap();
-    // Sends the end of `id`'s chain to `to` rather than the output.
-    let send = |p: &mut Project, id: u8, to: u8| {
-        let last = p.chain(id).effects.last().copied().unwrap_or(id);
-        p.disconnect(last, OUTPUT_ID);
-        p.connect(last, to);
-    };
     let sr = 44100.0;
 
     // A big shared space, its boom and fizz taken out.
-    let space = add(p, K::Reverb);
-    set(p, space, "Space", &[(0, 0.93), (1, 0.55), (2, 0.3)]);
+    let space = add(p, K::Reverb, "Space", &[(0, 0.93), (1, 0.55), (2, 0.3)]);
     p.connect(space, OUTPUT_ID);
     let space_tone = p.chain_insert(space, 0, K::Eq10).unwrap();
     set(p, space_tone, "Space Tone", &[(0, 0.3), (1, 0.45), (2, 0.7), (8, 0.8), (9, 0.5)]);
@@ -337,8 +322,7 @@ fn instruments(p: &mut Project) -> Ids {
 
     // Drums: crunched and crushed a little, squashed, and a Repeater to
     // glitch them.
-    let drums = add(p, K::Drums);
-    set(p, drums, "Crush Kit", &[(0, 0.7), (1, 60.0), (2, 0.25), (3, 0.75), (4, 0.04)]);
+    let drums = add(p, K::Drums, "Crush Kit", &[(0, 0.7), (1, 60.0), (2, 0.25), (3, 0.75), (4, 0.04)]);
     let crunch = p.chain_insert(drums, 0, K::Distortion).unwrap();
     set(p, crunch, "Crunch", &[(0, 3.0), (1, 0.8), (2, 0.35), (3, 1.0), (4, 12.0), (5, 2.0)]);
     let smack = p.chain_insert(drums, 1, K::Compressor).unwrap();
@@ -352,16 +336,14 @@ fn instruments(p: &mut Project) -> Ids {
     set(p, hat_air, "Hat Air", &[(0, 1.0), (1, 3000.0), (4, 1.0)]);
 
     // A hit to land the drops on: a Kicker dropping far, in a plate.
-    let impact = add(p, K::Kicker);
-    set(p, impact, "Impact", &[(0, 0.45), (1, 1.0), (2, 3.0), (3, 0.25), (5, 2.2), (6, 0.8)]);
+    let impact = add(p, K::Kicker, "Impact", &[(0, 0.45), (1, 1.0), (2, 3.0), (3, 0.25), (5, 2.2), (6, 0.8)]);
     let boom = p.chain_insert(impact, 0, K::PlateReverb).unwrap();
     set(p, boom, "Boom Plate", &[(0, 0.85), (1, 0.01), (2, 0.5), (4, 0.4)]);
     p.connect(impact, OUTPUT_ID);
 
     // The 808: a long Kicker, rounded off by a WaveShaper, its offset
     // taken out and its top cut.
-    let bass = add(p, K::Kicker);
-    set(p, bass, "808", &[(0, 0.14), (1, 0.0), (2, 0.6), (3, 0.04), (4, 0.002), (5, 1.0), (6, 0.5)]);
+    let bass = add(p, K::Kicker, "808", &[(0, 0.14), (1, 0.0), (2, 0.6), (3, 0.04), (4, 0.002), (5, 1.0), (6, 0.5)]);
     let shape = p.chain_insert(bass, 0, K::WaveShaper).unwrap();
     set(p, shape, "808 Shape", &[(0, 1.6), (9, 0.4), (10, 0.68), (11, 0.86), (12, 0.95)]);
     let centre = p.chain_insert(bass, 1, K::DcBlocker).unwrap();
@@ -372,15 +354,16 @@ fn instruments(p: &mut Project) -> Ids {
     // The wall: a MultiSynth playing a detuned supersaw and a narrow
     // square, both into one fuzz, a guitar cabinet, a chorus and a wide
     // stereo image, as a shoegaze guitar.
-    let wall = add(p, K::MultiSynth);
-    set(p, wall, "Wall", &[(3, 6.0), (5, 0.1)]);
-    let saw = add(p, K::Generator);
-    set(p, saw, "Wall Saw", &[(0, 0.2), (1, 0.0), (2, 0.01), (3, 0.4), (4, 0.85), (5, 0.35), (6, 28.0), (7, 4.0)]);
-    let square = add(p, K::Generator);
+    let wall = add(p, K::MultiSynth, "Wall", &[(3, 6.0), (5, 0.1)]);
+    let saw = add(
+        p,
+        K::Generator,
+        "Wall Saw",
+        &[(0, 0.2), (1, 0.0), (2, 0.01), (3, 0.4), (4, 0.85), (5, 0.35), (6, 28.0), (7, 4.0)],
+    );
     let square_params = [(0, 0.05), (1, 1.0), (2, 0.01), (3, 0.3), (4, 0.8), (5, 0.3), (6, 12.0), (7, 2.0), (8, 0.3)];
-    set(p, square, "Wall Square", &square_params);
-    let fuzz = add(p, K::Distortion);
-    set(p, fuzz, "Fuzz", &[(0, 14.0), (1, 0.55), (2, 1.0), (3, 0.0)]);
+    let square = add(p, K::Generator, "Wall Square", &square_params);
+    let fuzz = add(p, K::Distortion, "Fuzz", &[(0, 14.0), (1, 0.55), (2, 1.0), (3, 0.0)]);
     p.connect(wall, saw);
     p.connect(wall, square);
     p.connect(saw, fuzz);
@@ -399,8 +382,8 @@ fn instruments(p: &mut Project) -> Ids {
 
     // The chip arp: a thin square crushed to a few bits and a low rate,
     // its pulse width swept by a Modulator, into an echo.
-    let arp = add(p, K::Generator);
-    set(p, arp, "Chip Arp", &[(0, 0.12), (1, 1.0), (2, 0.001), (3, 0.12), (4, 0.4), (5, 0.05), (8, 0.25)]);
+    let arp =
+        add(p, K::Generator, "Chip Arp", &[(0, 0.12), (1, 1.0), (2, 0.001), (3, 0.12), (4, 0.4), (5, 0.05), (8, 0.25)]);
     let crush = p.chain_insert(arp, 0, K::Distortion).unwrap();
     set(p, crush, "8-bit", &[(0, 1.5), (1, 0.9), (2, 1.0), (3, 1.0), (4, 4.0), (5, 8.0)]);
     let arp_echo = p.chain_insert(arp, 1, K::Delay).unwrap();
@@ -413,10 +396,13 @@ fn instruments(p: &mut Project) -> Ids {
 
     // The voice: a MultiSynth singing with a saw through a Vocal Filter, an
     // octave-up pitch shifter and a waver, and a breathy SpectraVoice.
-    let vox = add(p, K::MultiSynth);
-    set(p, vox, "Vox", &[(3, 4.0), (5, 0.08)]);
-    let vox_saw = add(p, K::Generator);
-    set(p, vox_saw, "Vox Saw", &[(0, 0.5), (1, 0.0), (2, 0.01), (3, 0.3), (4, 0.8), (5, 0.15), (6, 8.0), (7, 2.0)]);
+    let vox = add(p, K::MultiSynth, "Vox", &[(3, 4.0), (5, 0.08)]);
+    let vox_saw = add(
+        p,
+        K::Generator,
+        "Vox Saw",
+        &[(0, 0.5), (1, 0.0), (2, 0.01), (3, 0.3), (4, 0.8), (5, 0.15), (6, 8.0), (7, 2.0)],
+    );
     let m = p.module_mut(vox_saw).unwrap();
     m.modulation.vibrato = VoiceLfo { on: true, shape: 0, rate: 5.5, depth: 0.15, delay: 0.25 };
     let mouth = p.chain_insert(vox_saw, 0, K::VocalFilter).unwrap();
@@ -428,16 +414,15 @@ fn instruments(p: &mut Project) -> Ids {
     let vox_echo = p.chain_insert(vox_saw, 3, K::Echo).unwrap();
     set(p, vox_echo, "Vox Echo", &[(0, 0.28), (1, 0.35), (2, 0.4), (3, 0.6), (4, 0.25)]);
     send(p, vox_saw, space);
-    let breath = add(p, K::SpectraVoice);
-    set(p, breath, "Vox Air", &[(0, 0.05), (1, 24.0), (2, 1.6), (3, 0.5), (5, 0.4), (6, 0.02), (9, 0.3)]);
+    let breath =
+        add(p, K::SpectraVoice, "Vox Air", &[(0, 0.05), (1, 24.0), (2, 1.6), (3, 0.5), (5, 0.4), (6, 0.02), (9, 0.3)]);
     send(p, breath, space);
     p.connect(vox, vox_saw);
     p.connect(vox, breath);
 
     // The verse's lead: a square with a filter envelope, crushed, phased
     // and scattered in taps.
-    let lead = add(p, K::Generator);
-    set(p, lead, "Pulse Lead", &[(0, 0.2), (1, 1.0), (2, 0.002), (3, 0.15), (4, 0.6), (5, 0.08)]);
+    let lead = add(p, K::Generator, "Pulse Lead", &[(0, 0.2), (1, 1.0), (2, 0.002), (3, 0.15), (4, 0.6), (5, 0.08)]);
     let m = p.module_mut(lead).unwrap();
     m.modulation.filter = true;
     m.modulation.cutoff = 1800.0;
@@ -453,11 +438,10 @@ fn instruments(p: &mut Project) -> Ids {
     send(p, lead, space);
 
     // A glassy FMX pluck for the last drop's counter-melody, ringing in F#.
-    let pluck = add(p, K::Fmx);
     let ops = [(3, 1.0), (4, 1.0), (6, 0.4), (7, 0.0), (9, 0.6), (10, 7.0), (12, 0.12), (13, 0.0)];
-    set(
+    let pluck = add(
         p,
-        pluck,
+        K::Fmx,
         "Glass Pluck",
         &[&[(0, 0.6), (1, 4.0)], &ops[..], &[(15, 1.0), (16, 2.0), (18, 0.3), (21, 0.3)]].concat(),
     );
@@ -468,8 +452,12 @@ fn instruments(p: &mut Project) -> Ids {
     send(p, pluck, space);
 
     // Haze: a shimmering SpectraVoice pad, phased, ringing and filtered.
-    let haze = add(p, K::SpectraVoice);
-    set(p, haze, "Haze", &[(0, 0.3), (1, 20.0), (2, 1.2), (3, 0.6), (5, 0.5), (6, 1.2), (7, 1.0), (8, 0.8), (9, 2.5)]);
+    let haze = add(
+        p,
+        K::SpectraVoice,
+        "Haze",
+        &[(0, 0.3), (1, 20.0), (2, 1.2), (3, 0.6), (5, 0.5), (6, 1.2), (7, 1.0), (8, 0.8), (9, 2.5)],
+    );
     let haze_phase = p.chain_insert(haze, 0, K::Phaser).unwrap();
     set(p, haze_phase, "Haze Phase", &[(0, 0.1), (1, 0.8), (4, 6.0), (6, 0.4)]);
     let haze_ring = p.chain_insert(haze, 1, K::RingMod).unwrap();
@@ -480,8 +468,7 @@ fn instruments(p: &mut Project) -> Ids {
 
     // Vocal chops: the four syllables as slices, each tuned to F# minor,
     // gated tight and screamed through.
-    let chops = add(p, K::Sampler);
-    set(p, chops, "Vox Chops", &[(0, 1.0), (4, 0.3), (5, 0.0), (6, 0.04)]);
+    let chops = add(p, K::Sampler, "Vox Chops", &[(0, 1.0), (4, 0.3), (5, 0.0), (6, 0.04)]);
     let (vox_sample, starts) = syllables(sr);
     let mut slot = rendered(vox_sample);
     slot.base_note = 64;
@@ -499,8 +486,7 @@ fn instruments(p: &mut Project) -> Ids {
 
     // The break: a bar of breakbeat, synced to four beats, sliced in
     // eight, and seeking when the song starts partway through.
-    let break_loop = add(p, K::Sampler);
-    set(p, break_loop, "Break", &[(0, 0.3), (4, 0.5), (5, 1.0), (6, 0.03)]);
+    let break_loop = add(p, K::Sampler, "Break", &[(0, 0.3), (4, 0.5), (5, 1.0), (6, 0.03)]);
     let (beat, step) = breakbeat(sr);
     let mut slot = rendered(beat);
     slot.base_note = 48;
@@ -517,8 +503,7 @@ fn instruments(p: &mut Project) -> Ids {
     set(p, break_tone, "Break Tone", &[(0, 0.6), (1, 1.1), (2, 1.4), (3, 150.0)]);
 
     // A noise riser: swept through a band, jetting through a flanger.
-    let riser = add(p, K::Generator);
-    set(p, riser, "Riser", &[(0, 0.5), (1, 4.0), (2, 2.0), (3, 0.0), (4, 1.0), (5, 0.4)]);
+    let riser = add(p, K::Generator, "Riser", &[(0, 0.5), (1, 4.0), (2, 2.0), (3, 0.0), (4, 1.0), (5, 0.4)]);
     let sweep = p.chain_insert(riser, 0, K::FilterPro).unwrap();
     set(p, sweep, "Sweep", &[(0, 2.0), (1, 400.0), (2, 4.0), (4, 1.0)]);
     let jet = p.chain_insert(riser, 1, K::Flanger).unwrap();
@@ -528,33 +513,28 @@ fn instruments(p: &mut Project) -> Ids {
     send(p, riser, space);
 
     // Bleeps for the boot: short, bright FM.
-    let blip = add(p, K::Fm);
-    set(p, blip, "Blip", &[(0, 0.4), (1, 3.5), (2, 4.0), (3, 0.05), (5, 0.001), (6, 0.08), (8, 0.05)]);
+    let blip = add(p, K::Fm, "Blip", &[(0, 0.4), (1, 3.5), (2, 4.0), (3, 0.05), (5, 0.001), (6, 0.08), (8, 0.05)]);
     send(p, blip, space);
 
     // Modulators. Duck: the wall and the haze pump under the drums. PWM:
     // the arp's pulse width swims. Chop: a drawn gate on the wall's
     // square, its amount automated in the last drop. Bright: the lead's
     // crush opens up on high notes.
-    let duck = add(p, K::Modulator);
-    set(p, duck, "Duck", &[(0, 1.0), (5, -0.6), (6, 0.003), (7, 0.18)]);
+    let duck = add(p, K::Modulator, "Duck", &[(0, 1.0), (5, -0.6), (6, 0.003), (7, 0.18)]);
     p.connect(glitch, duck);
     for (target, fader) in [(fuzz, K::Distortion.params().len()), (haze, K::SpectraVoice.params().len())] {
         p.connect(duck, target);
         p.set_control_param(duck, target, fader);
     }
-    let pwm = add(p, K::Modulator);
-    set(p, pwm, "PWM", &[(0, 0.0), (1, 0.0), (2, 0.3), (5, 0.3)]);
+    let pwm = add(p, K::Modulator, "PWM", &[(0, 0.0), (1, 0.0), (2, 0.3), (5, 0.3)]);
     p.connect(pwm, arp);
     p.set_control_param(pwm, arp, 8);
-    let chop = add(p, K::Modulator);
-    set(p, chop, "Chop", &[(0, 0.0), (1, DRAWN_SHAPE as f32), (3, 2.0), (5, 0.0), (8, 4.0)]);
+    let chop = add(p, K::Modulator, "Chop", &[(0, 0.0), (1, DRAWN_SHAPE as f32), (3, 2.0), (5, 0.0), (8, 4.0)]);
     p.module_mut(chop).unwrap().shape =
         vec![(0.0, 0.0), (0.4, 0.0), (0.45, 1.0), (0.6, 1.0), (0.65, 0.0), (0.8, 0.0), (0.85, 1.0), (1.0, 1.0)];
     p.connect(chop, square);
     p.set_control_param(chop, square, 0);
-    let bright = add(p, K::Modulator);
-    set(p, bright, "Bright", &[(0, 2.0), (5, 0.4)]);
+    let bright = add(p, K::Modulator, "Bright", &[(0, 2.0), (5, 0.4)]);
     p.connect(lead, bright);
     p.connect(bright, lead_crush);
     p.set_control_param(bright, lead_crush, 1);

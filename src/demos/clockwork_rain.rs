@@ -15,8 +15,8 @@
 //! the crackle are sampled here, so its Samplers have audio without files;
 //! they are written next to the song when it is saved.
 
-use super::Hit::{self, *};
-use super::{Rng, effects, envelope, fx, hit, hold, let_go, n, normalize, off, rendered, roll, set, tune};
+use super::Hit::*;
+use super::*;
 use crate::dsp::Frame;
 use crate::project::*;
 use crate::sample::Sample;
@@ -484,17 +484,6 @@ fn break_phrase(lpb: u32, grid: &str) -> Phrase {
 /// Makes every module and wires them up.
 fn instruments(p: &mut Project) -> Ids {
     use ModuleKind as K;
-    let add = |p: &mut Project, kind: ModuleKind, name: &str, params: &[(usize, f32)]| {
-        let id = p.add_module(kind, [0.0, 0.0]).unwrap();
-        set(p, id, name, params);
-        id
-    };
-    // Sends the end of `id`'s chain to `to` rather than the output.
-    let send = |p: &mut Project, id: u8, to: u8| {
-        let last = p.chain(id).effects.last().copied().unwrap_or(id);
-        p.disconnect(last, OUTPUT_ID);
-        p.connect(last, to);
-    };
     let sr = 44100.0;
 
     // The room most things go through, its lows and fizz taken out.

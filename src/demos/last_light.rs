@@ -224,24 +224,9 @@ impl Project {
 /// Makes every module and wires them up.
 fn instruments(p: &mut Project) -> Ids {
     use ModuleKind as K;
-    let set = |p: &mut Project, id: u8, name: &str, params: &[(usize, f32)]| {
-        let m = p.module_mut(id).unwrap();
-        m.name = name.into();
-        for &(i, v) in params {
-            m.params[i] = v;
-        }
-    };
-    let add = |p: &mut Project, kind: ModuleKind| p.add_module(kind, [0.0, 0.0]).unwrap();
-    // Sends the end of `id`'s chain to `to` rather than the output.
-    let send = |p: &mut Project, id: u8, to: u8| {
-        let last = p.chain(id).effects.last().copied().unwrap_or(id);
-        p.disconnect(last, OUTPUT_ID);
-        p.connect(last, to);
-    };
 
     // The shared hall everything but the drums and bass goes through.
-    let hall = add(p, K::Reverb);
-    set(p, hall, "Hall", &[(0, 0.9), (1, 0.45), (2, 0.38)]);
+    let hall = add(p, K::Reverb, "Hall", &[(0, 0.9), (1, 0.45), (2, 0.38)]);
     p.connect(hall, OUTPUT_ID);
     // Track effects: the hats echo off into the distance, though they play
     // the same Drums as the kicks and snares, which stay dry.
@@ -258,8 +243,7 @@ fn instruments(p: &mut Project) -> Ids {
 
     // Drums through a gate that tightens their tails, a bus compressor,
     // the build's stutter and a maximizer.
-    let drums = add(p, K::Drums);
-    set(p, drums, "Drums", &[(0, 0.8), (1, 48.0), (2, 0.6), (3, 0.35), (4, 0.05)]);
+    let drums = add(p, K::Drums, "Drums", &[(0, 0.8), (1, 48.0), (2, 0.6), (3, 0.35), (4, 0.05)]);
     let tight = p.chain_insert(drums, 0, K::Gate).unwrap();
     set(p, tight, "Tight", &[(0, 0.02), (2, 0.03), (3, 0.08), (4, 0.15)]);
     let bus = p.chain_insert(drums, 1, K::Compressor).unwrap();
@@ -269,8 +253,7 @@ fn instruments(p: &mut Project) -> Ids {
     let punch = p.chain_insert(drums, 3, K::Maximizer).unwrap();
     set(p, punch, "Punch", &[(0, 1.25), (1, 0.9), (2, 0.06)]);
     // A Kicker tuned to D under the chorus's kicks.
-    let sub_kick = add(p, K::Kicker);
-    set(p, sub_kick, "Sub Kick", &[(0, 0.45), (2, 2.5), (5, 0.7), (6, 0.35)]);
+    let sub_kick = add(p, K::Kicker, "Sub Kick", &[(0, 0.45), (2, 2.5), (5, 0.7), (6, 0.35)]);
     p.connect(sub_kick, OUTPUT_ID);
     // Rounded off by a WaveShaper bent into a soft clip.
     let round = p.chain_insert(sub_kick, 0, K::WaveShaper).unwrap();
@@ -278,8 +261,12 @@ fn instruments(p: &mut Project) -> Ids {
 
     // A warm sub bass: filtered and gently driven, with the drive's
     // offset taken away, and a little of a bass cabinet.
-    let bass = add(p, K::Generator);
-    set(p, bass, "Sub Bass", &[(0, 0.5), (1, 0.0), (2, 0.01), (3, 0.4), (4, 0.7), (5, 0.25), (6, 6.0), (7, 2.0)]);
+    let bass = add(
+        p,
+        K::Generator,
+        "Sub Bass",
+        &[(0, 0.5), (1, 0.0), (2, 0.01), (3, 0.4), (4, 0.7), (5, 0.25), (6, 6.0), (7, 2.0)],
+    );
     let bass_filter = p.chain_insert(bass, 0, K::Filter).unwrap();
     set(p, bass_filter, "Bass Filter", &[(1, 500.0), (2, 0.35)]);
     let drive = p.chain_insert(bass, 1, K::Distortion).unwrap();
@@ -291,10 +278,9 @@ fn instruments(p: &mut Project) -> Ids {
 
     // Strings: a wide wavetable pad between triangle and saw that grows
     // brighter as a chord holds, chorused, phased, darkened and widened.
-    let pad = add(p, K::Wavetable);
-    set(
+    let pad = add(
         p,
-        pad,
+        K::Wavetable,
         "Strings",
         &[(0, 0.13), (2, 0.55), (3, 0.03), (4, 5.0), (5, 16.0), (6, 0.6), (7, 0.9), (8, 1.0), (9, 0.85), (10, 2.2)],
     );
@@ -310,8 +296,12 @@ fn instruments(p: &mut Project) -> Ids {
 
     // Voices for the bridge: a saw that the Vocal Filter makes talk, and
     // a comb filter makes ring in D.
-    let voices = add(p, K::Generator);
-    set(p, voices, "Voices", &[(0, 0.22), (1, 0.0), (2, 0.5), (3, 1.0), (4, 0.9), (5, 1.5), (6, 10.0), (7, 3.0)]);
+    let voices = add(
+        p,
+        K::Generator,
+        "Voices",
+        &[(0, 0.22), (1, 0.0), (2, 0.5), (3, 1.0), (4, 0.9), (5, 1.5), (6, 10.0), (7, 3.0)],
+    );
     let voice = p.chain_insert(voices, 0, K::VocalFilter).unwrap();
     set(p, voice, "Voice", &[(2, 1.3), (4, 2.5)]);
     let ring_d = p.chain_insert(voices, 1, K::CombFilter).unwrap();
@@ -327,8 +317,7 @@ fn instruments(p: &mut Project) -> Ids {
 
     // The felt piano: two velocity layers, a filter that closes as notes
     // ring, and a little tone shaping on the way to the hall.
-    let piano = add(p, K::Sampler);
-    set(p, piano, "Felt Piano", &[(0, 0.3), (3, 0.0), (4, 4.0), (5, 1.0), (6, 0.6)]);
+    let piano = add(p, K::Sampler, "Felt Piano", &[(0, 0.3), (3, 0.0), (4, 4.0), (5, 1.0), (6, 0.6)]);
     let sr = 44100.0;
     let mut soft = rendered(felt_piano(sr, false));
     soft.velocities = [0, 84];
@@ -351,10 +340,9 @@ fn instruments(p: &mut Project) -> Ids {
     let room = p.chain_insert(piano, 2, K::Convolver).unwrap();
     set(p, room, "Piano Room", &[(0, 0.0), (1, 0.2), (2, 0.9)]);
     send(p, piano, hall);
-    let haze = add(p, K::Granular);
-    set(
+    let haze = add(
         p,
-        haze,
+        K::Granular,
         "Haze",
         &[
             (0, 0.35),
@@ -374,8 +362,7 @@ fn instruments(p: &mut Project) -> Ids {
     send(p, haze, hall);
 
     // The swell: one shot, stretched over four beats whatever the tempo.
-    let swell_id = add(p, K::Sampler);
-    set(p, swell_id, "Swell", &[(0, 0.7), (6, 0.05)]);
+    let swell_id = add(p, K::Sampler, "Swell", &[(0, 0.7), (6, 0.05)]);
     let mut s = rendered(swell(sr));
     s.oneshot = true;
     s.beat_sync = 16;
@@ -391,9 +378,8 @@ fn instruments(p: &mut Project) -> Ids {
     // The arp: an Analog Synth's soft pulse, a filter envelope plucking
     // each note, playing its phrases, with a little bite from a scream
     // filter before its echo.
-    let arp = add(p, K::Analog);
     #[rustfmt::skip]
-    set(p, arp, "Ripple", &[
+    let arp = add(p, K::Analog, "Ripple", &[
         (0, 0.18), (1, 1.0), (5, 0.0), (8, 0.3),
         (9, 1.0), (10, 900.0), (11, 0.35), (12, 2.0), (13, 0.3), (14, 1.0),
         (16, 0.25), (17, 0.25), (19, 0.002), (20, 0.15), (21, 0.15), (22, 0.2),
@@ -409,21 +395,18 @@ fn instruments(p: &mut Project) -> Ids {
 
     // The lead: a MultiSynth playing an FM voice with a late vibrato, and
     // a saw the Vocal Filter turns into a choir, into one echo.
-    let lead = add(p, K::MultiSynth);
-    set(p, lead, "Lead", &[(3, 5.0), (5, 0.1)]);
-    let lead_fm = add(p, K::Fm);
-    set(
+    let lead = add(p, K::MultiSynth, "Lead", &[(3, 5.0), (5, 0.1)]);
+    let lead_fm = add(
         p,
-        lead_fm,
+        K::Fm,
         "Lead FM",
         &[(0, 0.2), (1, 1.0), (2, 1.6), (3, 0.8), (4, 0.15), (5, 0.03), (6, 1.0), (7, 0.6), (8, 0.6)],
     );
     let m = p.module_mut(lead_fm).unwrap();
     m.modulation.vibrato = VoiceLfo { on: true, shape: 0, rate: 5.2, depth: 0.18, delay: 0.35 };
-    let lead_saw = add(p, K::Generator);
-    set(
+    let lead_saw = add(
         p,
-        lead_saw,
+        K::Generator,
         "Lead Choir",
         &[(0, 0.12), (1, 0.0), (2, 0.12), (3, 0.6), (4, 0.8), (5, 0.7), (6, 12.0), (7, 3.0)],
     );
@@ -431,20 +414,17 @@ fn instruments(p: &mut Project) -> Ids {
     set(p, choir, "Choir", &[(4, 2.2), (5, 0.85)]);
     let waver = p.chain_insert(lead_saw, 1, K::Vibrato).unwrap();
     set(p, waver, "Waver", &[(0, 5.2), (1, 0.12), (2, 0.25)]);
-    let lead_echo = add(p, K::Delay);
-    set(p, lead_echo, "Lead Echo", &[(0, 6.0), (1, 0.35), (2, 0.25), (3, 0.6)]);
+    let lead_echo = add(p, K::Delay, "Lead Echo", &[(0, 6.0), (1, 0.35), (2, 0.25), (3, 0.6)]);
     // The choir slides between notes played over each other.
-    let slide = add(p, K::Glide);
-    set(p, slide, "Choir Slide", &[(0, 1.0), (1, 0.07)]);
+    let slide = add(p, K::Glide, "Choir Slide", &[(0, 1.0), (1, 0.07)]);
     p.connect(lead, lead_fm);
     p.connect(lead, slide);
     p.connect(slide, lead_saw);
     p.connect(lead_fm, lead_echo);
     // And a twelve-string's pluck under each note.
-    let lead_pluck = add(p, K::PluckedString);
-    set(
+    let lead_pluck = add(
         p,
-        lead_pluck,
+        K::PluckedString,
         "Lead Pluck",
         &[(0, 0.1), (1, 0.18), (2, 0.6), (3, 2.5), (4, 0.35), (5, 0.4), (6, 2.0), (7, 7.0)],
     );
@@ -457,8 +437,8 @@ fn instruments(p: &mut Project) -> Ids {
 
     // Bells: FM, a touch of ring modulation, panned to and fro, with a
     // shimmer an octave up.
-    let bells = add(p, K::Fm);
-    set(p, bells, "Bells", &[(0, 0.12), (1, 3.5), (2, 3.0), (3, 1.2), (5, 0.001), (6, 2.0), (7, 0.0), (8, 1.5)]);
+    let bells =
+        add(p, K::Fm, "Bells", &[(0, 0.12), (1, 3.5), (2, 3.0), (3, 1.2), (5, 0.001), (6, 2.0), (7, 0.0), (8, 1.5)]);
     let ring = p.chain_insert(bells, 0, K::RingMod).unwrap();
     set(p, ring, "Shimmer", &[(0, 1180.0), (2, 0.25), (3, 0.2)]);
     let sway = p.chain_insert(bells, 1, K::Lfo).unwrap();
@@ -473,29 +453,35 @@ fn instruments(p: &mut Project) -> Ids {
 
     // Glass: a hollow SpectraVoice, its odd harmonics shimmering, for the
     // outro's high notes, scattered by a multitap delay.
-    let glass = add(p, K::SpectraVoice);
-    set(p, glass, "Glass", &[(0, 0.1), (1, 16.0), (2, 1.3), (3, 0.15), (4, 0.002), (5, 0.6), (6, 1.5), (9, 3.0)]);
+    let glass = add(
+        p,
+        K::SpectraVoice,
+        "Glass",
+        &[(0, 0.1), (1, 16.0), (2, 1.3), (3, 0.15), (4, 0.002), (5, 0.6), (6, 1.5), (9, 3.0)],
+    );
     let scatter = p.chain_insert(glass, 0, K::Multitap).unwrap();
     set(p, scatter, "Scatter", &[(0, 3.0), (3, 5.0), (6, 7.0), (9, 11.0), (12, 0.2), (13, 0.35)]);
     send(p, glass, hall);
 
     // Keys: an FMX electric piano, two stacks with a bright tine, for the
     // outro's chords.
-    let keys = add(p, K::Fmx);
     let tine = [(3, 1.0), (4, 1.0), (6, 2.5), (7, 0.2), (9, 0.35), (10, 14.0), (13, 0.0), (15, 0.8)];
-    set(p, keys, "Keys", &[&[(0, 0.35), (1, 4.0)], &tine[..], &[(16, 1.0), (21, 0.4), (22, 1.0), (24, 1.5)]].concat());
+    let keys = add(
+        p,
+        K::Fmx,
+        "Keys",
+        &[&[(0, 0.35), (1, 4.0)], &tine[..], &[(16, 1.0), (21, 0.4), (22, 1.0), (24, 1.5)]].concat(),
+    );
     let shimmer = p.chain_insert(keys, 0, K::Chorus).unwrap();
     set(p, shimmer, "Keys Chorus", &[(1, 0.6), (2, 0.4), (6, 0.4)]);
     send(p, keys, hall);
 
     // Modulators: the strings breathe brighter and darker over four bars,
     // and the strings and arp duck under the drums.
-    let breath = add(p, K::Modulator);
-    set(p, breath, "Breath", &[(3, 1.0), (4, 64.0), (5, 0.35)]);
+    let breath = add(p, K::Modulator, "Breath", &[(3, 1.0), (4, 64.0), (5, 0.35)]);
     p.connect(breath, pad_eq);
     p.set_control_param(breath, pad_eq, 2);
-    let duck = add(p, K::Modulator);
-    set(p, duck, "Duck", &[(0, 1.0), (5, -0.55), (6, 0.004), (7, 0.25)]);
+    let duck = add(p, K::Modulator, "Duck", &[(0, 1.0), (5, -0.55), (6, 0.004), (7, 0.25)]);
     p.connect(stutter, duck);
     for target in [pad, arp] {
         let fader = p.module(target).unwrap().kind.params().len();

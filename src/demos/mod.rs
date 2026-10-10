@@ -32,14 +32,7 @@ fn off() -> Cell {
 
 /// An envelope for parameter `param` of module `m` of kind `kind`, from
 /// (line, value) points in the parameter's own units.
-fn envelope(
-    m: u8,
-    kind: ModuleKind,
-    param: usize,
-    points: &[(f32, f32)],
-    steps: bool,
-    curve: bool,
-) -> Envelope {
+fn envelope(m: u8, kind: ModuleKind, param: usize, points: &[(f32, f32)], steps: bool, curve: bool) -> Envelope {
     let spec = kind.automatable(param).expect("an automatable parameter");
     let points = points.iter().map(|&(l, v)| (l, spec.position(v))).collect();
     Envelope { steps, curve, ..Envelope::new(m, param, points) }
@@ -54,6 +47,20 @@ fn set(p: &mut Project, id: u8, name: &str, params: &[(usize, f32)]) {
     for &(i, v) in params {
         m.params[i] = v;
     }
+}
+
+/// Adds a `kind` module called `name`, with `params` set.
+fn add(p: &mut Project, kind: ModuleKind, name: &str, params: &[(usize, f32)]) -> u8 {
+    let id = p.add_module(kind, [0.0, 0.0]).unwrap();
+    set(p, id, name, params);
+    id
+}
+
+/// Sends the end of `id`'s chain to `to` rather than the output.
+fn send(p: &mut Project, id: u8, to: u8) {
+    let last = p.chain(id).effects.last().copied().unwrap_or(id);
+    p.disconnect(last, OUTPUT_ID);
+    p.connect(last, to);
 }
 
 /// An effect to add: its kind, name and parameters, as `set` takes them.
@@ -112,4 +119,3 @@ fn let_go(pat: &mut Pattern, tracks: &[(usize, usize)]) {
         }
     }
 }
-

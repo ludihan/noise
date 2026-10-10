@@ -13,7 +13,7 @@
 //! The kit is synthesized here, so its Sampler has audio without files;
 //! the samples are written next to the song when it is saved.
 
-use super::{Hit, effects, envelope, fx, hit, n, normalize, off, rendered, set};
+use super::*;
 use crate::dsp::Frame;
 use crate::project::*;
 use crate::sample::Sample;
@@ -118,9 +118,9 @@ struct Ids {
 
 fn instruments(p: &mut Project) -> Ids {
     use ModuleKind as K;
+    // Everything here goes to the output unless sent elsewhere.
     let add = |p: &mut Project, kind: ModuleKind, name: &str, params: &[(usize, f32)]| {
-        let id = p.add_module(kind, [0.0, 0.0]).unwrap();
-        set(p, id, name, params);
+        let id = super::add(p, kind, name, params);
         p.connect(id, OUTPUT_ID);
         id
     };

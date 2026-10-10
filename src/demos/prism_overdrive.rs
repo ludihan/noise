@@ -16,13 +16,11 @@
 //! its Samplers have audio without files; they are written next to the song
 //! when it is saved.
 
-use super::{
-    Hit, effects, envelope, felt_piano, fx, hit, hold, let_go, n, normalize, off, rendered, roll, set, tune,
-};
+use super::static_heart::syllables;
+use super::*;
 use crate::dsp::Frame;
 use crate::project::*;
 use crate::sample::Sample;
-use super::static_heart::syllables;
 use std::f32::consts::TAU;
 
 const BPM: f32 = 185.0;
@@ -325,17 +323,6 @@ struct Ids {
 /// Makes every module and wires them up.
 fn instruments(p: &mut Project) -> Ids {
     use ModuleKind as K;
-    let add = |p: &mut Project, kind: ModuleKind, name: &str, params: &[(usize, f32)]| {
-        let id = p.add_module(kind, [0.0, 0.0]).unwrap();
-        set(p, id, name, params);
-        id
-    };
-    // Sends the end of `id`'s chain to `to` rather than the output.
-    let send = |p: &mut Project, id: u8, to: u8| {
-        let last = p.chain(id).effects.last().copied().unwrap_or(id);
-        p.disconnect(last, OUTPUT_ID);
-        p.connect(last, to);
-    };
     let sr = 44100.0;
 
     // The arena the melodic parts share, its mud taken out.

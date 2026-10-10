@@ -161,4 +161,3 @@ pub(super) fn hit(sr: f32, kind: Hit, seed: u32, room: f32) -> Vec<f32> {
         })
         .collect()
 }
-
