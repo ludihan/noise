@@ -25,7 +25,11 @@ fn main() -> eframe::Result {
         for w in warnings {
             eprintln!("warning: {w}");
         }
-        audio::export_wav(std::sync::Arc::new(p), output, audio::RenderFormat::CD, &mut |_| true).expect("write wav");
+        let ended = audio::export_wav(std::sync::Arc::new(p), output, audio::RenderFormat::CD, &mut |_| true)
+            .expect("write wav");
+        if ended == audio::Rendered::TooLong {
+            eprintln!("warning: the song was cut off after {} hours", audio::MAX_RENDER_SECONDS / 3600);
+        }
         return Ok(());
     }
     if args.first().map(String::as_str) == Some("--demo-wav") {

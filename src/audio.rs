@@ -123,6 +123,61 @@ where
         .map_err(|e| e.to_string())
 }
 
+/// The longest a render plays before it gives up on a song that never
+/// ends: four hours.
+pub const MAX_RENDER_SECONDS: u32 = 4 * 3600;
+
+/// How a render ended.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Rendered {
+    Done,
+    /// Stopped by whoever was told how far it had got.
+    Cancelled,
+    /// The song played on past `MAX_RENDER_SECONDS` and was cut there.
+    TooLong,
+}
+
+/// Where a render's blocks go: each block, and whether it is of the tail.
+type Sink<'a> = dyn FnMut(&[Frame], bool) -> Result<(), String> + 'a;
+
+/// Plays the song once, offline, and then `tail` seconds more for notes
+/// and effects to die away, handing `out` each block as it is made (and
+/// whether it is of the tail), and telling `going` how far through the
+/// song it is (0..1) every tenth of a second of audio or so; it stops when
+/// `going` says to.
+fn play_through(
+    project: Arc<Project>,
+    sr: u32,
+    tail: f32,
+    going: &mut dyn FnMut(f32) -> bool,
+    out: &mut Sink,
+) -> Result<Rendered, String> {
+    let mut engine = Engine::new(sr as f32, project, None, None, Arc::new(Shared::default()));
+    engine.play_song();
+    let mut block = vec![[0.0; 2]; 512];
+    let limit = sr as u64 * MAX_RENDER_SECONDS as u64 / block.len() as u64;
+    let mut blocks = 0u64;
+    let mut ended = Rendered::Done;
+    while !engine.song_ended {
+        if blocks == limit {
+            ended = Rendered::TooLong;
+            break;
+        }
+        engine.render(&mut block);
+        out(&block, false)?;
+        blocks += 1;
+        if blocks.is_multiple_of(8) && !going(engine.song_progress()) {
+            return Ok(Rendered::Cancelled);
+        }
+    }
+    engine.handle(Cmd::Stop);
+    for _ in 0..(sr as f32 * tail / block.len() as f32) as usize {
+        engine.render(&mut block);
+        out(&block, true)?;
+    }
+    Ok(ended)
+}
+
 /// Plays the song once, offline, and then up to `tail` seconds more for
 /// notes and effects to die away. With `trim`, silence at the end of the
 /// tail is dropped.
@@ -140,25 +195,16 @@ pub fn render_with(
     trim: bool,
     going: &mut dyn FnMut(f32) -> bool,
 ) -> Option<Vec<Frame>> {
-    let mut engine = Engine::new(sr as f32, project, None, None, Arc::new(Shared::default()));
-    engine.play_song();
-    let mut samples: Vec<Frame> = Vec::new();
-    let mut block = vec![[0.0; 2]; 512];
-    // Ten minutes is plenty for a pattern-based song; stop runaway renders.
-    let limit = sr as usize * 600;
-    while !engine.song_ended && samples.len() < limit {
-        engine.render(&mut block);
-        samples.extend_from_slice(&block);
-        // About ten times a second of audio.
-        if samples.len().is_multiple_of(block.len() * 8) && !going(engine.song_progress()) {
-            return None;
+    let (mut samples, mut played) = (Vec::new(), 0);
+    let mut keep = |b: &[Frame], in_tail: bool| {
+        samples.extend_from_slice(b);
+        if !in_tail {
+            played = samples.len();
         }
-    }
-    let played = samples.len();
-    engine.handle(Cmd::Stop);
-    for _ in 0..(sr as f32 * tail / block.len() as f32) as usize {
-        engine.render(&mut block);
-        samples.extend_from_slice(&block);
+        Ok(())
+    };
+    if play_through(project, sr, tail, going, &mut keep) == Ok(Rendered::Cancelled) {
+        return None;
     }
     if trim {
         // Below -80 dB counts as silence.
@@ -200,33 +246,45 @@ impl RenderFormat {
     pub const CD: RenderFormat = RenderFormat { sample_rate: 44100, depth: BitDepth::Int16 };
 }
 
-/// Renders the song to the WAV file at `path`, telling `going` how far it
-/// has got; `Ok(false)` if `going` stopped it, with nothing written.
+/// Renders the song to the WAV file at `path`, writing it as it goes,
+/// and tells `going` how far it has got. A cancelled render leaves no
+/// file; one cut off at `MAX_RENDER_SECONDS` keeps what it wrote.
 pub fn export_wav(
     project: Arc<Project>,
     path: &str,
     format: RenderFormat,
     going: &mut dyn FnMut(f32) -> bool,
-) -> Result<bool, String> {
-    let Some(frames) = render_with(project, format.sample_rate, 2.0, false, going) else { return Ok(false) };
-    write_wav(path, &frames, format).map(|()| true)
+) -> Result<Rendered, String> {
+    // Written under another name first, so a file by its name is whole.
+    let part = format!("{path}.part");
+    let mut wav = WavOut::create(&part, format)?;
+    let ended = play_through(project, format.sample_rate, 2.0, going, &mut |b, _| wav.write(b));
+    let finished = ended.and_then(|e| wav.finish().map(|()| e));
+    match finished {
+        Ok(Rendered::Cancelled) | Err(_) => {
+            let _ = std::fs::remove_file(&part);
+        }
+        Ok(_) => std::fs::rename(&part, path).map_err(|e| e.to_string())?,
+    }
+    finished
 }
 
 /// Renders each instrument of the song to its own file: the instrument
 /// soloed, with its own effects and its share of the effects it feeds.
 /// The files are named after `path`, with the instrument's number and
 /// name, and are all as long as the song, so they line up. Returns the
-/// files written, as far as it got before `going` stopped it.
+/// files written, and whether all of them were (`Done`), `going` stopped
+/// them, or the song was too long.
 pub fn export_stems(
     project: &Project,
     path: &str,
     format: RenderFormat,
     going: &mut dyn FnMut(f32) -> bool,
-) -> Result<Vec<String>, String> {
+) -> Result<(Vec<String>, Rendered), String> {
     let base = path.strip_suffix(".wav").unwrap_or(path);
     let instruments: Vec<(u8, String)> =
         project.modules.iter().filter(|m| m.kind.plays_sound() && !m.mute).map(|m| (m.id, m.name.clone())).collect();
-    let mut written = Vec::new();
+    let (mut written, mut ended) = (Vec::new(), Rendered::Done);
     let count = instruments.len().max(1) as f32;
     for (k, (id, name)) in instruments.into_iter().enumerate() {
         let mut stem = project.clone();
@@ -238,45 +296,82 @@ pub fn export_stems(
         let file = format!("{base} {id:02X} {name}.wav");
         // Each stem is its share of the whole.
         let mut part = |f: f32| going((k as f32 + f) / count);
-        let Some(frames) = render_with(Arc::new(stem), format.sample_rate, 2.0, false, &mut part) else { break };
-        write_wav(&file, &frames, format)?;
+        match export_wav(Arc::new(stem), &file, format, &mut part)? {
+            Rendered::Cancelled => return Ok((written, Rendered::Cancelled)),
+            e => ended = if e == Rendered::TooLong { e } else { ended },
+        }
         written.push(file);
     }
-    Ok(written)
+    Ok((written, ended))
 }
 
-/// Writes `samples` as a stereo WAV file in `format`. Integer formats are
+/// A stereo WAV file being written in `RenderFormat`. Integer formats are
 /// dithered (TPDF), so quiet tails fade out rather than break up.
-fn write_wav(path: &str, samples: &[Frame], format: RenderFormat) -> Result<(), String> {
-    let (bits, sample_format) = match format.depth {
-        BitDepth::Int16 => (16, hound::SampleFormat::Int),
-        BitDepth::Int24 => (24, hound::SampleFormat::Int),
-        BitDepth::Float32 => (32, hound::SampleFormat::Float),
-    };
-    let spec = hound::WavSpec { channels: 2, sample_rate: format.sample_rate, bits_per_sample: bits, sample_format };
-    let mut w = hound::WavWriter::create(path, spec).map_err(|e| e.to_string())?;
-    let full = ((1i64 << (bits - 1)) - 1) as f32;
-    let mut rng = crate::rng::Rng(0x2545_f491);
-    let mut noise = move || rng.unit() - 0.5;
-    for s in samples {
-        for &ch in s {
+struct WavOut {
+    w: hound::WavWriter<std::io::BufWriter<std::fs::File>>,
+    depth: BitDepth,
+    /// The largest sample value of an integer format.
+    full: f32,
+    rng: crate::rng::Rng,
+}
+
+impl WavOut {
+    fn create(path: &str, format: RenderFormat) -> Result<Self, String> {
+        let (bits, sample_format) = match format.depth {
+            BitDepth::Int16 => (16, hound::SampleFormat::Int),
+            BitDepth::Int24 => (24, hound::SampleFormat::Int),
+            BitDepth::Float32 => (32, hound::SampleFormat::Float),
+        };
+        let spec =
+            hound::WavSpec { channels: 2, sample_rate: format.sample_rate, bits_per_sample: bits, sample_format };
+        let w = hound::WavWriter::create(path, spec).map_err(|e| e.to_string())?;
+        let full = ((1i64 << (bits - 1)) - 1) as f32;
+        Ok(WavOut { w, depth: format.depth, full, rng: crate::rng::Rng(0x2545_f491) })
+    }
+
+    fn write(&mut self, frames: &[Frame]) -> Result<(), String> {
+        for &ch in frames.iter().flatten() {
             let ch = ch.clamp(-1.0, 1.0);
-            let r = match format.depth {
-                BitDepth::Float32 => w.write_sample(ch),
+            let r = match self.depth {
+                BitDepth::Float32 => self.w.write_sample(ch),
                 _ => {
-                    let x = (ch * full + noise() + noise()).round().clamp(-full - 1.0, full) as i32;
-                    w.write_sample(x)
+                    // Two uniform noises make triangular dither.
+                    let x = (ch * self.full + (self.rng.unit() - 0.5) + (self.rng.unit() - 0.5))
+                        .round()
+                        .clamp(-self.full - 1.0, self.full) as i32;
+                    self.w.write_sample(x)
                 }
             };
             r.map_err(|e| e.to_string())?;
         }
+        Ok(())
     }
-    w.finalize().map_err(|e| e.to_string())
+
+    fn finish(self) -> Result<(), String> {
+        self.w.finalize().map_err(|e| e.to_string())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn long_songs_render_to_the_end() {
+        // 256 lines at a line every three seconds: almost thirteen minutes.
+        let mut p = Project::empty();
+        (p.bpm, p.lpb) = (20.0, 1);
+        p.patterns[0] = crate::project::Pattern::new("", 1, 256);
+        let dir = std::env::temp_dir().join(format!("noise-long-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("long.wav");
+        let format = RenderFormat { sample_rate: 1000, depth: BitDepth::Int16 };
+        let done = export_wav(Arc::new(p), path.to_str().unwrap(), format, &mut |_| true);
+        assert_eq!(done, Ok(Rendered::Done));
+        let secs = crate::sample::Sample::load(&path).unwrap().len() as f32 / 1000.0;
+        assert!(secs > 768.0, "all of it: {secs} s");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     #[test]
     fn renders_say_how_far_they_are_and_can_be_stopped() {
@@ -293,8 +388,9 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("song.wav");
         let done = export_wav(Arc::new(Project::demo()), path.to_str().unwrap(), RenderFormat::CD, &mut |f| f < 0.2);
-        assert_eq!(done, Ok(false));
+        assert_eq!(done, Ok(Rendered::Cancelled));
         assert!(!path.exists());
+        assert!(!dir.join("song.wav.part").exists(), "nor a part");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -314,7 +410,9 @@ mod tests {
         for depth in BitDepth::ALL {
             let path = dir.join(format!("{depth:?}.wav"));
             let path = path.to_str().unwrap();
-            write_wav(path, &frames, RenderFormat { sample_rate: 48000, depth }).unwrap();
+            let mut wav = WavOut::create(path, RenderFormat { sample_rate: 48000, depth }).unwrap();
+            wav.write(&frames).unwrap();
+            wav.finish().unwrap();
             let spec = hound::WavReader::open(path).unwrap().spec();
             assert_eq!(spec.sample_rate, 48000);
             let back = crate::sample::Sample::load(std::path::Path::new(path)).unwrap();
@@ -340,7 +438,8 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let sr = 8000;
         let format = RenderFormat { sample_rate: sr, depth: BitDepth::Int16 };
-        let files = export_stems(&p, dir.join("song.wav").to_str().unwrap(), format, &mut |_| true).unwrap();
+        let (files, ended) = export_stems(&p, dir.join("song.wav").to_str().unwrap(), format, &mut |_| true).unwrap();
+        assert_eq!(ended, Rendered::Done);
         assert_eq!(files.len(), 2);
         assert!(files[0].ends_with(&format!("song {a:02X} Generator.wav")), "{}", files[0]);
         let read = |f: &str| crate::sample::Sample::load(std::path::Path::new(f)).unwrap();

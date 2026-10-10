@@ -2,6 +2,7 @@
 //! the file dialog and its confirmations, and loading samples.
 
 use super::*;
+use crate::audio::Rendered;
 
 impl App {
     /// Opens demo song `i` of `DEMOS` as a new, unsaved song.
@@ -293,8 +294,9 @@ impl App {
             let done = audio::export_wav(project, &path, format, &mut |f| progress.set(f));
             Box::new(move |app: &mut App| {
                 app.status = match done {
-                    Ok(true) => format!("Rendered {path}"),
-                    Ok(false) => "Render cancelled".to_string(),
+                    Ok(Rendered::Done) => format!("Rendered {path}"),
+                    Ok(Rendered::Cancelled) => "Render cancelled".to_string(),
+                    Ok(Rendered::TooLong) => format!("Rendered {path}, cut off after {}", too_long()),
                     Err(e) => format!("Render failed: {e}"),
                 };
             })
@@ -305,11 +307,13 @@ impl App {
         let (path, project, format) = (path.to_string(), self.project.clone(), self.render_format());
         jobs::spawn(self, format!("Rendering stems of {}", file_name(&path)), move |progress| {
             let done = audio::export_stems(&project, &path, format, &mut |f| progress.set(f));
-            let cancelled = !progress.set(1.0);
             Box::new(move |app: &mut App| {
                 app.status = match done {
-                    Ok(files) if cancelled => format!("Render cancelled after {} stems", files.len()),
-                    Ok(files) => format!("Rendered {} stems next to {path}", files.len()),
+                    Ok((files, Rendered::Cancelled)) => format!("Render cancelled after {} stems", files.len()),
+                    Ok((files, Rendered::Done)) => format!("Rendered {} stems next to {path}", files.len()),
+                    Ok((files, Rendered::TooLong)) => {
+                        format!("Rendered {} stems next to {path}, cut off after {}", files.len(), too_long())
+                    }
                     Err(e) => format!("Render failed: {e}"),
                 };
             })
@@ -463,4 +467,9 @@ impl App {
     pub(super) fn song_name(&self) -> String {
         std::path::Path::new(&self.path).file_name().unwrap_or_default().to_string_lossy().into_owned()
     }
+}
+
+/// What a render cut off at its longest says it was cut off after.
+fn too_long() -> String {
+    format!("{} hours: does the song ever end?", audio::MAX_RENDER_SECONDS / 3600)
 }
