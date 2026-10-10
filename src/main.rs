@@ -1,17 +1,13 @@
 mod audio;
-mod clockwork_rain;
-mod concrete_hymn;
-mod demo;
+mod demos;
 mod dsp;
 mod engine;
 mod midi;
 mod paths;
-mod prism_overdrive;
 mod project;
 mod project_dir;
 mod sample;
 mod soundfont;
-mod static_heart;
 mod ui;
 
 fn main() -> eframe::Result {

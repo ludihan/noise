@@ -16,13 +16,13 @@
 //! its Samplers have audio without files; they are written next to the song
 //! when it is saved.
 
-use crate::demo::{
+use super::{
     Hit, effects, envelope, felt_piano, fx, hit, hold, let_go, n, normalize, off, rendered, roll, set, tune,
 };
 use crate::dsp::Frame;
 use crate::project::*;
 use crate::sample::Sample;
-use crate::static_heart::syllables;
+use super::static_heart::syllables;
 use std::f32::consts::TAU;
 
 const BPM: f32 = 185.0;
@@ -241,7 +241,7 @@ fn orchestra_hit(sr: f32) -> Sample {
             }
         }
     }
-    let mut noise = crate::demo::Rng(0x0C4E_57A5);
+    let mut noise = super::Rng(0x0C4E_57A5);
     let (mut phase, mut lp) = (0.0f32, 0.0f32);
     for (i, fr) in frames.iter_mut().enumerate() {
         let t = i as f32 / sr;

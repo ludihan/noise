@@ -77,11 +77,7 @@ noise --demo-wav [out.wav]         # render the demo song
 
 | File | Contents |
 |---|---|
-| `src/demo.rs` | The first demo song, the piano and swell samples it renders, and what the demo songs share: drum hits, device chains, rolls |
-| `src/static_heart.rs` | The second demo song, and the vocal and breakbeat samples it renders |
-| `src/clockwork_rain.rs` | The third demo song, and the breakbeat and crackle samples it renders |
-| `src/prism_overdrive.rs` | The fourth demo song, and the kit and orchestra hit it renders |
-| `src/concrete_hymn.rs` | The fifth demo song, and the kit it renders |
+| `src/demos/` | The demo songs, a file each: `last_light.rs` (the first, with the piano and swell it renders), `static_heart.rs`, `clockwork_rain.rs`, `prism_overdrive.rs` and `concrete_hymn.rs`; `mod.rs` holds what they share (cells, envelopes, device chains, rolls), `sounds.rs` the sounds they render (drum hits, the felt piano) |
 | `src/project.rs` | Song data (patterns and their automation, the order list, tracks, modules, links); saved as JSON |
 | `src/project_dir.rs` | Project folders: saving a song with its samples named by hashes, deleting the unused ones; export and import as `.noise` files (zip archives) |
 | `src/dsp/` | The audio code for every module, a file to each family (`filters.rs`, `delays.rs`, `fm.rs`, `analog.rs`, `sampler.rs`…); `mod.rs` holds the `Dsp` trait, `create`, envelopes and voices, `tests.rs` the tests they share |
@@ -151,12 +147,13 @@ keep sounding while you edit during playback.
   declared after the `voice_controls!` macro in `dsp/mod.rs`, so they can
   use it; their items are `pub(super)`, for `create` and the tests.
   `Ctx::samples_per_line` gives the tempo for synced rates. The demo song
-  (`demo.rs`) must use it, and the manual (`ui/help.rs`) describe it:
+  (`demos/last_light.rs`) must use it, and the manual (`ui/help.rs`) describe it:
   tests check both.
 - The audio thread must not block: the UI sends a new `Project` snapshot
   after each edit, and the engine publishes its state through atomics and
   `try_lock` in `Shared`. Slow work on the UI side, such as decoding a
-  soundfont, runs on a thread and is picked up a frame later.
+  soundfont, runs on a thread and is picked up a frame later; renders,
+  exports and imports go through `ui/jobs.rs`, which shows their progress.
 - Files go where `paths.rs` (the `directories` crate) says: settings in the
   config folder, the user's presets in the data folder. Factory presets are
   the demo song's modules (`ui/library.rs`), never written out.

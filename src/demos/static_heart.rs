@@ -12,7 +12,7 @@
 //! have slices without audio files; they are written next to the song
 //! when it is saved.
 
-use crate::demo::{Rng, envelope, fx, n, normalize, off, rendered};
+use super::{Rng, envelope, fx, n, normalize, off, rendered};
 use crate::dsp::Frame;
 use crate::project::*;
 use crate::sample::Sample;
@@ -143,7 +143,7 @@ fn third_below(n: u8) -> u8 {
 /// buzzing source whose harmonics are shaped by each vowel's formants,
 /// with a little vibrato and breath. Returns the sample and where each
 /// syllable starts.
-pub(crate) fn syllables(sr: f32) -> (Sample, Vec<usize>) {
+pub(super) fn syllables(sr: f32) -> (Sample, Vec<usize>) {
     const VOWELS: [[(f32, f32, f32); 3]; 4] = [
         [(800.0, 80.0, 1.0), (1150.0, 90.0, 0.5), (2900.0, 120.0, 0.25)],
         [(450.0, 70.0, 1.0), (800.0, 80.0, 0.45), (2830.0, 120.0, 0.2)],

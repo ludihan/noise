@@ -15,8 +15,8 @@
 //! the crackle are sampled here, so its Samplers have audio without files;
 //! they are written next to the song when it is saved.
 
-use crate::demo::Hit::{self, *};
-use crate::demo::{Rng, effects, envelope, fx, hit, hold, let_go, n, normalize, off, rendered, roll, set, tune};
+use super::Hit::{self, *};
+use super::{Rng, effects, envelope, fx, hit, hold, let_go, n, normalize, off, rendered, roll, set, tune};
 use crate::dsp::Frame;
 use crate::project::*;
 use crate::sample::Sample;

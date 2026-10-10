@@ -13,7 +13,7 @@
 //! The kit is synthesized here, so its Sampler has audio without files;
 //! the samples are written next to the song when it is saved.
 
-use crate::demo::{Hit, effects, envelope, fx, hit, n, normalize, off, rendered, set};
+use super::{Hit, effects, envelope, fx, hit, n, normalize, off, rendered, set};
 use crate::dsp::Frame;
 use crate::project::*;
 use crate::sample::Sample;
