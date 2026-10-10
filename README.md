@@ -78,7 +78,7 @@ noise --demo-wav [out.wav]         # render the demo song
 | File | Contents |
 |---|---|
 | `src/demos/` | The demo songs, a file each: `last_light.rs` (the first, with the piano and swell it renders), `static_heart.rs`, `clockwork_rain.rs`, `prism_overdrive.rs` and `concrete_hymn.rs`; `mod.rs` holds what they share (cells, envelopes, device chains, rolls), `sounds.rs` the sounds they render (drum hits, the felt piano) |
-| `src/project.rs` | Song data (patterns and their automation, the order list, tracks, modules, links); saved as JSON |
+| `src/project/` | Song data, saved as JSON: the song, its tracks, order list and links (`mod.rs`); patterns and their automation (`pattern.rs`), module kinds and their parameters (`kinds.rs`), modules (`module.rs`), voice modulation (`voice.rs`), phrases (`phrase.rs`), effect commands (`commands.rs`) and sample slots (`sample_slot.rs`) |
 | `src/project_dir.rs` | Project folders: saving a song with its samples named by hashes, deleting the unused ones; export and import as `.noise` files (zip archives) |
 | `src/dsp/` | The audio code for every module, a file to each family (`filters.rs`, `delays.rs`, `fm.rs`, `analog.rs`, `sampler.rs`…); `mod.rs` holds the `Dsp` trait, `create`, envelopes and voices, `tests.rs` the tests they share |
 | `src/rng.rs` | The random numbers everything uses: one small xorshift generator |
@@ -143,7 +143,7 @@ keep sounding while you edit during playback.
   holds a `Track`) share the effects. A `Zxx` reaches `phrase_event`
   through `Engine::picked_phrase`, set while its note is sent.
 - Adding a module: a `ModuleKind` with a `ParamSpec` table (with units) in
-  `project.rs`, added to `ADDABLE` and `info`, and a `Dsp` in `dsp/` made
+  `project/kinds.rs`, added to `ADDABLE` and `info`, and a `Dsp` in `dsp/` made
   in `dsp::create`, in its family's file or one of its own. The files are
   declared after the `voice_controls!` macro in `dsp/mod.rs`, so they can
   use it; their items are `pub(super)`, for `create` and the tests.
