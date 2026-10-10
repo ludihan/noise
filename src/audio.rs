@@ -224,12 +224,8 @@ pub fn export_stems(
     going: &mut dyn FnMut(f32) -> bool,
 ) -> Result<Vec<String>, String> {
     let base = path.strip_suffix(".wav").unwrap_or(path);
-    let instruments: Vec<(u8, String)> = project
-        .modules
-        .iter()
-        .filter(|m| m.kind.is_instrument() && m.kind.makes_sound() && !m.mute)
-        .map(|m| (m.id, m.name.clone()))
-        .collect();
+    let instruments: Vec<(u8, String)> =
+        project.modules.iter().filter(|m| m.kind.plays_sound() && !m.mute).map(|m| (m.id, m.name.clone())).collect();
     let mut written = Vec::new();
     let count = instruments.len().max(1) as f32;
     for (k, (id, name)) in instruments.into_iter().enumerate() {

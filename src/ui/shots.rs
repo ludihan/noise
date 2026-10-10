@@ -42,7 +42,7 @@ fn shots() {
         let inst = p
             .modules
             .iter()
-            .find(|m| m.kind.has_macros() && !m.kind.holds_samples() && !p.chain(m.id).effects.is_empty());
+            .find(|m| m.kind.plays_sound() && !m.kind.holds_samples() && !p.chain(m.id).effects.is_empty());
         let inst = inst.expect("a synth with effects").id;
         let fx = p.chain(inst).effects[0];
         p.map_macro(inst, 0, inst, 0);

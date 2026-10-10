@@ -89,7 +89,7 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
             ui.set_min_height(h);
             match (id, track) {
                 (Some(id), _) if !master => {
-                    if inst.as_ref().is_some_and(|m| m.kind.has_macros()) {
+                    if inst.as_ref().is_some_and(|m| m.kind.plays_sound()) {
                         macros_panel(app, ui, id, h);
                         ui.separator();
                     }

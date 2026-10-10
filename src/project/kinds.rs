@@ -847,14 +847,14 @@ impl ModuleKind {
             i if i < n => Some(&self.params()[i]),
             i if i == n => Some(&MIXER_GAIN),
             i if i == n + 1 => Some(&MIXER_PAN),
-            i if self.has_macros() => MACRO_PARAMS.get(i - n - 2),
+            i if self.plays_sound() => MACRO_PARAMS.get(i - n - 2),
             _ => None,
         }
     }
 
     /// How many parameters `automatable` knows.
     pub fn num_automatable(self) -> usize {
-        self.params().len() + 2 + if self.has_macros() { MACROS } else { 0 }
+        self.params().len() + 2 + if self.plays_sound() { MACROS } else { 0 }
     }
 
     /// Whether the module plays notes (as opposed to processing audio).
@@ -883,8 +883,9 @@ impl ModuleKind {
         matches!(self, ModuleKind::Sampler | ModuleKind::Granular)
     }
 
-    /// Whether the module is an instrument with macros: one that makes sound.
-    pub fn has_macros(self) -> bool {
+    /// Whether the module is an instrument that makes sound of its own, not
+    /// one that only passes notes on: it has macros, presets and stems.
+    pub fn plays_sound(self) -> bool {
         self.is_instrument() && !self.notes_only()
     }
 

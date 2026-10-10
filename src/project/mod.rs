@@ -381,10 +381,10 @@ impl Project {
     /// instrument whose own chain it is in.
     pub fn macro_owner(&self, id: u8) -> Option<u8> {
         let m = self.module(id)?;
-        if m.kind.has_macros() {
+        if m.kind.plays_sound() {
             return Some(id);
         }
-        let mut owners = self.modules.iter().filter(|i| i.kind.has_macros());
+        let mut owners = self.modules.iter().filter(|i| i.kind.plays_sound());
         owners.find(|i| self.chain(i.id).effects.contains(&id)).map(|i| i.id)
     }
 
@@ -530,7 +530,7 @@ impl Project {
             }
             i += 1;
         }
-        found.retain(|&m| self.module(m).is_some_and(|m| m.kind.is_instrument() && !m.kind.notes_only()));
+        found.retain(|&m| self.module(m).is_some_and(|m| m.kind.plays_sound()));
         found
     }
 
