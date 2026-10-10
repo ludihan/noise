@@ -1,4 +1,5 @@
-//! Parameter widgets: a bar with the name and value written inside.
+//! Widgets the panels share: parameter bars with the name and value written
+//! inside, chips to switch things, and framed boxes.
 
 use super::theme;
 use crate::project::ParamSpec;
@@ -110,4 +111,32 @@ fn draw(ui: &Ui, rect: Rect, resp: &Response, spec: &ParamSpec, name: &str, valu
         value_font,
         Color32::WHITE,
     );
+}
+
+/// A chip in `color` with `text`: lit when `on`, dim otherwise.
+pub fn chip(ui: &mut egui::Ui, color: Color32, text: &str, on: bool) -> egui::Response {
+    let font = egui::FontId::proportional(12.0);
+    let text_color = if on { theme::SELECTED_TEXT } else { theme::TEXT };
+    let galley = ui.painter().layout_no_wrap(text.to_string(), font, text_color);
+    let size = galley.size() + Vec2::new(16.0, 6.0);
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+    let fill = if on { color } else { color.gamma_multiply(if resp.hovered() { 0.5 } else { 0.3 }) };
+    ui.painter().rect_filled(rect, 9.0, fill);
+    if on {
+        ui.painter().rect_stroke(rect, 9.0, Stroke::new(1.0, Color32::WHITE), egui::StrokeKind::Inside);
+    }
+    ui.painter().galley(rect.center() - galley.size() / 2.0, galley, text_color);
+    resp
+}
+
+/// Allocates `size` and draws a framed box around `add`.
+/// `id` keeps the widgets of different boxes apart.
+pub fn boxed<R>(ui: &mut egui::Ui, id: &str, size: Vec2, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    ui.painter().rect(rect, 3.0, theme::FRAME_BG, Stroke::new(1.0, theme::FRAME_LINE), egui::StrokeKind::Inside);
+    let inner = rect.shrink(5.0);
+    let layout = egui::Layout::top_down(egui::Align::Min);
+    let mut child = ui.new_child(egui::UiBuilder::new().id_salt(id).max_rect(inner).layout(layout));
+    child.shrink_clip_rect(inner);
+    add(&mut child)
 }

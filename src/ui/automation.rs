@@ -75,8 +75,8 @@ pub fn add(app: &mut App, module: u8, param: usize) {
 pub fn panel(app: &mut App, ui: &mut egui::Ui) {
     let h = ui.available_height();
     ui.horizontal_top(|ui| {
-        super::boxed(ui, "envelopes", Vec2::new(240.0, h), |ui| list(app, ui));
-        super::boxed(ui, "envelope", Vec2::new(ui.available_width(), h), |ui| editor(app, ui));
+        super::widgets::boxed(ui, "envelopes", Vec2::new(240.0, h), |ui| list(app, ui));
+        super::widgets::boxed(ui, "envelope", Vec2::new(ui.available_width(), h), |ui| editor(app, ui));
     });
 }
 

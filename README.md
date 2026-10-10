@@ -87,11 +87,11 @@ noise --demo-wav [out.wav]         # render the demo song
 | `src/engine/` | The audio thread: the `Engine` and its commands (`mod.rs`), routing notes through MultiSynths, Glides and phrases (`notes.rs`), the sequencer (`sequencer.rs`) and note columns' effects (`track.rs`), rendering a block with automation, Modulators, macros and the mixer (`render.rs`), the graph's nodes (`node.rs`), and what it shares with the window (`shared.rs`) |
 | `src/audio.rs` | Sound device output and WAV export |
 | `src/midi.rs` | MIDI keyboard input |
-| `src/ui/mod.rs` | The app: menu bar, transport, frames, song files and undo |
+| `src/ui/mod.rs`, `song.rs`, `menu.rs`, `transport.rs`, `frames.rs`, `jobs.rs` | The app and its undo, keys and MIDI; songs and their files, rendering and the file dialog; the menu bar; the transport; the frames around the pattern editor; work done on a thread with its progress |
 | `src/ui/pattern.rs`, `block.rs` | The pattern editor and track headers; block selection and edits |
 | `src/ui/sequencer.rs` | The pattern sequencer and matrix |
 | `src/ui/mixer.rs` | The mixer |
-| `src/ui/modules.rs`, `routing.rs`, `widgets.rs` | The module list and parameter panel; wiring modules with lists to tick; the parameter bars |
+| `src/ui/modules.rs`, `routing.rs`, `widgets.rs` | The module list and parameter panel; wiring modules with lists to tick; the parameter bars, chips and boxes the panels share |
 | `src/ui/automation.rs` | The automation editor |
 | `src/ui/sampler.rs`, `chain.rs`, `presets.rs`, `modulation.rs`, `phrase.rs`, `waveview.rs` | The instrument editor and the sampler, the device chain and its presets, the modulation and phrase pages, and the wave view |
 | `src/ui/spectrum.rs`, `trackscopes.rs` | The spectrum analyzer; the track scopes |
