@@ -330,8 +330,8 @@ pub fn apply(app: &mut App, op: Op) {
         Op::Humanize => {
             let delays: Vec<bool> = app.project.tracks.iter().map(|t| t.show_delay).collect();
             let seed =
-                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
-            block::humanize(app.pattern_mut(), b, 0.1, &delays, seed | 1);
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.subsec_nanos());
+            block::humanize(app.pattern_mut(), b, 0.1, &delays, seed);
             app.mark();
             app.set_status(format!(
                 "Humanized {}: volumes moved up to 10%, and delays where the column is shown",

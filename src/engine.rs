@@ -736,7 +736,7 @@ pub struct Engine {
     scope_pos: usize,
     playheads: Vec<Playhead>,
     /// State of the random numbers MultiSynths use.
-    rng: u32,
+    rng: crate::rng::Rng,
     /// The automated values of the last block, for `Shared::automated`.
     live: Vec<(u8, usize, f32)>,
     phrases: Vec<PhrasePlayer>,
@@ -798,7 +798,7 @@ impl Engine {
             scope: vec![[0.0; 2]; SCOPE_LEN],
             scope_pos: 0,
             playheads: Vec::with_capacity(4 * MAX_PLAYHEADS),
-            rng: 0x2545_F491,
+            rng: crate::rng::Rng(0x2545_F491),
             live: Vec::with_capacity(MAX_AUTOMATED),
             phrases: Vec::with_capacity(MAX_PHRASES),
             picked_phrase: None,
@@ -1031,10 +1031,7 @@ impl Engine {
     }
 
     fn random(&mut self) -> f32 {
-        self.rng ^= self.rng << 13;
-        self.rng ^= self.rng >> 17;
-        self.rng ^= self.rng << 5;
-        self.rng as f32 / u32::MAX as f32
+        self.rng.unit()
     }
 
     /// Sends a note event to node `i`; a MultiSynth changes it and passes

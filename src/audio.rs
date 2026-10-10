@@ -260,14 +260,8 @@ fn write_wav(path: &str, samples: &[Frame], format: RenderFormat) -> Result<(), 
     let spec = hound::WavSpec { channels: 2, sample_rate: format.sample_rate, bits_per_sample: bits, sample_format };
     let mut w = hound::WavWriter::create(path, spec).map_err(|e| e.to_string())?;
     let full = ((1i64 << (bits - 1)) - 1) as f32;
-    let mut seed = 0x2545_f491_u32;
-    let mut noise = move || {
-        // xorshift, uniform in -0.5..0.5.
-        seed ^= seed << 13;
-        seed ^= seed >> 17;
-        seed ^= seed << 5;
-        seed as f32 / u32::MAX as f32 - 0.5
-    };
+    let mut rng = crate::rng::Rng(0x2545_f491);
+    let mut noise = move || rng.unit() - 0.5;
     for s in samples {
         for &ch in s {
             let ch = ch.clamp(-1.0, 1.0);

@@ -6,6 +6,7 @@ mod midi;
 mod paths;
 mod project;
 mod project_dir;
+mod rng;
 mod sample;
 mod soundfont;
 mod ui;

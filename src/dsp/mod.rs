@@ -257,17 +257,7 @@ fn pan_gains(pan: f32) -> (f32, f32) {
     (a.cos() * std::f32::consts::SQRT_2, a.sin() * std::f32::consts::SQRT_2)
 }
 
-#[derive(Clone, Copy)]
-struct Rng(u32);
-
-impl Rng {
-    fn next(&mut self) -> f32 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 17;
-        self.0 ^= self.0 << 5;
-        (self.0 as f32 / u32::MAX as f32) * 2.0 - 1.0
-    }
-}
+use crate::rng::Rng;
 
 // ---------------------------------------------------------------- envelopes
 

@@ -6,16 +6,7 @@ use crate::dsp::Frame;
 use crate::sample::Sample;
 use std::f32::consts::TAU;
 
-pub(super) struct Rng(pub(super) u32);
-
-impl Rng {
-    pub(super) fn next(&mut self) -> f32 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 17;
-        self.0 ^= self.0 << 5;
-        self.0 as f32 / u32::MAX as f32 * 2.0 - 1.0
-    }
-}
+pub(super) use crate::rng::Rng;
 
 /// Scales `frames` so their peak is `peak`.
 pub(super) fn normalize(frames: &mut [Frame], peak: f32) {

@@ -122,14 +122,9 @@ pub fn transpose(p: &mut Pattern, b: Block, semis: i32) {
 /// and, in the tracks `delays` says show their delay column, up to an
 /// eighth of a line late, at random from `seed`, so a played part sounds
 /// less mechanical.
-pub fn humanize(p: &mut Pattern, b: Block, amount: f32, delays: &[bool], mut seed: u64) {
-    let mut random = move || {
-        // xorshift64, uniform in 0..1.
-        seed ^= seed << 13;
-        seed ^= seed >> 7;
-        seed ^= seed << 17;
-        (seed >> 11) as f32 / (1u64 << 53) as f32
-    };
+pub fn humanize(p: &mut Pattern, b: Block, amount: f32, delays: &[bool], seed: u32) {
+    let mut rng = crate::rng::Rng(seed);
+    let mut random = move || rng.unit();
     let tracks: Vec<usize> = (b.tracks.0..=b.tracks.1).map(|l| p.lane_pos(l).0).collect();
     for (col, t) in columns(p, b).into_iter().zip(tracks) {
         // Volume column commands are left as they are.
