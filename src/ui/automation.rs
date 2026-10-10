@@ -5,13 +5,22 @@ use super::{App, theme};
 use crate::project::{Envelope, LFO_SHAPES, ParamSpec};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Vec2};
 
-#[derive(Default)]
 pub struct AutomationView {
     /// The parameter whose envelope is shown, by module and parameter; it
     /// may have none in this pattern yet.
     selected: Option<(u8, usize)>,
-    /// The point being dragged, or `None` while drawing.
-    dragging: Option<usize>,
+    /// What the pointer is doing in the graph, from when it was pressed.
+    drag: Option<Drag>,
+    /// The points picked, by index, and the envelope (pattern, module and
+    /// parameter) they are points of.
+    picked: Vec<usize>,
+    picked_of: Option<(usize, u8, usize)>,
+    /// An envelope copied, to paste onto another parameter or pattern.
+    clipboard: Option<Envelope>,
+    /// How far the Shape menu's shapes swing either side of the
+    /// parameter, of its range, and how many cycles they draw.
+    shape_swing: f32,
+    shape_cycles: u32,
     /// Text the parameter browser is narrowed to.
     filter: String,
     /// The browser shows every parameter, not just the automated ones.
@@ -19,6 +28,34 @@ pub struct AutomationView {
     /// The pattern the browser last looked at: a new one starts on its
     /// automated parameters, or on all of them if it has none.
     seen_pattern: Option<usize>,
+}
+
+impl Default for AutomationView {
+    fn default() -> Self {
+        Self {
+            selected: None,
+            drag: None,
+            picked: Vec::new(),
+            picked_of: None,
+            clipboard: None,
+            shape_swing: 0.25,
+            shape_cycles: 1,
+            filter: String::new(),
+            all: false,
+            seen_pattern: None,
+        }
+    }
+}
+
+/// What dragging in the graph does.
+enum Drag {
+    /// Moves the picked points, which were at `from` when it began at
+    /// `origin` (in lines and 0..1).
+    Points { origin: (f32, f32), from: Vec<(f32, f32)>, picked: Vec<usize> },
+    /// Picks the points in a box from this corner.
+    Box(Pos2),
+    /// Draws points along the way.
+    Draw,
 }
 
 /// The browser's groups: a heading and the modules under it.
@@ -151,7 +188,14 @@ fn list(app: &mut App, ui: &mut egui::Ui) {
                         header.show(ui, |ui| {
                             for i in params {
                                 let on = envelopes.contains(&(id, i));
-                                let text = format!("{}{}", if on { "• " } else { "" }, m.automatable_name(i));
+                                // A Modulator moving it is marked after its name.
+                                let moved = !app.project.modulated_by(id, i).is_empty();
+                                let text = format!(
+                                    "{}{}{}",
+                                    if on { "• " } else { "" },
+                                    m.automatable_name(i),
+                                    if moved { "  ~" } else { "" }
+                                );
                                 let selected = app.automation.selected == Some((id, i));
                                 // Automated ones are marked in the accent colour, but not
                                 // on the selection's own accent fill.
@@ -200,6 +244,13 @@ fn editor(app: &mut App, ui: &mut egui::Ui) {
         None => Envelope::new(module, param, Vec::new()),
     };
     let before = env.clone();
+    // Picked points belong to one envelope; another starts with none.
+    let of = Some((app.current_pattern_index(), module, param));
+    if app.automation.picked_of != of {
+        (app.automation.picked_of, app.automation.picked) = (of, Vec::new());
+        app.automation.drag = None;
+    }
+    app.automation.picked.retain(|&i| i < env.points.len());
 
     ui.horizontal(|ui| {
         theme::caption(ui, &describe(app, env.module, env.param).to_uppercase());
@@ -221,8 +272,20 @@ fn editor(app: &mut App, ui: &mut egui::Ui) {
             env.steps = false;
             env.curve = true;
         }
-        if ui.button("Clear").on_hover_text("Remove every point").clicked() {
-            env.points.clear();
+        ui.separator();
+        let span = pattern_span(app, &before);
+        edit_menu(ui, &mut env, &mut app.automation, span);
+        let tip = "Copy this envelope, its points and timing, to paste onto another parameter or pattern";
+        if ui.add_enabled(!env.points.is_empty(), egui::Button::new("Copy")).on_hover_text(tip).clicked() {
+            app.automation.clipboard = Some(env.clone());
+        }
+        let tip = "Put the envelope copied in place of this one";
+        if ui.add_enabled(app.automation.clipboard.is_some(), egui::Button::new("Paste")).on_hover_text(tip).clicked()
+            && let Some(copied) = &app.automation.clipboard
+        {
+            env = copied.clone();
+            (env.module, env.param) = (module, param);
+            app.automation.picked.clear();
         }
     });
     // Which lines it takes effect in, on a row of its own.
@@ -231,7 +294,7 @@ fn editor(app: &mut App, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         timing(ui, &mut env, pattern_lines, lpb);
         ui.separator();
-        shape_menu(ui, &mut env, pattern_lines, lpb, around);
+        shape_menu(ui, &mut env, &mut app.automation, pattern_lines, lpb, around);
     });
 
     let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
@@ -247,6 +310,7 @@ fn editor(app: &mut App, ui: &mut egui::Ui) {
     grid(app, &painter, graph, spec, env.start, lines);
     // Where the song is playing in this pattern, and the edit cursor.
     let (play_slot, play_line) = app.play_position();
+    let play_line = play_line as f32 + app.play_line_frac();
     let playing_here =
         app.is_playing() && app.project.order.get(play_slot).is_some_and(|s| s.pattern == app.current_pattern_index());
     let mark = |pos: f32, color: Color32| {
@@ -255,7 +319,7 @@ fn editor(app: &mut App, ui: &mut egui::Ui) {
     if let Some(at) = env.local(app.cursor.line as f32, pattern_lines, lpb) {
         mark(at, theme::SELECTED.gamma_multiply(0.35));
     }
-    if let Some(at) = env.local(play_line as f32, pattern_lines, lpb).filter(|_| playing_here) {
+    if let Some(at) = env.local(play_line, pattern_lines, lpb).filter(|_| playing_here) {
         mark(at, theme::SCOPE);
     }
 
@@ -292,53 +356,106 @@ fn editor(app: &mut App, ui: &mut egui::Ui) {
 
     // Interaction: points are hit within a few pixels. They snap to lines,
     // or to sixteenths of a short envelope.
-    let snap = !ui.input(|i| i.modifiers.shift);
+    let (snap, add) = ui.input(|i| (!i.modifiers.shift, i.modifiers.command));
     let grid_step = if lines >= 16.0 { 1.0 } else { lines / 16.0 };
     let place = |p: Pos2| {
         let pos = ((p.x - graph.left()) / graph.width() * lines).clamp(0.0, lines);
         let pos = if snap { (pos / grid_step).round() * grid_step } else { pos };
         (pos, ((graph.bottom() - p.y) / graph.height()).clamp(0.0, 1.0))
     };
+    let unsnapped = |p: Pos2| ((p.x - graph.left()) / graph.width() * lines, (graph.bottom() - p.y) / graph.height());
     let hit = |p: Pos2, env: &Envelope| {
         env.points.iter().position(|&(pos, t)| Pos2::new(x_of(pos), y_of(t)).distance(p) < 7.0)
     };
-    if resp.drag_started() {
-        app.automation.dragging = ui.input(|i| i.pointer.press_origin()).and_then(|p| hit(p, &env));
+    let view = &mut app.automation;
+    if resp.drag_started()
+        && let Some(p) = ui.input(|i| i.pointer.press_origin())
+    {
+        view.drag = Some(match hit(p, &env) {
+            // A point dragged moves with the others picked, or alone.
+            Some(i) => {
+                if !view.picked.contains(&i) {
+                    view.picked = vec![i];
+                }
+                Drag::Points { origin: unsnapped(p), from: env.points.clone(), picked: view.picked.clone() }
+            }
+            None if add => Drag::Box(p),
+            None => {
+                view.picked.clear();
+                Drag::Draw
+            }
+        });
     }
     if resp.dragged()
         && let Some(p) = resp.interact_pointer_pos()
     {
-        let (pos, t) = place(p);
-        match app.automation.dragging {
-            // A point keeps its place among its neighbours.
-            Some(i) if i < env.points.len() => {
-                let step = if snap { grid_step } else { 0.01 };
-                let lo = if i > 0 { env.points[i - 1].0 + step } else { 0.0 };
-                let hi = env.points.get(i + 1).map_or(lines, |n| n.0 - step);
-                let pos = if lo <= hi { pos.clamp(lo, hi) } else { env.points[i].0 };
-                env.points[i] = (pos, t);
+        match &view.drag {
+            Some(Drag::Points { origin, from, picked }) => {
+                let now = unsnapped(p);
+                let mut dx = now.0 - origin.0;
+                if snap {
+                    dx = (dx / grid_step).round() * grid_step;
+                }
+                let dy = now.1 - origin.1;
+                (env.points, view.picked) = moved(from, picked, dx, dy, lines);
             }
-            _ => env.set(pos, t),
+            Some(Drag::Box(corner)) => {
+                let area = Rect::from_two_pos(*corner, p);
+                painter.rect(
+                    area,
+                    0.0,
+                    theme::SELECTED.gamma_multiply(0.08),
+                    (1.0, theme::SELECTED),
+                    StrokeKind::Inside,
+                );
+                view.picked = (0..env.points.len())
+                    .filter(|&i| area.contains(Pos2::new(x_of(env.points[i].0), y_of(env.points[i].1))))
+                    .collect();
+            }
+            _ => {
+                let (pos, t) = place(p);
+                env.set(pos, t);
+            }
         }
+    }
+    if resp.drag_stopped() {
+        view.drag = None;
     }
     if resp.clicked()
         && let Some(p) = resp.interact_pointer_pos()
-        && hit(p, &env).is_none()
     {
-        let (pos, t) = place(p);
-        env.set(pos, t);
+        match hit(p, &env) {
+            // Ctrl-click picks a point or lets it go; a click picks it alone.
+            Some(i) if add => {
+                if let Some(k) = view.picked.iter().position(|&j| j == i) {
+                    view.picked.remove(k);
+                } else {
+                    view.picked.push(i);
+                }
+            }
+            Some(i) => view.picked = vec![i],
+            None => {
+                let (pos, t) = place(p);
+                env.set(pos, t);
+                view.picked.clear();
+            }
+        }
     }
     if (resp.secondary_clicked() || resp.double_clicked())
         && let Some(i) = resp.interact_pointer_pos().and_then(|p| hit(p, &env))
     {
-        env.points.remove(i);
+        // Right-clicking a picked point deletes every one picked.
+        let doomed = if view.picked.contains(&i) { std::mem::take(&mut view.picked) } else { vec![i] };
+        env.points = (env.points.iter().enumerate()).filter(|(k, _)| !doomed.contains(k)).map(|(_, p)| *p).collect();
+        view.picked.clear();
     }
+    let picked = view.picked.clone();
     // What is under the pointer now: a point may have just gone.
     let hovered = resp.hover_pos().and_then(|p| hit(p, &env));
 
     for (i, &(pos, t)) in env.points.iter().enumerate() {
         let r = Rect::from_center_size(Pos2::new(x_of(pos), y_of(t)), Vec2::splat(7.0));
-        let hot = hovered == Some(i) || (resp.dragged() && app.automation.dragging == Some(i));
+        let hot = hovered == Some(i) || picked.contains(&i);
         painter.rect(
             r,
             1.0,
@@ -347,12 +464,25 @@ fn editor(app: &mut App, ui: &mut egui::Ui) {
             StrokeKind::Inside,
         );
     }
+    // While it plays here, a dot where the envelope has the parameter.
+    if let Some(at) = env.local(play_line, pattern_lines, lpb).filter(|_| playing_here)
+        && let Some(t) = env.value_at(at)
+    {
+        let dot = Pos2::new(x_of(at), y_of(t));
+        painter.circle_filled(dot, 4.0, theme::SCOPE);
+        painter.text(
+            dot + Vec2::new(7.0, -7.0),
+            Align2::LEFT_BOTTOM,
+            spec.format(spec.value_at(t)),
+            FontId::monospace(10.0),
+            theme::SCOPE,
+        );
+    }
     if let Some(p) = resp.hover_pos()
         && graph.expand(4.0).contains(p)
     {
         let (pos, t) = hovered.map_or_else(|| place(p), |i| env.points[i]);
-        let how =
-            "Click to add a point, drag to draw or move one, right-click to delete; Shift places between the grid";
+        let how = "Click to add a point, drag to draw or move one, right-click to delete; Ctrl-click or Ctrl-drag picks several to move or delete together; Shift places between the grid";
         let at = format!("Line {pos:.2} · {}\n{how}", spec.format(spec.value_at(t)));
         resp.clone().on_hover_text_at_pointer(at);
     }
@@ -459,36 +589,235 @@ fn timing(ui: &mut egui::Ui, env: &mut Envelope, pattern_lines: usize, lpb: u32)
     }
 }
 
-/// Draws one cycle of an LFO shape (`LFO_SHAPES`) into `env` over its
-/// lines, or over each repeat, swinging a quarter of the parameter's range
-/// either side of `around`, where the parameter is (0..1 along its bar).
-fn shape_menu(ui: &mut egui::Ui, env: &mut Envelope, pattern_lines: usize, lpb: u32, around: f32) {
-    ui.menu_button("Shape", |ui| {
-        for (k, name) in LFO_SHAPES.iter().enumerate() {
-            if super::lfo::shape_button(ui, name, false, &|p| crate::dsp::lfo_shape(k as u32, p)).clicked() {
-                let (points, steps, curve) = lfo_points(k, env.span(pattern_lines, lpb), around);
-                (env.points, env.steps, env.curve) = (points, steps, curve);
-                ui.close();
+/// Picks points `picked` of the envelope shown, as the pictures do.
+#[cfg(test)]
+pub(super) fn pick(app: &mut App, picked: &[usize]) {
+    let first = app.pattern().automation.first().map(|e| (e.module, e.param));
+    app.automation.selected = first;
+    app.automation.picked_of = first.map(|(m, p)| (app.current_pattern_index(), m, p));
+    app.automation.seen_pattern = Some(app.current_pattern_index());
+    app.automation.picked = picked.to_vec();
+}
+
+/// Lines a pattern's envelope `env` spans, for the edit menu.
+fn pattern_span(app: &App, env: &Envelope) -> f32 {
+    env.span(app.pattern().lines, app.project.lpb.max(1))
+}
+
+/// `points` with those at `picked` moved `dx` lines and `dy` of the range,
+/// as a group kept inside `0..=lines` and `0..=1`, and where the picked
+/// ones are once sorted again. A point they land on is replaced.
+fn moved(points: &[(f32, f32)], picked: &[usize], dx: f32, dy: f32, lines: f32) -> (Vec<(f32, f32)>, Vec<usize>) {
+    let group = || picked.iter().filter_map(|&i| points.get(i));
+    let (lo, hi) = group().fold((f32::MAX, f32::MIN), |(lo, hi), p| (lo.min(p.0), hi.max(p.0)));
+    let (bottom, top) = group().fold((f32::MAX, f32::MIN), |(lo, hi), p| (lo.min(p.1), hi.max(p.1)));
+    if lo > hi {
+        return (points.to_vec(), Vec::new());
+    }
+    let dx = dx.clamp(-lo, lines - hi);
+    let dy = dy.clamp(-bottom, 1.0 - top);
+    let mut all: Vec<((f32, f32), bool)> = points
+        .iter()
+        .enumerate()
+        .map(|(i, &(pos, t))| if picked.contains(&i) { ((pos + dx, t + dy), true) } else { ((pos, t), false) })
+        .collect();
+    // Picked points win where they land on another.
+    let landed: Vec<f32> = all.iter().filter(|p| p.1).map(|p| p.0.0).collect();
+    all.retain(|&(p, on)| on || !landed.iter().any(|q| (q - p.0).abs() < 1e-4));
+    all.sort_by(|a, b| a.0.0.total_cmp(&b.0.0));
+    let picked = (all.iter().enumerate()).filter(|(_, p)| p.1).map(|(i, _)| i).collect();
+    (all.into_iter().map(|p| p.0).collect(), picked)
+}
+
+/// Ways to change the whole envelope, or the points picked: turn it upside
+/// down or back to front, thin out points it doesn't need, repeat it in
+/// half the time, pick or delete points.
+fn edit_menu(ui: &mut egui::Ui, env: &mut Envelope, view: &mut AutomationView, span: f32) {
+    let picked = view.picked.clone();
+    let some = !picked.is_empty();
+    let on = |i: usize| !some || picked.contains(&i);
+    ui.menu_button("Edit", |ui| {
+        let which = if some { "the points picked" } else { "the envelope" };
+        if ui.button("Invert").on_hover_text(format!("Turn {which} upside down")).clicked() {
+            for (_, p) in env.points.iter_mut().enumerate().filter(|(i, _)| on(*i)) {
+                p.1 = 1.0 - p.1;
             }
+            ui.close();
+        }
+        if ui.button("Reverse").on_hover_text("Play the envelope back to front").clicked() {
+            env.points = reversed(&env.points, span, env.steps);
+            view.picked.clear();
+            ui.close();
+        }
+        if ui.button("Thin Out").on_hover_text("Remove the points the envelope would pass through anyway").clicked() {
+            env.points = thinned(&env.points, env.steps);
+            view.picked.clear();
+            ui.close();
+        }
+        let tip = "Squeeze the envelope into the first half of its lines and play it again in the second";
+        if ui.button("Repeat Twice").on_hover_text(tip).clicked() {
+            let half: Vec<(f32, f32)> = env.points.iter().map(|&(pos, t)| (pos / 2.0, t)).collect();
+            env.points = half.iter().copied().chain(half.iter().map(|&(pos, t)| (pos + span / 2.0, t))).collect();
+            env.points.dedup_by(|a, b| (a.0 - b.0).abs() < 1e-4);
+            view.picked.clear();
+            ui.close();
+        }
+        ui.separator();
+        if ui.button("Pick All").clicked() {
+            view.picked = (0..env.points.len()).collect();
+            ui.close();
+        }
+        if ui.add_enabled(some, egui::Button::new("Delete Picked")).clicked() {
+            env.points =
+                (env.points.iter().enumerate()).filter(|(i, _)| !picked.contains(i)).map(|(_, p)| *p).collect();
+            view.picked.clear();
+            ui.close();
+        }
+        if ui.button("Clear").on_hover_text("Remove every point").clicked() {
+            env.points.clear();
+            view.picked.clear();
+            ui.close();
         }
     })
     .response
-    .on_hover_text("Draw one cycle of a shape, as an LFO would play it; on Repeat it plays every interval");
+    .on_hover_text("Invert, reverse, thin out or repeat it; Ctrl-click points to work on only those");
 }
 
-/// The points of one cycle of LFO shape `shape` over `span` lines, around
-/// `around`, and whether they are steps or a curve.
-pub(super) fn lfo_points(shape: usize, span: f32, around: f32) -> (Vec<(f32, f32)>, bool, bool) {
-    let (lo, hi) = ((around - 0.25).max(0.0), (around + 0.25).min(1.0));
-    let mid = (lo + hi) / 2.0;
-    let at = |f: f32, v: f32| (f * span, v);
-    match shape {
-        0 => (vec![at(0.0, mid), at(0.25, hi), at(0.5, mid), at(0.75, lo), at(1.0, mid)], false, true),
-        1 => (vec![at(0.0, lo), at(0.5, hi), at(1.0, lo)], false, false),
-        2 => (vec![at(0.0, hi), at(0.5, lo)], true, false),
-        3 => (vec![at(0.0, hi), at(1.0, lo)], false, false),
-        _ => (vec![at(0.0, lo), at(1.0, hi)], false, false),
+/// `points` over `span` lines played back to front. Held points hold from
+/// where they are to the next, so each is moved to where its hold ends.
+fn reversed(points: &[(f32, f32)], span: f32, steps: bool) -> Vec<(f32, f32)> {
+    let mut out: Vec<(f32, f32)> = if steps {
+        (points.iter().enumerate()).map(|(i, &(_, t))| (span - points.get(i + 1).map_or(span, |n| n.0), t)).collect()
+    } else {
+        points.iter().map(|&(pos, t)| (span - pos, t)).collect()
+    };
+    out.sort_by(|a, b| a.0.total_cmp(&b.0));
+    out.dedup_by(|a, b| (a.0 - b.0).abs() < 1e-4);
+    out
+}
+
+/// `points` without those the envelope passes through anyway: on the
+/// straight line between their neighbours, or holding the value before.
+fn thinned(points: &[(f32, f32)], steps: bool) -> Vec<(f32, f32)> {
+    let mut out: Vec<(f32, f32)> = Vec::with_capacity(points.len());
+    for (i, &p) in points.iter().enumerate() {
+        let Some(&prev) = out.last() else {
+            out.push(p);
+            continue;
+        };
+        let needless = match points.get(i + 1) {
+            _ if steps => (p.1 - prev.1).abs() < 1e-3,
+            Some(&next) => {
+                let along = prev.1 + (next.1 - prev.1) * (p.0 - prev.0) / (next.0 - prev.0).max(1e-6);
+                (p.1 - along).abs() < 1e-3
+            }
+            None => false,
+        };
+        if !needless {
+            out.push(p);
+        }
     }
+    out
+}
+
+/// Draws cycles of an LFO shape (`LFO_SHAPES`, or random steps) into `env`
+/// over its lines, or over each repeat, swinging as far either side of
+/// `around`, where the parameter is (0..1 along its bar), as the menu says.
+fn shape_menu(
+    ui: &mut egui::Ui,
+    env: &mut Envelope,
+    view: &mut AutomationView,
+    pattern_lines: usize,
+    lpb: u32,
+    around: f32,
+) {
+    ui.menu_button("Shape", |ui| {
+        ui.horizontal(|ui| {
+            ui.label("Swing");
+            let field = egui::DragValue::new(&mut view.shape_swing)
+                .range(0.02..=0.5)
+                .speed(0.005)
+                .custom_formatter(|v, _| format!("±{:.0}%", v * 100.0))
+                .custom_parser(|t| {
+                    t.trim_start_matches('±').trim_end_matches('%').trim().parse::<f64>().ok().map(|v| v / 100.0)
+                });
+            ui.add(field).on_hover_text("How far either side of where the parameter is, of its range");
+            ui.label("Cycles");
+            ui.add(egui::DragValue::new(&mut view.shape_cycles).range(1..=16))
+                .on_hover_text("How many times the shape plays over the lines, or each repeat");
+        });
+        ui.separator();
+        let span = env.span(pattern_lines, lpb);
+        let (swing, cycles) = (view.shape_swing, view.shape_cycles);
+        for (k, name) in LFO_SHAPES.iter().enumerate() {
+            if super::lfo::shape_button(ui, name, false, &|p| crate::dsp::lfo_shape(k as u32, p)).clicked() {
+                (env.points, env.steps, env.curve) = shape_points(k, span, around, swing, cycles);
+                view.picked.clear();
+                ui.close();
+            }
+        }
+        let random = |p: f32| crate::rng::Rng(1 + (p * 8.0) as u32 * 7919).next();
+        if super::lfo::shape_button(ui, "Random steps", false, &random)
+            .on_hover_text("Eight held values a cycle, picked at random")
+            .clicked()
+        {
+            let seed = ui.input(|i| i.time.to_bits() as u32);
+            (env.points, env.steps, env.curve) = random_points(seed, span, around, swing, cycles * 8);
+            view.picked.clear();
+            ui.close();
+        }
+    })
+    .response
+    .on_hover_text("Draw cycles of a shape, as an LFO would play it; on Repeat it plays every interval");
+}
+
+/// The points of one cycle of LFO shape `shape` over `span` lines, a
+/// quarter of the range either side of `around`, and whether they are
+/// steps or a curve.
+#[cfg(test)]
+pub(super) fn lfo_points(shape: usize, span: f32, around: f32) -> (Vec<(f32, f32)>, bool, bool) {
+    shape_points(shape, span, around, 0.25, 1)
+}
+
+/// `cycles` of LFO shape `shape` over `span` lines, `swing` either side of
+/// `around` (kept inside 0..1), and whether they are steps or a curve.
+fn shape_points(shape: usize, span: f32, around: f32, swing: f32, cycles: u32) -> (Vec<(f32, f32)>, bool, bool) {
+    let (lo, hi) = ((around - swing).max(0.0), (around + swing).min(1.0));
+    let mid = (lo + hi) / 2.0;
+    let (one, steps, curve): (&[(f32, f32)], bool, bool) = match shape {
+        0 => (&[(0.0, mid), (0.25, hi), (0.5, mid), (0.75, lo)], false, true),
+        1 => (&[(0.0, lo), (0.5, hi)], false, false),
+        2 => (&[(0.0, hi), (0.5, lo)], true, false),
+        // A saw jumps back as the next cycle starts, a hair before it.
+        3 => (&[(0.0, hi), (0.999, lo)], false, false),
+        _ => (&[(0.0, lo), (0.999, hi)], false, false),
+    };
+    let cycle = span / cycles.max(1) as f32;
+    let mut points: Vec<(f32, f32)> =
+        (0..cycles.max(1)).flat_map(|c| one.iter().map(move |&(f, v)| ((c as f32 + f) * cycle, v))).collect();
+    // It ends where it began, the next cycle's first point.
+    let end = match shape {
+        3 => lo,
+        4 => hi,
+        _ => one[0].1,
+    };
+    if !steps {
+        points.push((span, end));
+    }
+    if cycles <= 1 {
+        // One cycle of a saw is a plain ramp.
+        points.retain(|p| (p.0 - 0.999 * span).abs() > 1e-4 || !matches!(shape, 3 | 4));
+    }
+    (points, steps, curve)
+}
+
+/// `n` values held one after another over `span` lines, at random within
+/// `swing` either side of `around`, from `seed`.
+fn random_points(seed: u32, span: f32, around: f32, swing: f32, n: u32) -> (Vec<(f32, f32)>, bool, bool) {
+    let (lo, hi) = ((around - swing).max(0.0), (around + swing).min(1.0));
+    let mut rng = crate::rng::Rng(seed);
+    let points = (0..n).map(|k| (k as f32 * span / n as f32, lo + (hi - lo) * rng.unit())).collect();
+    (points, true, false)
 }
 
 #[cfg(test)]
@@ -507,5 +836,45 @@ mod tests {
         // Near the top of the range it stays inside it.
         let (points, ..) = lfo_points(4, 8.0, 0.9);
         assert!(points.iter().all(|p| (0.0..=1.0).contains(&p.1)) && points[1] == (8.0, 1.0));
+    }
+
+    #[test]
+    fn picked_points_move_together_inside_the_graph() {
+        let points = [(0.0, 0.5), (4.0, 0.2), (8.0, 0.9), (12.0, 0.5)];
+        // Two picked, moved 2 lines on and up: the top one stops at the top.
+        let (moved, picked) = moved(&points, &[1, 2], 2.0, 0.5, 16.0);
+        assert_eq!(moved, [(0.0, 0.5), (6.0, 0.3), (10.0, 1.0), (12.0, 0.5)]);
+        assert_eq!(picked, [1, 2]);
+        // Dragged over another, they pass it and replace one they land on.
+        let (moved, picked) = super::moved(&points, &[1], 8.0, 0.0, 16.0);
+        assert_eq!(moved, [(0.0, 0.5), (8.0, 0.9), (12.0, 0.2)]);
+        assert_eq!(picked, [2]);
+    }
+
+    #[test]
+    fn envelopes_reverse_and_thin_out() {
+        let ramp = [(0.0, 0.0), (2.0, 0.25), (4.0, 0.5), (8.0, 1.0)];
+        assert_eq!(thinned(&ramp, false), [(0.0, 0.0), (8.0, 1.0)], "a straight line needs its ends");
+        assert_eq!(reversed(&ramp, 8.0, false)[0], (0.0, 1.0));
+        // Held values keep how long they hold.
+        let held = [(0.0, 0.1), (2.0, 0.9), (2.5, 0.9)];
+        assert_eq!(thinned(&held, true), [(0.0, 0.1), (2.0, 0.9)]);
+        assert_eq!(reversed(&[(0.0, 0.1), (2.0, 0.9)], 8.0, true), [(0.0, 0.9), (6.0, 0.1)]);
+    }
+
+    #[test]
+    fn shapes_draw_as_many_cycles_as_asked() {
+        // Two cycles of a triangle over 8 lines, swinging 0.1 around 0.5.
+        let (points, ..) = shape_points(1, 8.0, 0.5, 0.1, 2);
+        let mut env = Envelope::new(1, 0, points);
+        assert!((env.value_at(2.0).unwrap() - 0.6).abs() < 1e-6 && (env.value_at(6.0).unwrap() - 0.6).abs() < 1e-6);
+        assert!((env.value_at(4.0).unwrap() - 0.4).abs() < 1e-6);
+        // A saw jumps back at each cycle.
+        let (points, ..) = shape_points(4, 8.0, 0.5, 0.25, 2);
+        env.points = points;
+        assert!(env.value_at(3.99).unwrap() > 0.7 && env.value_at(4.0).unwrap() < 0.3);
+        // Random steps stay inside their swing.
+        let (points, steps, _) = random_points(7, 8.0, 0.5, 0.1, 8);
+        assert!(steps && points.len() == 8 && points.iter().all(|p| (0.4..=0.6).contains(&p.1)));
     }
 }

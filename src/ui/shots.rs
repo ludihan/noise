@@ -41,6 +41,7 @@ fn shots() {
         env.every = 1.0;
         (env.points, env.steps, env.curve) = super::automation::lfo_points(0, 4.0, 0.5);
         (app.lower, app.show_lower) = (super::Lower::Automation, true);
+        super::automation::pick(app, &[1, 2]);
     });
     shot("busy", |app| {
         // A job that waits, part way through, until the picture is taken.
