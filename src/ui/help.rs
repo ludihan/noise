@@ -271,7 +271,7 @@ const TOPICS: &[Topic] = &[
                 "File > Export Project… writes the song and every sample it plays to a .noise file, to share or move: a zip archive of its project folder. File > Import Project…, Open, or a double-click in the disk browser's Songs unpacks one into a project folder beside it, named after the project (with a number if that name is taken), and opens it. Only the song and its samples come out of it, and nothing in it can reach outside that folder.",
             ),
             P(
-                "File > Render to WAV… and Render Stems… first ask for the sample rate (the sound device's, or 22.05 to 96 kHz) and the format: 16 or 24 bit, dithered, or 32 bit float, which keeps peaks over 0 dB. The choice is remembered. Render Stems… renders each instrument to a WAV file of its own, soloed with its effects and its share of shared ones, all as long as the song, named after the file picked with the instrument's number and name.",
+                "File > Render to WAV… and Render Stems… first ask for the sample rate (the sound device's, or 22.05 to 96 kHz) and the format: 16 or 24 bit, dithered, or 32 bit float, which keeps peaks over 0 dB. The choice is remembered. Render Stems… renders each instrument to a WAV file of its own, soloed with its effects and its share of shared ones, all as long as the song, named after the file picked with the instrument's number and name. Renders, exports, imports and opening a song run in the background: the status bar shows how far they have got, with Cancel for renders, and the window keeps working meanwhile.",
             ),
             P(
                 "From a terminal: noise song.json opens a song, noise --export song.json out.wav renders one without a window.",

@@ -1862,6 +1862,16 @@ impl Engine {
         }
     }
 
+    /// How far through the song playback is, 0..1, by slots and the lines
+    /// of the one playing.
+    pub fn song_progress(&self) -> f32 {
+        let project = &self.project;
+        let lines =
+            project.order.get(self.shown.0).and_then(|s| project.patterns.get(s.pattern)).map_or(1, |p| p.lines);
+        let into = (self.pattern_line() / lines.max(1) as f64).min(1.0) as f32;
+        ((self.shown.0 as f32 + into) / project.order.len().max(1) as f32).min(1.0)
+    }
+
     /// Where in the pattern playing this block starts, in lines.
     fn pattern_line(&self) -> f64 {
         let into_tick = (1.0 - self.samples_to_tick / self.samples_per_tick()).clamp(0.0, 1.0);

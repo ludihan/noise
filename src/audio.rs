@@ -126,7 +126,20 @@ where
 /// Plays the song once, offline, and then up to `tail` seconds more for
 /// notes and effects to die away. With `trim`, silence at the end of the
 /// tail is dropped.
+#[cfg(test)]
 pub fn render(project: Arc<Project>, sr: u32, tail: f32, trim: bool) -> Vec<Frame> {
+    render_with(project, sr, tail, trim, &mut |_| true).unwrap_or_default()
+}
+
+/// `render`, telling `going` how far through the song it is (0..1) as it
+/// goes; `None` if `going` says to stop.
+pub fn render_with(
+    project: Arc<Project>,
+    sr: u32,
+    tail: f32,
+    trim: bool,
+    going: &mut dyn FnMut(f32) -> bool,
+) -> Option<Vec<Frame>> {
     let mut engine = Engine::new(sr as f32, project, None, None, Arc::new(Shared::default()));
     engine.play_song();
     let mut samples: Vec<Frame> = Vec::new();
@@ -136,6 +149,10 @@ pub fn render(project: Arc<Project>, sr: u32, tail: f32, trim: bool) -> Vec<Fram
     while !engine.song_ended && samples.len() < limit {
         engine.render(&mut block);
         samples.extend_from_slice(&block);
+        // About ten times a second of audio.
+        if samples.len().is_multiple_of(block.len() * 8) && !going(engine.song_progress()) {
+            return None;
+        }
     }
     let played = samples.len();
     engine.handle(Cmd::Stop);
@@ -148,7 +165,7 @@ pub fn render(project: Arc<Project>, sr: u32, tail: f32, trim: bool) -> Vec<Fram
         let last = samples.iter().rposition(|f| f[0].abs().max(f[1].abs()) > 1e-4).map_or(0, |i| i + 1);
         samples.truncate(last.max(played));
     }
-    samples
+    Some(samples)
 }
 
 /// How a render is written: its sample rate and sample format.
@@ -183,16 +200,29 @@ impl RenderFormat {
     pub const CD: RenderFormat = RenderFormat { sample_rate: 44100, depth: BitDepth::Int16 };
 }
 
-pub fn export_wav(project: Arc<Project>, path: &str, format: RenderFormat) -> Result<(), String> {
-    write_wav(path, &render(project, format.sample_rate, 2.0, false), format)
+/// Renders the song to the WAV file at `path`, telling `going` how far it
+/// has got; `Ok(false)` if `going` stopped it, with nothing written.
+pub fn export_wav(
+    project: Arc<Project>,
+    path: &str,
+    format: RenderFormat,
+    going: &mut dyn FnMut(f32) -> bool,
+) -> Result<bool, String> {
+    let Some(frames) = render_with(project, format.sample_rate, 2.0, false, going) else { return Ok(false) };
+    write_wav(path, &frames, format).map(|()| true)
 }
 
 /// Renders each instrument of the song to its own file: the instrument
 /// soloed, with its own effects and its share of the effects it feeds.
 /// The files are named after `path`, with the instrument's number and
 /// name, and are all as long as the song, so they line up. Returns the
-/// files written.
-pub fn export_stems(project: &Project, path: &str, format: RenderFormat) -> Result<Vec<String>, String> {
+/// files written, as far as it got before `going` stopped it.
+pub fn export_stems(
+    project: &Project,
+    path: &str,
+    format: RenderFormat,
+    going: &mut dyn FnMut(f32) -> bool,
+) -> Result<Vec<String>, String> {
     let base = path.strip_suffix(".wav").unwrap_or(path);
     let instruments: Vec<(u8, String)> = project
         .modules
@@ -201,7 +231,8 @@ pub fn export_stems(project: &Project, path: &str, format: RenderFormat) -> Resu
         .map(|m| (m.id, m.name.clone()))
         .collect();
     let mut written = Vec::new();
-    for (id, name) in instruments {
+    let count = instruments.len().max(1) as f32;
+    for (k, (id, name)) in instruments.into_iter().enumerate() {
         let mut stem = project.clone();
         for m in &mut stem.modules {
             m.solo = m.id == id;
@@ -209,7 +240,10 @@ pub fn export_stems(project: &Project, path: &str, format: RenderFormat) -> Resu
         let name: String =
             name.chars().map(|c| if c.is_alphanumeric() || " -_".contains(c) { c } else { '_' }).collect();
         let file = format!("{base} {id:02X} {name}.wav");
-        write_wav(&file, &render(Arc::new(stem), format.sample_rate, 2.0, false), format)?;
+        // Each stem is its share of the whole.
+        let mut part = |f: f32| going((k as f32 + f) / count);
+        let Some(frames) = render_with(Arc::new(stem), format.sample_rate, 2.0, false, &mut part) else { break };
+        write_wav(&file, &frames, format)?;
         written.push(file);
     }
     Ok(written)
@@ -255,6 +289,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn renders_say_how_far_they_are_and_can_be_stopped() {
+        let mut seen = Vec::new();
+        let frames = render_with(Arc::new(Project::demo()), 4000, 0.5, false, &mut |f| {
+            seen.push(f);
+            true
+        });
+        assert!(frames.is_some());
+        assert!(seen.windows(2).all(|w| w[1] >= w[0]), "it only goes forward");
+        assert!(seen.last().unwrap() > &0.95, "and gets to the end: {:?}", seen.last());
+        // Stopped part way, it writes nothing.
+        let dir = std::env::temp_dir().join(format!("noise-cancel-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("song.wav");
+        let done = export_wav(Arc::new(Project::demo()), path.to_str().unwrap(), RenderFormat::CD, &mut |f| f < 0.2);
+        assert_eq!(done, Ok(false));
+        assert!(!path.exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn the_demo_plays_without_clipping() {
         let frames = render(Arc::new(Project::demo()), 8000, 1.0, false);
         let peak = frames.iter().fold(0f32, |a, f| a.max(f[0].abs()).max(f[1].abs()));
@@ -296,7 +350,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let sr = 8000;
         let format = RenderFormat { sample_rate: sr, depth: BitDepth::Int16 };
-        let files = export_stems(&p, dir.join("song.wav").to_str().unwrap(), format).unwrap();
+        let files = export_stems(&p, dir.join("song.wav").to_str().unwrap(), format, &mut |_| true).unwrap();
         assert_eq!(files.len(), 2);
         assert!(files[0].ends_with(&format!("song {a:02X} Generator.wav")), "{}", files[0]);
         let read = |f: &str| crate::sample::Sample::load(std::path::Path::new(f)).unwrap();

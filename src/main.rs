@@ -28,12 +28,12 @@ fn main() -> eframe::Result {
         for w in warnings {
             eprintln!("warning: {w}");
         }
-        audio::export_wav(std::sync::Arc::new(p), output, audio::RenderFormat::CD).expect("write wav");
+        audio::export_wav(std::sync::Arc::new(p), output, audio::RenderFormat::CD, &mut |_| true).expect("write wav");
         return Ok(());
     }
     if args.first().map(String::as_str) == Some("--demo-wav") {
         let out = args.get(1).map_or("demo.wav", String::as_str);
-        audio::export_wav(std::sync::Arc::new(project::Project::demo()), out, audio::RenderFormat::CD)
+        audio::export_wav(std::sync::Arc::new(project::Project::demo()), out, audio::RenderFormat::CD, &mut |_| true)
             .expect("write wav");
         return Ok(());
     }

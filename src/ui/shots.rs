@@ -26,6 +26,16 @@ fn shot(name: &str, setup: impl FnOnce(&mut App)) {
 fn shots() {
     shot("pattern", |_| {});
     shot("mixer", |app| app.view = View::Mixer);
+    shot("busy", |app| {
+        // A job that waits, part way through, until the picture is taken.
+        super::jobs::spawn(app, "Rendering song.wav", |progress| {
+            for _ in 0..50 {
+                progress.set(0.42);
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Box::new(|_: &mut App| {})
+        });
+    });
     shot("instrument", |app| {
         // A synth with effects of its own and a macro moving two of them.
         let p = &mut app.project;

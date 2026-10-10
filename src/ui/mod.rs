@@ -8,6 +8,7 @@ mod files;
 mod help;
 mod icons;
 mod instruments;
+mod jobs;
 mod library;
 mod mixer;
 mod modulation;
@@ -269,6 +270,8 @@ pub struct App {
     file_dialog: Option<files::FileDialog>,
     preset_picker: Option<soundfonts::PresetPicker>,
     soundfont_loads: Vec<soundfonts::Loading>,
+    /// Work going on on a thread of its own: a render, export or import.
+    job: Option<jobs::Job>,
     browser: browser::Browser,
     /// Mouse wheel movement not yet turned into whole pattern lines.
     pub wheel: f32,
@@ -427,6 +430,7 @@ impl App {
             file_dialog: None,
             preset_picker: None,
             soundfont_loads: Vec::new(),
+            job: None,
             browser: browser::Browser::new(browse_dir),
             wheel: 0.0,
             shown_cursor: None,
@@ -694,9 +698,19 @@ impl App {
         };
     }
 
-    /// Opens the song at `path`: a project folder, or a song file.
+    /// Opens the song at `path`, a project folder or a song file, reading it
+    /// on a thread.
     fn open(&mut self, path: String) {
-        match project_dir::open(std::path::Path::new(&path)) {
+        let name = file_name(&path);
+        jobs::spawn(self, format!("Opening {name}"), move |_| {
+            let read = project_dir::open(std::path::Path::new(&path));
+            Box::new(move |app: &mut App| app.opened(path, read))
+        });
+    }
+
+    /// Puts the song read from `path` in place, or says why it couldn't be.
+    fn opened(&mut self, path: String, read: Result<(Project, Vec<String>), String>) {
+        match read {
             Ok((p, warnings)) => {
                 self.send(Cmd::Stop);
                 self.project = p;
@@ -721,20 +735,35 @@ impl App {
     /// Unpacks the project in the `.noise` file at `path` into a folder
     /// beside it, and opens it.
     fn import(&mut self, path: &str) {
-        match project_dir::import_beside(std::path::Path::new(path)) {
-            Ok(dir) => self.open(dir.to_string_lossy().into_owned()),
-            Err(e) => self.status = format!("Import failed: {e}"),
-        }
+        let path = path.to_string();
+        jobs::spawn(self, format!("Importing {}", file_name(&path)), move |_| {
+            let read = project_dir::import_beside(std::path::Path::new(&path)).and_then(|dir| {
+                let dir = dir.to_string_lossy().into_owned();
+                project_dir::open(std::path::Path::new(&dir)).map(|read| (dir, read))
+            });
+            Box::new(move |app: &mut App| match read {
+                Ok((dir, read)) => app.opened(dir, Ok(read)),
+                Err(e) => app.status = format!("Import failed: {e}"),
+            })
+        });
     }
 
     /// Writes the song, with every sample it plays, to the `.noise` file at
     /// `path`, as a project folder named after the song.
     fn export_project(&mut self, path: &str) {
-        let name = self.song_name();
-        self.status = match project_dir::export(&self.project, &name, std::path::Path::new(path), &mut self.hashes) {
-            Ok(()) => format!("Exported the project to {path}"),
-            Err(e) => format!("Export failed: {e}"),
-        };
+        let (name, path, project) = (self.song_name(), path.to_string(), self.project.clone());
+        // The hashes go with it, and come back with any it worked out.
+        let mut hashes = std::mem::take(&mut self.hashes);
+        jobs::spawn(self, format!("Exporting {}", file_name(&path)), move |_| {
+            let done = project_dir::export(&project, &name, std::path::Path::new(&path), &mut hashes);
+            Box::new(move |app: &mut App| {
+                app.hashes = hashes;
+                app.status = match done {
+                    Ok(()) => format!("Exported the project to {path}"),
+                    Err(e) => format!("Export failed: {e}"),
+                };
+            })
+        });
     }
 
     /// Does `p`, first asking about unsaved changes if there are any.
@@ -888,17 +917,32 @@ impl App {
     }
 
     fn export(&mut self, path: &str) {
-        self.status = match audio::export_wav(Arc::new(self.project.clone()), path, self.render_format()) {
-            Ok(()) => format!("Rendered {path}"),
-            Err(e) => format!("Render failed: {e}"),
-        };
+        let (path, project, format) = (path.to_string(), Arc::new(self.project.clone()), self.render_format());
+        jobs::spawn(self, format!("Rendering {}", file_name(&path)), move |progress| {
+            let done = audio::export_wav(project, &path, format, &mut |f| progress.set(f));
+            Box::new(move |app: &mut App| {
+                app.status = match done {
+                    Ok(true) => format!("Rendered {path}"),
+                    Ok(false) => "Render cancelled".to_string(),
+                    Err(e) => format!("Render failed: {e}"),
+                };
+            })
+        });
     }
 
     fn export_stems(&mut self, path: &str) {
-        self.status = match audio::export_stems(&self.project, path, self.render_format()) {
-            Ok(files) => format!("Rendered {} stems next to {path}", files.len()),
-            Err(e) => format!("Render failed: {e}"),
-        };
+        let (path, project, format) = (path.to_string(), self.project.clone(), self.render_format());
+        jobs::spawn(self, format!("Rendering stems of {}", file_name(&path)), move |progress| {
+            let done = audio::export_stems(&project, &path, format, &mut |f| progress.set(f));
+            let cancelled = !progress.set(1.0);
+            Box::new(move |app: &mut App| {
+                app.status = match done {
+                    Ok(files) if cancelled => format!("Render cancelled after {} stems", files.len()),
+                    Ok(files) => format!("Rendered {} stems next to {path}", files.len()),
+                    Err(e) => format!("Render failed: {e}"),
+                };
+            })
+        });
     }
 
     /// The render dialog: the sample rate and format, before the file
@@ -1922,6 +1966,7 @@ impl eframe::App for App {
         if self.undo_base.is_none() {
             self.undo_base = Some(self.project.clone());
         }
+        jobs::poll(self);
         self.handle_global_keys(&ctx);
         self.handle_midi();
         self.handle_dropped_files(&ctx);
@@ -1939,7 +1984,9 @@ impl eframe::App for App {
             .frame(egui::Frame::new().fill(theme::FRAME_BG).inner_margin(egui::Margin::symmetric(6, 2)))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(&self.status);
+                    if !jobs::status(self, ui) {
+                        ui.label(&self.status);
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
                             RichText::new(
@@ -2067,4 +2114,9 @@ fn boxed<R>(ui: &mut egui::Ui, id: &str, size: Vec2, add: impl FnOnce(&mut egui:
     let mut child = ui.new_child(egui::UiBuilder::new().id_salt(id).max_rect(inner).layout(layout));
     child.shrink_clip_rect(inner);
     add(&mut child)
+}
+
+/// The last part of `path`, for messages.
+fn file_name(path: &str) -> String {
+    std::path::Path::new(path).file_name().map_or_else(|| path.to_string(), |n| n.to_string_lossy().into_owned())
 }

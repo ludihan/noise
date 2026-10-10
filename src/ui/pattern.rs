@@ -371,12 +371,22 @@ pub fn apply(app: &mut App, op: Op) {
 fn render_to_sample(app: &mut App, b: Block) {
     let sr = app.audio.as_ref().map_or(44100, |a| a.sample_rate);
     let song = std::sync::Arc::new(app.project.excerpt(app.slot, b.lines, b.tracks));
-    let frames = crate::audio::render(song, sr, 4.0, true);
+    let name = format!("Render {:02} {:03}-{:03}", app.current_pattern_index(), b.lines.0, b.lines.1);
+    super::jobs::spawn(app, "Rendering the selection", move |progress| {
+        let frames = crate::audio::render_with(song, sr, 4.0, true, &mut |f| progress.set(f));
+        Box::new(move |app: &mut App| match frames {
+            Some(frames) => rendered(app, name, sr, frames),
+            None => app.set_status("Render cancelled"),
+        })
+    });
+}
+
+/// Loads `frames`, rendered at `sr`, into a new Sampler called `name`.
+fn rendered(app: &mut App, name: String, sr: u32, frames: Vec<crate::dsp::Frame>) {
     if frames.iter().all(|f| f[0].abs().max(f[1].abs()) < 1e-4) {
         app.set_status("Nothing to render: the selection makes no sound");
         return;
     }
-    let name = format!("Render {:02} {:03}-{:03}", app.current_pattern_index(), b.lines.0, b.lines.1);
     let secs = frames.len() as f32 / sr as f32;
     let sample = crate::sample::Sample { name: name.clone(), sample_rate: sr as f32, channels: 2, frames };
     let before = app.project.modules.len();
