@@ -44,6 +44,18 @@ pub fn add(app: &mut App, kind: ModuleKind) {
     }
 }
 
+/// What a new instrument can be: a kind, or a factory or saved preset.
+pub fn add_menu(app: &mut App, ui: &mut egui::Ui) {
+    for kind in ModuleKind::ADDABLE.into_iter().filter(|k| k.in_instrument_list()) {
+        if ui.button(kind.name()).clicked() {
+            add(app, kind);
+            ui.close();
+        }
+    }
+    ui.separator();
+    super::library::add_menus(app, ui);
+}
+
 /// Copies an instrument and its outgoing connections.
 fn duplicate(app: &mut App, id: u8) {
     let Some(pos) = app.project.module(id).map(|m| m.pos) else { return };
@@ -105,18 +117,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
             {
                 duplicate(app, selected.unwrap());
             }
-            ui.menu_button("+", |ui| {
-                for kind in ModuleKind::ADDABLE.into_iter().filter(|k| k.in_instrument_list()) {
-                    if ui.button(kind.name()).clicked() {
-                        add(app, kind);
-                        ui.close();
-                    }
-                }
-                ui.separator();
-                super::library::add_menus(app, ui);
-            })
-            .response
-            .on_hover_text("Add an instrument");
+            ui.menu_button("+", |ui| add_menu(app, ui)).response.on_hover_text("Add an instrument");
         });
     });
 

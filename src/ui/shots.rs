@@ -133,4 +133,9 @@ fn shots() {
         app.show_track_fx(0);
         app.lower_height = 270.0;
     });
+    shot("new_song", |app| {
+        app.project = crate::project::Project::empty();
+        app.selected_module = None;
+        app.mark();
+    });
 }

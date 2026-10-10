@@ -904,6 +904,14 @@ pub fn editor(app: &mut App, ui: &mut egui::Ui) {
         let (rect, resp) = ui.allocate_exact_size(size, Sense::click_and_drag());
         let painter = ui.painter_at(rect);
         let center_top = (rect.center().y - row_h / 2.0).round();
+        // A song with nothing to play yet says how to start, above the lines.
+        if !app.project.modules.iter().any(|m| m.kind.in_instrument_list()) {
+            let card = Rect::from_center_size(
+                Pos2::new(outer.center().x, (rect.top() + center_top) / 2.0),
+                Vec2::new(430.0, (center_top - rect.top() - 16.0).clamp(60.0, 190.0)),
+            );
+            getting_started(app, ui, card);
+        }
         let cur = app.cursor;
         // When the cursor moves to a column out of view, the editor scrolls
         // sideways to show all of it.
@@ -1151,6 +1159,43 @@ enum TrackAction {
     Effects,
     /// Send its sound on through another track's effects, or the master.
     Group(Option<usize>),
+}
+
+/// How to start a song, for one without instruments: adding one, the
+/// keys to write and play notes, and the demo songs.
+fn getting_started(app: &mut App, ui: &mut egui::Ui, card: Rect) {
+    let frame = egui::Frame::new()
+        .fill(theme::FRAME_BG)
+        .stroke(Stroke::new(1.0, theme::FRAME_LINE))
+        .corner_radius(4.0)
+        .inner_margin(10.0);
+    ui.scope_builder(egui::UiBuilder::new().max_rect(card), |ui| {
+        frame.show(ui, |ui| {
+            ui.set_width(card.width() - 20.0);
+            theme::caption(ui, "START A SONG");
+            ui.horizontal(|ui| {
+                ui.label("1.");
+                ui.menu_button("Add an Instrument", |ui| super::instruments::add_menu(app, ui))
+                    .response
+                    .on_hover_text("A synth, a sampler, or one of the factory's ready-made instruments");
+                ui.label(egui::RichText::new("or + in the instrument list").color(theme::TEXT_WEAK));
+            });
+            ui.label("2.  Esc starts editing; the keys Z–M and Q–P play and write notes.");
+            ui.label("3.  Space plays the pattern; F1 opens the manual.");
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Or hear what noise does:").color(theme::TEXT_WEAK));
+                ui.menu_button("Open a Demo Song", |ui| {
+                    for (i, (name, _)) in super::DEMOS.iter().enumerate() {
+                        if ui.button(*name).clicked() {
+                            app.request(super::Pending::Demo(i));
+                            ui.close();
+                        }
+                    }
+                });
+            });
+        });
+    });
 }
 
 /// Track headers: the name on the track's color, with a

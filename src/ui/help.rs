@@ -213,6 +213,9 @@ const TOPICS: &[Topic] = &[
         title: "Getting started",
         blocks: &[
             P(
+                "A song without instruments shows START A SONG over the pattern: Add an Instrument picks a synth, a sampler or a ready-made instrument, and Open a Demo Song opens one of the demos.",
+            ),
+            P(
                 "noise is a music tracker with modular synths: a pattern editor and an instrument editor over synth and effect modules. Notes in the pattern go straight to synth modules, and each instrument's sound goes through a chain of effect modules.",
             ),
             P(
