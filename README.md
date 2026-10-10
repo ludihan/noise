@@ -84,7 +84,7 @@ noise --demo-wav [out.wav]         # render the demo song
 | `src/rng.rs` | The random numbers everything uses: one small xorshift generator |
 | `src/sample.rs` | Loading WAV, FLAC and Ogg Vorbis samples; saving WAV |
 | `src/soundfont.rs` | SF2, SF3 and SFZ soundfonts turned into Sampler samples |
-| `src/engine.rs` | The sequencer, effects, automation, mixer and modules, run on the audio thread |
+| `src/engine/` | The audio thread: the `Engine` and its commands (`mod.rs`), routing notes through MultiSynths, Glides and phrases (`notes.rs`), the sequencer (`sequencer.rs`) and note columns' effects (`track.rs`), rendering a block with automation, Modulators, macros and the mixer (`render.rs`), the graph's nodes (`node.rs`), and what it shares with the window (`shared.rs`) |
 | `src/audio.rs` | Sound device output and WAV export |
 | `src/midi.rs` | MIDI keyboard input |
 | `src/ui/mod.rs` | The app: menu bar, transport, frames, song files and undo |
