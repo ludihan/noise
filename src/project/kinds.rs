@@ -197,9 +197,17 @@ pub const DISTORTION_TYPES: &[&str] = &["Soft clip", "Hard clip", "Wave fold"];
 pub const LFO_MODES: &[&str] = &["Tremolo", "Auto-pan"];
 pub const LFO_SHAPES: &[&str] = &["Sine", "Triangle", "Square", "Saw down", "Saw up"];
 /// A Modulator's LFO shapes: the LFO's, and one drawn by hand.
-pub const MODULATOR_SHAPES: &[&str] = &["Sine", "Triangle", "Square", "Saw down", "Saw up", "Drawn"];
+pub const MODULATOR_SHAPES: &[&str] =
+    &["Sine", "Triangle", "Square", "Saw down", "Saw up", "Drawn", "Random", "Smooth random"];
 /// The index of the drawn shape in `MODULATOR_SHAPES`.
 pub const DRAWN_SHAPE: u32 = 5;
+/// A new random value every cycle, held through it.
+pub const RANDOM_SHAPE: u32 = 6;
+/// A new random value every cycle, glided to over it.
+pub const SMOOTH_RANDOM_SHAPE: u32 = 7;
+/// Whether a Modulator's LFO swings either side of where the parameter is,
+/// or only up from it.
+pub const POLARITIES: &[&str] = &["Bipolar", "Unipolar"];
 /// What a Modulator's cycle can be timed by: Hz, a period in lines, or a
 /// length in beats.
 pub const MODULATOR_SYNCS: &[&str] = &["Off (Hz)", "Lines", "Beats"];
@@ -690,7 +698,7 @@ static VOCODER_PARAMS: [ParamSpec; 9] = [
     p("Mix", 0.0, 1.0, 1.0).unit(Percent),
 ];
 static GLIDE_PARAMS: [ParamSpec; 2] = [c("Mode", 0.0, GLIDE_MODES), p("Time", 0.005, 2.0, 0.12).unit(Seconds)];
-static MODULATOR_PARAMS: [ParamSpec; 9] = [
+static MODULATOR_PARAMS: [ParamSpec; 11] = [
     c("Mode", 0.0, MODULATOR_MODES),
     c("Shape", 0.0, MODULATOR_SHAPES),
     p("Rate", 0.05, 20.0, 1.0).unit(Hz),
@@ -700,6 +708,8 @@ static MODULATOR_PARAMS: [ParamSpec; 9] = [
     p("Attack", 0.001, 1.0, 0.01).unit(Seconds),
     p("Release", 0.01, 2.0, 0.2).unit(Seconds),
     c("Beats", 4.0, MODULATOR_BEATS),
+    p("Phase", 0.0, 1.0, 0.0).unit(Percent),
+    c("Polarity", 0.0, POLARITIES),
 ];
 /// How many macros an instrument has: knobs that each move several of its
 /// and its effects' parameters at once.

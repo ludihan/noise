@@ -789,3 +789,26 @@ fn modulators_move_several_parameters_of_a_module() {
     assert!(!p.links.contains(&(lfo, f)) && p.module(lfo).unwrap().controls.is_empty());
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn new_parameters_keep_the_fader_and_pan_automated() {
+    // A Modulator saved with two parameters fewer than it has now, its
+    // fader automated and moved by another: they move along with it.
+    let dir = temp_dir("grown");
+    let mut p = Project::empty();
+    let m = p.add_module(ModuleKind::Modulator, [0.0; 2]).unwrap();
+    let other = p.add_module(ModuleKind::Modulator, [0.0; 2]).unwrap();
+    let n = ModuleKind::Modulator.params().len();
+    p.module_mut(m).unwrap().params.truncate(n - 2);
+    p.patterns[0].automation.push(Envelope::new(m, n - 2, vec![(0.0, 0.5)]));
+    p.add_control(other, m, n - 1);
+    p.add_control(other, m, 3);
+    let song = dir.join("song.json");
+    std::fs::write(&song, serde_json::to_string(&p).unwrap()).unwrap();
+    let (q, _) = Project::load(song.to_str().unwrap()).unwrap();
+    assert_eq!(q.patterns[0].automation[0].param, n, "the fader");
+    let params: Vec<usize> = q.controls_of(other, m).iter().map(|c| c.param).collect();
+    assert_eq!(params, [n + 1, 3], "the pan, and what came before stays");
+    assert_eq!(q.module(m).unwrap().params.len(), n);
+    std::fs::remove_dir_all(dir).unwrap();
+}

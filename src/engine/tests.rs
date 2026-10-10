@@ -764,6 +764,47 @@ fn modulators_move_several_parameters_each_by_its_depth() {
     assert!((at(2) - res.value_at(res.position(0.3) - 0.25)).abs() < 1e-6, "{}", at(2));
 }
 
+/// The cutoff a Modulator set to `params` gives a Filter, after each of
+/// `blocks` blocks of 256 frames.
+fn cutoffs(params: &[(usize, f32)], blocks: usize) -> Vec<f32> {
+    let (mut e, cutoff, f, _) = modulated(params);
+    e.node_mut(f).unwrap().dsp = Box::new(Probe(cutoff.clone()));
+    (0..blocks)
+        .map(|_| {
+            render(&mut e, 256);
+            *cutoff.lock().unwrap()
+        })
+        .collect()
+}
+
+#[test]
+fn random_lfos_hold_or_glide_to_a_new_value_each_cycle() {
+    // Random, over 4 lines of 6 ticks: a cycle is 15 blocks.
+    let got = cutoffs(&[(1, 6.0), (3, 1.0), (4, 4.0), (5, 1.0)], 45);
+    for cycle in got.chunks(15) {
+        assert!(cycle.iter().all(|&c| c == cycle[0]), "held through a cycle: {cycle:?}");
+    }
+    assert!(got[0] != got[15] && got[15] != got[30], "and new every cycle: {got:?}");
+    // Smooth, it glides from one to the next.
+    let got = cutoffs(&[(1, 7.0), (3, 1.0), (4, 4.0), (5, 1.0)], 30);
+    let (a, b) = (got[15], got[29]);
+    assert!(got[16..29].iter().all(|&c| c >= a.min(b) - 1e-3 && c <= a.max(b) + 1e-3), "{got:?}");
+    assert!(got[16..29].windows(2).any(|w| w[0] != w[1]), "moving: {got:?}");
+}
+
+#[test]
+fn lfos_start_where_their_phase_says_and_unipolar_ones_only_go_up() {
+    let spec = &ModuleKind::Filter.params()[1];
+    let up = |by: f32| spec.value_at(spec.position(2000.0) + by);
+    // A sine a quarter of the way in starts at its top.
+    let got = cutoffs(&[(3, 1.0), (4, 4.0), (5, 1.0), (9, 0.25)], 1);
+    assert!((got[0] - up(0.5)).abs() < 1.0, "{got:?}");
+    // A unipolar square: up its whole swing, then back where it was.
+    let got = cutoffs(&[(1, 2.0), (3, 1.0), (4, 4.0), (5, 1.0), (10, 1.0)], 15);
+    assert_eq!(got[0], up(1.0));
+    assert!((got[14] - 2000.0).abs() < 0.01, "{got:?}");
+}
+
 #[test]
 fn modulators_follow_their_input() {
     let (mut e, cutoff, f, mut p) = modulated(&[(0, 1.0), (5, 1.0)]);

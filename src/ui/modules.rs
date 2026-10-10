@@ -3,7 +3,9 @@
 //! and the selected module's parameters beside it.
 
 use super::{App, instruments, lfo, routing, theme, widgets};
-use crate::project::{DEFAULT_SHAPE, DRAWN_SHAPE, MACROS, Module, ModuleKind, OUTPUT_ID, interpolate};
+use crate::project::{
+    DEFAULT_SHAPE, DRAWN_SHAPE, MACROS, Module, ModuleKind, OUTPUT_ID, RANDOM_SHAPE, SMOOTH_RANDOM_SHAPE, interpolate,
+};
 use eframe::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 
 /// The stripe along the top of a module: amber for instruments, green for
@@ -421,7 +423,8 @@ pub fn param_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
         modulate_with(app, by, id, i);
     }
     if module.kind == ModuleKind::Modulator && shown[0].round() == 0.0 && shown[1].round() as u32 == DRAWN_SHAPE {
-        shape_editor(app, ui, id, (!module.mute).then(|| app.modulator(id).0));
+        let phase = (!module.mute).then(|| (app.modulator(id).0 + shown[9]).fract());
+        shape_editor(app, ui, id, phase);
     }
     if module.kind == ModuleKind::Convolver {
         impulse_section(app, ui, &module);
@@ -485,21 +488,30 @@ fn wave_view(app: &App, ui: &mut egui::Ui, module: &Module, params: &[f32]) {
         ModuleKind::Modulator => {
             let (mode, shape) = (params[0].round() as u32, params[1].round() as u32);
             let (phase, signal) = app.modulator(module.id);
-            let amount = params[5];
+            let (amount, offset, unipolar) = (params[5], params[9], params[10] >= 0.5);
+            let random = matches!(shape, RANDOM_SHAPE | SMOOTH_RANDOM_SHAPE);
+            let speed = match params[3].round() as u32 {
+                0 => specs[2].format(params[2]),
+                1 => specs[4].format(params[4]),
+                _ if name(8) == "1" => "1 beat".to_string(),
+                _ => format!("{} beats", name(8)),
+            };
+            let trace = |ui: &mut egui::Ui, value: f32, about: &str| {
+                lfo::trace(ui, 54.0, ui.id().with(("modulator_trace", module.id)), value, amount, about);
+            };
             if mode != 0 {
-                let about = format!("{} · output", name(0));
-                lfo::trace(ui, 54.0, ui.id().with(("modulator_trace", module.id)), signal, amount, &about);
+                trace(ui, signal, &format!("{} · output", name(0)));
+            } else if random {
+                // Unipolar, it puts out 0..1, and bipolar half of -1..1.
+                trace(ui, if unipolar { signal } else { 2.0 * signal }, &format!("{} · {speed}", name(1)));
             } else if shape != DRAWN_SHAPE {
-                let speed = match params[3].round() as u32 {
-                    0 => specs[2].format(params[2]),
-                    1 => specs[4].format(params[4]),
-                    _ if name(8) == "1" => "1 beat".to_string(),
-                    _ => format!("{} beats", name(8)),
-                };
-                let about = format!("{} · {speed}", name(1));
                 let drawn = &module.shape;
+                let wave = |p: f32| {
+                    let w = lfo::shape_at(shape, drawn, (p + offset).fract());
+                    if unipolar { (w + 1.0) * 0.5 } else { w }
+                };
                 let phase = (!module.mute).then_some(phase);
-                lfo::cycle(ui, 54.0, &|p| lfo::shape_at(shape, drawn, p), amount, phase, &about);
+                lfo::cycle(ui, 54.0, &wave, amount, phase, &format!("{} · {speed}", name(1)));
             } else {
                 return;
             }
@@ -518,9 +530,11 @@ fn in_use(kind: ModuleKind, params: &[f32], i: usize) -> bool {
     if kind != ModuleKind::Modulator {
         return true;
     }
-    let (mode, sync) = (params[0].round() as u32, params[3].round() as u32);
+    let (mode, sync, shape) = (params[0].round() as u32, params[3].round() as u32, params[1].round() as u32);
     match i {
-        1 | 3 => mode == 0,
+        1 | 3 | 10 => mode == 0,
+        // Where in the cycle it starts means nothing to a random shape.
+        9 => mode == 0 && !matches!(shape, RANDOM_SHAPE | SMOOTH_RANDOM_SHAPE),
         2 => mode == 0 && sync == 0,
         4 => mode == 0 && sync == 1,
         8 => mode == 0 && sync == 2,

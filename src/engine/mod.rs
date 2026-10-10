@@ -349,6 +349,7 @@ impl Engine {
                     phase: 0.0,
                     follow: 0.0,
                     signal: 0.0,
+                    random: [0.0; 3],
                     last_note: (0.0, 0.0, 0),
                 },
             };

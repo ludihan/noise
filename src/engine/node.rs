@@ -50,6 +50,9 @@ pub(super) struct Node {
     pub(super) follow: f32,
     /// What it put out last block, before its Amount: -1..1.
     pub(super) signal: f32,
+    /// A random LFO's values for the last cycle and this one, and the
+    /// phase it last played at.
+    pub(super) random: [f32; 3],
     /// The last note an instrument was played, how hard (0..1), and when
     /// (by `Engine::notes_played`), for Modulators tracking it. A Modulator
     /// in Envelope mode keeps the when of the note that started it here.

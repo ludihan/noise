@@ -46,7 +46,7 @@ noise --demo-wav [out.wav]         # render the demo song
   browser; eight **macros** an
   instrument, each moving any parameters of it and its effects at once.
 - **Modules**: Generator, Analog Synth (two oscillators, sub and noise into a ladder filter per voice, with filter and amp envelopes, an LFO, unison, and mono and legato voices with glide), Plucked String (a modelled string, up to three a voice), Wavetable (morphing, band-limited tables with unison), FM, Drums, Kicker, SpectraVoice, FMX, Sampler, Granular (a sample as a cloud of grains), Input (the sound card's input, live), MultiSynth, Glide (portamento between notes) and Modulator (moving any parameters of any modules, each by its own depth, and drawing what it does: an LFO with
-  drawn shapes synced to beats, follower, key and velocity tracker,
+  drawn and random shapes, a phase and a polarity, synced to beats, follower, key and velocity tracker,
   envelope, or a knob);
   Filter, Filter Pro, Analog Filter, Distortion, Delay, Echo, Reverb, Plate Reverb, Convolver (built-in or loaded impulses), Amplifier, LFO, Flanger, Chorus, Phaser,
   Vocal Filter, Vocoder, Repeater, Multitap Delay, Ring Mod, WaveShaper, Scream Filter, Pitch Shifter, Vibrato, Stereo Expander, Comb Filter, Exciter, Cabinet Simulator, DC Blocker, Gate, Compressor, Maximizer, EQ, EQ 5 and EQ 10. Device chains with presets.

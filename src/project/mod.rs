@@ -1079,10 +1079,16 @@ impl Project {
                 }
             }
         }
+        // Modules with parameters added since the song was saved: their
+        // number, how many they had and how many are new.
+        let mut grown = Vec::new();
         for m in &mut p.modules {
             // Parameters added since the song was saved start at their
             // defaults.
             let specs = m.kind.params();
+            if m.params.len() < specs.len() {
+                grown.push((m.id, m.params.len(), specs.len() - m.params.len()));
+            }
             m.params.truncate(specs.len());
             m.params.extend(specs[m.params.len()..].iter().map(|s| s.default));
             for (v, s) in m.params.iter_mut().zip(specs) {
@@ -1100,6 +1106,22 @@ impl Project {
             m.phrases.truncate(MAX_PHRASES);
             m.phrases.iter_mut().for_each(Phrase::normalize);
             m.selected_phrase = m.selected_phrase.min(m.phrases.len().saturating_sub(1));
+        }
+        // What came after their parameters, the fader, pan and macros,
+        // moved along to make room for the new ones.
+        for (id, had, added) in grown {
+            let shift = |module: u8, param: &mut usize| {
+                if module == id && *param >= had {
+                    *param += added;
+                }
+            };
+            for e in p.patterns.iter_mut().flat_map(|pat| &mut pat.automation) {
+                shift(e.module, &mut e.param);
+            }
+            for m in &mut p.modules {
+                m.controls.iter_mut().for_each(|c| shift(c.module, &mut c.param));
+                m.macros.iter_mut().flat_map(|mac| &mut mac.targets).for_each(|t| shift(t.module, &mut t.param));
+            }
         }
         if p.module(OUTPUT_ID).is_none() {
             p.modules.push(Module::new(OUTPUT_ID, ModuleKind::Output, [580.0, 90.0]));

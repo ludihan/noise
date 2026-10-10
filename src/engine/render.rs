@@ -46,6 +46,7 @@ impl Engine {
     pub(super) fn modulate(
         nodes: &mut [Node],
         live: &mut Vec<(u8, usize, f32)>,
+        rng: &mut crate::rng::Rng,
         project: &Project,
         ctx: &Ctx,
         i: usize,
@@ -58,6 +59,7 @@ impl Engine {
         let (mode, shape, rate, sync, period, amount, attack, release) =
             (p[0].round() as u32, p[1].round() as u32, p[2], p[3].round() as u32, p[4], p[5], p[6], p[7]);
         let beats = crate::project::MODULATOR_BEAT_LENGTHS[(p[8].round() as usize).min(9)];
+        let (offset_phase, unipolar) = (p[9], p[10] >= 0.5);
         // The last note played on what it follows, for Key and Velocity.
         let last = || {
             let notes = nodes[i].inputs.iter().map(|&j| nodes[j].last_note);
@@ -111,15 +113,29 @@ impl Engine {
                 Some(l) => frames as f32 / (l * ctx.samples_per_line).max(1.0),
                 None => rate * frames as f32 / ctx.sr,
             };
-            let w = if shape == crate::project::DRAWN_SHAPE {
-                let points =
-                    if module.shape.is_empty() { &crate::project::DEFAULT_SHAPE[..] } else { &module.shape[..] };
-                crate::project::interpolate(points, node.phase, false, false).map_or(0.0, |v| 2.0 * v - 1.0)
-            } else {
-                dsp::lfo_shape(shape, node.phase)
+            // A random shape takes its next value as a cycle begins: where
+            // the phase comes round, or jumps back with the song.
+            if node.phase < node.random[2] {
+                node.random = [node.random[1], rng.next(), 0.0];
+            }
+            node.random[2] = node.phase;
+            let at = (node.phase + offset_phase).fract();
+            let w = match shape {
+                crate::project::DRAWN_SHAPE => {
+                    let points =
+                        if module.shape.is_empty() { &crate::project::DEFAULT_SHAPE[..] } else { &module.shape[..] };
+                    crate::project::interpolate(points, at, false, false).map_or(0.0, |v| 2.0 * v - 1.0)
+                }
+                crate::project::RANDOM_SHAPE => node.random[1],
+                crate::project::SMOOTH_RANDOM_SHAPE => {
+                    let t = node.phase * node.phase * (3.0 - 2.0 * node.phase);
+                    node.random[0] + (node.random[1] - node.random[0]) * t
+                }
+                _ => dsp::lfo_shape(shape, at),
             };
             node.phase = (node.phase + inc).fract();
-            w * 0.5
+            // Unipolar, it only goes up from where the parameter is.
+            if unipolar { (w + 1.0) * 0.5 } else { w * 0.5 }
         };
         node.signal = signal;
         let offset = amount * signal;
@@ -166,7 +182,7 @@ impl Engine {
             }
             if self.nodes[i].kind.controls() {
                 let input_peak = scratch.iter().fold(0f32, |m, f| m.max(f[0].abs()).max(f[1].abs()));
-                Self::modulate(&mut self.nodes, &mut self.live, project, &ctx, i, n, input_peak);
+                Self::modulate(&mut self.nodes, &mut self.live, &mut self.rng, project, &ctx, i, n, input_peak);
             }
             let node = &mut self.nodes[i];
             let module = &project.modules[node.module];
