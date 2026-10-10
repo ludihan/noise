@@ -109,4 +109,12 @@ fn shots() {
         app.open_demo(0);
         app.view = View::Mixer;
     });
+    shot("folded", |app| {
+        // The instrument's effects folded to their names.
+        let fx = app.project.chain(5).effects.clone();
+        app.chain_view.fold(&fx);
+        app.selected_module = Some(5);
+        app.view = View::Sampler;
+        app.sampler.synth_tab = sampler::SynthTab::Synth;
+    });
 }

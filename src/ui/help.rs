@@ -377,7 +377,8 @@ const TOPICS: &[Topic] = &[
                 "The Instrument tab (F4) edits the selected instrument. Its device chain shows everything its sound goes through as panels: a synth's page is Synth, a Sampler's is Effects, beside its Waveform, Keyzones, Modulation and Phrase pages.",
             ),
             List(&[
-                "The instrument comes first; its panel mutes and solos it.",
+                "Above the chain, CHAIN shows every device along it in order, and the Modulators moving them: click one to scroll to it. + Effect and + Send add to the end from there too, and Fold All folds every device to its name to see the whole chain, Open All opens them again. The − on a device, or a double-click on its name, folds it; click a folded one to open it.",
+                "The instrument comes first; its panel mutes and solos it. The macros beside it fold away while no macro moves anything; click MACROS to open them.",
                 "Its own effects follow, in order. Each can be switched off, moved by dragging its name or with the left and right arrows, or removed with the bin. + Add Effect adds one at the end.",
                 "From there the sound goes on to the effects of the track playing it, then the master. + Add Send puts a Send at the end of the chain, to a send track or a new one: the way to share a reverb or a delay.",
                 "The Modulators moving any of these come last; + Add Modulator adds one.",

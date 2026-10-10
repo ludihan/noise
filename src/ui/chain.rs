@@ -10,8 +10,28 @@ use super::{App, modules, pattern, routing, theme, widgets};
 use crate::project::{MACROS, ModuleKind, OUTPUT_ID, Owner};
 use eframe::egui::{self, Align2, Color32, FontId, RichText, Sense, Stroke, StrokeKind, Vec2};
 
-/// Width of a device panel.
+/// Width of a device panel, and of one folded to its name.
 const DEVICE_W: f32 = 215.0;
+const FOLDED_W: f32 = 26.0;
+
+/// How the chains are shown: which devices are folded to their names,
+/// which instruments show their macros, and a device to scroll to.
+#[derive(Default)]
+pub struct ChainView {
+    folded: std::collections::HashSet<u8>,
+    /// Instruments whose macro panel was opened or closed by hand; the rest
+    /// show it while any macro moves something.
+    macros: std::collections::HashMap<u8, bool>,
+    scroll_to: Option<u8>,
+}
+
+impl ChainView {
+    /// Folds `ids` to their names.
+    #[cfg(test)]
+    pub fn fold(&mut self, ids: &[u8]) {
+        self.folded.extend(ids);
+    }
+}
 
 /// What a device is to the instrument whose chain is shown.
 #[derive(Clone, Copy, PartialEq)]
@@ -34,6 +54,9 @@ enum Action {
     /// A Send at the end of the chain, to this send track, or to a new one.
     AddSend(usize, Option<u8>),
     Select(u8),
+    /// Folds a device to its name, or opens it.
+    Fold(u8, bool),
+    FoldAll(bool),
     /// An effect dragged by its name and let go at this x.
     Drop(u8, f32),
 }
@@ -68,6 +91,16 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
         .map(|m| m.id)
         .collect();
     let mut action = None;
+    // Every device along the way, in order, for the overview.
+    let mut path: Vec<u8> = id.filter(|&i| i != OUTPUT_ID && send.is_none()).into_iter().collect();
+    if !notes_only {
+        path.extend(&chain.effects);
+    }
+    if master {
+        path.push(OUTPUT_ID);
+    }
+    overview(app, ui, owner, &path, &modulators, chain.effects.len(), !notes_only, &mut action);
+    ui.add_space(3.0);
     let h = ui.available_height() - 8.0;
     egui::ScrollArea::horizontal().id_salt("chain").auto_shrink(false).show(ui, |ui| {
         ui.horizontal_top(|ui| {
@@ -75,8 +108,16 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
             match (id, track) {
                 (Some(id), _) if send.is_some() => send_panel(app, ui, id, h),
                 (Some(id), _) if !master => {
-                    if inst.as_ref().is_some_and(|m| m.kind.plays_sound()) {
-                        macros_panel(app, ui, id, h);
+                    if let Some(m) = inst.as_ref().filter(|m| m.kind.plays_sound()) {
+                        let used = m.macros.iter().any(|mac| !mac.targets.is_empty());
+                        if app.chain_view.macros.get(&id).copied().unwrap_or(used) {
+                            macros_panel(app, ui, id, h);
+                        } else if folded_strip(ui, "MACROS", theme::FRAME_LINE, false, h)
+                            .on_hover_text("Eight knobs that each move any parameters of the instrument and its effects: click to show them")
+                            .clicked()
+                        {
+                            app.chain_view.macros.insert(id, true);
+                        }
                         ui.separator();
                     }
                     device(app, ui, id, Place::Instrument, h, &mut action);
@@ -192,6 +233,20 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
             }
         }
         Some(Action::Select(m)) => app.selected_module = Some(m),
+        Some(Action::Fold(m, on)) => {
+            if on {
+                app.chain_view.folded.insert(m);
+            } else {
+                app.chain_view.folded.remove(&m);
+            }
+        }
+        Some(Action::FoldAll(on)) => {
+            if on {
+                app.chain_view.folded.extend(path.iter().chain(&modulators));
+            } else {
+                app.chain_view.folded.clear();
+            }
+        }
         // Drops are handled where the devices' places are known.
         Some(Action::Drop(..)) | None => {}
     }
@@ -298,7 +353,27 @@ fn dragging(ui: &egui::Ui) -> Option<u8> {
 /// it was drawn.
 fn device(app: &mut App, ui: &mut egui::Ui, id: u8, place: Place, h: f32, action: &mut Option<Action>) -> egui::Rect {
     let Some(m) = app.project.module(id).cloned() else { return egui::Rect::NOTHING };
+    let scroll = app.chain_view.scroll_to == Some(id);
+    if app.chain_view.folded.contains(&id) {
+        let off = m.mute || m.bypass;
+        let color = if off { Color32::from_gray(80) } else { modules::module_color(&m) };
+        let text = format!("{id:02X} {}", m.name);
+        let resp = folded_strip(ui, &text, color, app.selected_module == Some(id), h);
+        if scroll {
+            resp.scroll_to_me(Some(egui::Align::Center));
+            app.chain_view.scroll_to = None;
+        }
+        let rect = resp.rect;
+        if resp.on_hover_text(format!("{text} · {}: click to open it", m.kind.name())).clicked() {
+            *action = Some(Action::Fold(id, false));
+        }
+        return rect;
+    }
     let (rect, _) = ui.allocate_exact_size(Vec2::new(DEVICE_W, h), Sense::hover());
+    if scroll {
+        ui.scroll_to_rect(rect, Some(egui::Align::Center));
+        app.chain_view.scroll_to = None;
+    }
     let edge = if app.selected_module == Some(id) { theme::SELECTED } else { theme::FRAME_LINE };
     ui.painter().rect(rect, 3.0, theme::FRAME_BG, Stroke::new(1.0, edge), StrokeKind::Inside);
     let inner = rect.shrink(5.0);
@@ -345,8 +420,10 @@ fn device(app: &mut App, ui: &mut egui::Ui, id: u8, place: Place, h: f32, action
     } else {
         "Click to select it in the mixer, the module list and automation; right-click for presets and its color"
     };
-    let resp = resp.on_hover_text(tip);
-    if resp.clicked() {
+    let resp = resp.on_hover_text(format!("{tip}; double-click to fold it to its name"));
+    if resp.double_clicked() {
+        *action = Some(Action::Fold(id, true));
+    } else if resp.clicked() {
         *action = Some(Action::Select(id));
     }
     resp.context_menu(|ui| {
@@ -407,14 +484,16 @@ fn device(app: &mut App, ui: &mut egui::Ui, id: u8, place: Place, h: f32, action
                 *action = Some(Action::Move(id, 1));
             }
         }
-        if !matches!(place, Place::Instrument | Place::Output) {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if super::icons::button(ui, super::icons::Icon::Bin).on_hover_text("Remove it").clicked() {
-                    *action =
-                        Some(if matches!(place, Place::Own(..)) { Action::Remove(id) } else { Action::Delete(id) });
-                }
-            });
-        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if !matches!(place, Place::Instrument | Place::Output)
+                && super::icons::button(ui, super::icons::Icon::Bin).on_hover_text("Remove it").clicked()
+            {
+                *action = Some(if matches!(place, Place::Own(..)) { Action::Remove(id) } else { Action::Delete(id) });
+            }
+            if super::icons::button(ui, super::icons::Icon::Minus).on_hover_text("Fold it to its name").clicked() {
+                *action = Some(Action::Fold(id, true));
+            }
+        });
     });
     if m.kind == ModuleKind::Send {
         send_target(app, ui, id);
@@ -454,37 +533,9 @@ fn ending(app: &mut App, ui: &mut egui::Ui, owner: Owner, len: usize, h: f32, ac
     ui.vertical(|ui| {
         ui.set_width(150.0);
         ui.set_max_height(h);
-        ui.menu_button("+ Add Effect", |ui| {
-            let effects = ModuleKind::ADDABLE.into_iter().filter(|k| k.is_effect() && *k != ModuleKind::Send);
-            egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
-                for kind in effects {
-                    if ui.button(kind.name()).clicked() {
-                        *action = Some(Action::Add(len, kind));
-                        ui.close();
-                    }
-                }
-            });
-        })
-        .response
-        .on_hover_text("At the end of the chain");
-        // The master can't send: what it sends would come round to it.
+        add_effect_menu(ui, "+ Add Effect", len, action);
         if owner != Owner::Module(OUTPUT_ID) {
-            ui.menu_button("+ Add Send", |ui| {
-                let sends: Vec<u8> = app.project.sends.iter().map(|s| s.module).collect();
-                for to in sends.into_iter().filter(|&to| app.project.can_send(owner, to)) {
-                    if ui.button(format!("To {}", routing::label(app, to))).clicked() {
-                        *action = Some(Action::AddSend(len, Some(to)));
-                        ui.close();
-                    }
-                }
-                let tip = "A send track of its own, for a reverb or a delay several chains share";
-                if ui.button("To a New Send Track").on_hover_text(tip).clicked() {
-                    *action = Some(Action::AddSend(len, None));
-                    ui.close();
-                }
-            })
-            .response
-            .on_hover_text("Send a copy of the sound here to a send track: for effects several chains share");
+            add_send_menu(app, ui, "+ Add Send", owner, len, action);
         }
         ui.add_space(8.0);
         let hint = match owner {
@@ -515,6 +566,132 @@ fn ending(app: &mut App, ui: &mut egui::Ui, owner: Owner, len: usize, h: f32, ac
                 app.mark();
             }
         }
+    });
+}
+
+/// A menu of every effect, to add at place `at` of the chain.
+fn add_effect_menu(ui: &mut egui::Ui, label: &str, at: usize, action: &mut Option<Action>) {
+    ui.menu_button(label, |ui| {
+        let effects = ModuleKind::ADDABLE.into_iter().filter(|k| k.is_effect() && *k != ModuleKind::Send);
+        egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
+            for kind in effects {
+                if ui.button(kind.name()).clicked() {
+                    *action = Some(Action::Add(at, kind));
+                    ui.close();
+                }
+            }
+        });
+    })
+    .response
+    .on_hover_text("Add an effect at the end of the chain");
+}
+
+/// A menu of the send tracks `owner`'s chain can send to, and a new one,
+/// to add a Send at place `at`. The master can't send: what it sends
+/// would come round to it.
+fn add_send_menu(app: &App, ui: &mut egui::Ui, label: &str, owner: Owner, at: usize, action: &mut Option<Action>) {
+    ui.menu_button(label, |ui| {
+        let sends: Vec<u8> = app.project.sends.iter().map(|s| s.module).collect();
+        for to in sends.into_iter().filter(|&to| app.project.can_send(owner, to)) {
+            if ui.button(format!("To {}", routing::label(app, to))).clicked() {
+                *action = Some(Action::AddSend(at, Some(to)));
+                ui.close();
+            }
+        }
+        let tip = "A send track of its own, for a reverb or a delay several chains share";
+        if ui.button("To a New Send Track").on_hover_text(tip).clicked() {
+            *action = Some(Action::AddSend(at, None));
+            ui.close();
+        }
+    })
+    .response
+    .on_hover_text("Send a copy of the sound here to a send track: for effects several chains share");
+}
+
+/// A device folded to its name, written up a strip in its color; `on`
+/// when it is the selected one.
+fn folded_strip(ui: &mut egui::Ui, text: &str, color: Color32, on: bool, h: f32) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(FOLDED_W, h), Sense::click());
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+    let edge = if on {
+        theme::SELECTED
+    } else if resp.hovered() {
+        theme::TEXT_WEAK
+    } else {
+        theme::FRAME_LINE
+    };
+    ui.painter().rect(rect, 3.0, theme::FRAME_BG, Stroke::new(1.0, edge), StrokeKind::Inside);
+    let band =
+        egui::Rect::from_min_size(rect.min + Vec2::new(3.0, 3.0), Vec2::new(rect.width() - 6.0, rect.height() - 6.0));
+    ui.painter().rect_filled(band, 2.0, color.gamma_multiply(if resp.hovered() { 0.55 } else { 0.35 }));
+    let galley = ui.painter().layout_no_wrap(text.to_string(), FontId::proportional(12.0), theme::TEXT);
+    let at = egui::pos2(rect.center().x - galley.size().y / 2.0, rect.top() + 8.0 + galley.size().x);
+    let shape = egui::epaint::TextShape::new(at, galley, theme::TEXT).with_angle(-std::f32::consts::FRAC_PI_2);
+    ui.painter().with_clip_rect(band).add(shape);
+    resp
+}
+
+/// The chain at a glance, above it: a chip for each device in order, a
+/// click from scrolling to it, the Modulators, adding effects, Sends and
+/// Modulators, and folding every device or none.
+#[allow(clippy::too_many_arguments)]
+fn overview(
+    app: &mut App,
+    ui: &mut egui::Ui,
+    owner: Owner,
+    path: &[u8],
+    modulators: &[u8],
+    len: usize,
+    sound: bool,
+    action: &mut Option<Action>,
+) {
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        theme::caption(ui, "CHAIN");
+        let chip = |app: &mut App, ui: &mut egui::Ui, id: u8| {
+            let Some(m) = app.project.module(id) else { return };
+            let off = m.mute || m.bypass;
+            let color = if off { Color32::from_gray(80) } else { modules::module_color(m) };
+            let text = m.name.clone();
+            let tip =
+                format!("{id:02X} {} · {}{}: click to show it", m.name, m.kind.name(), if off { ", off" } else { "" });
+            if widgets::chip(ui, color, &text, app.selected_module == Some(id)).on_hover_text(tip).clicked() {
+                app.chain_view.folded.remove(&id);
+                app.chain_view.scroll_to = Some(id);
+                app.selected_module = Some(id);
+            }
+        };
+        for (k, &id) in path.iter().enumerate() {
+            if k > 0 {
+                ui.label(RichText::new("›").color(theme::TEXT_WEAK));
+            }
+            chip(app, ui, id);
+        }
+        if sound {
+            add_effect_menu(ui, "+ Effect", len, action);
+            if owner != Owner::Module(OUTPUT_ID) {
+                add_send_menu(app, ui, "+ Send", owner, len, action);
+            }
+        }
+        if !modulators.is_empty() {
+            ui.separator();
+            ui.label(RichText::new("Modulated by").small().color(theme::TEXT_WEAK));
+            for &m in modulators {
+                chip(app, ui, m);
+            }
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let all: Vec<u8> = path.iter().chain(modulators).copied().collect();
+            let any_open = all.iter().any(|id| !app.chain_view.folded.contains(id));
+            let (label, tip) = if any_open {
+                ("Fold All", "Fold every device to its name, to see the whole chain")
+            } else {
+                ("Open All", "Open every device")
+            };
+            if ui.small_button(label).on_hover_text(tip).clicked() {
+                *action = Some(Action::FoldAll(any_open));
+            }
+        });
     });
 }
 
@@ -657,7 +834,14 @@ fn macros_panel(app: &mut App, ui: &mut egui::Ui, id: u8, h: f32) {
     );
     child.shrink_clip_rect(inner);
     let ui = &mut child;
-    theme::caption(ui, "MACROS");
+    ui.horizontal(|ui| {
+        theme::caption(ui, "MACROS");
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if super::icons::button(ui, super::icons::Icon::Minus).on_hover_text("Fold the macros away").clicked() {
+                app.chain_view.macros.insert(id, false);
+            }
+        });
+    });
     let hint = "Right-click a parameter of the instrument or its effects and choose Map to Macro.";
     ui.label(RichText::new(hint).small().color(theme::TEXT_WEAK));
     ui.add_space(3.0);
