@@ -48,6 +48,8 @@ pub(super) struct Node {
     pub(super) controls: Vec<(usize, usize, f32)>,
     pub(super) phase: f32,
     pub(super) follow: f32,
+    /// What it put out last block, before its Amount: -1..1.
+    pub(super) signal: f32,
     /// The last note an instrument was played, how hard (0..1), and when
     /// (by `Engine::notes_played`), for Modulators tracking it. A Modulator
     /// in Envelope mode keeps the when of the note that started it here.

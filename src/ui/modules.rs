@@ -2,7 +2,7 @@
 //! its level, switches and where its sound, notes or parameter changes go,
 //! and the selected module's parameters beside it.
 
-use super::{App, instruments, routing, theme, widgets};
+use super::{App, instruments, lfo, routing, theme, widgets};
 use crate::project::{DEFAULT_SHAPE, DRAWN_SHAPE, MACROS, Module, ModuleKind, OUTPUT_ID, interpolate};
 use eframe::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 
@@ -345,6 +345,7 @@ pub fn param_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
         app.project.modules.iter().filter(|m| m.kind.controls() && m.id != id).map(|m| m.id).collect();
     let mut modulate = None;
     ui.spacing_mut().item_spacing.y = 3.0;
+    wave_view(app, ui, &module, &shown);
     for (i, (spec, v)) in module.kind.params().iter().zip(&mut params).enumerate() {
         if !in_use(module.kind, &shown, i) {
             continue;
@@ -420,7 +421,7 @@ pub fn param_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
         modulate_with(app, by, id, i);
     }
     if module.kind == ModuleKind::Modulator && shown[0].round() == 0.0 && shown[1].round() as u32 == DRAWN_SHAPE {
-        shape_editor(app, ui, id);
+        shape_editor(app, ui, id, (!module.mute).then(|| app.modulator(id).0));
     }
     if module.kind == ModuleKind::Convolver {
         impulse_section(app, ui, &module);
@@ -467,6 +468,48 @@ fn impulse_section(app: &mut App, ui: &mut egui::Ui, module: &Module) {
     });
 }
 
+/// What an LFO or a Modulator set to `params` does, drawn over the
+/// parameters: an LFO's cycle, with a dot where a Modulator's is now, or
+/// what a Modulator following something has put out lately. A drawn shape
+/// has its own editor instead.
+fn wave_view(app: &App, ui: &mut egui::Ui, module: &Module, params: &[f32]) {
+    let specs = module.kind.params();
+    let name = |i: usize| specs[i].choices.get(params[i].round() as usize).copied().unwrap_or("");
+    match module.kind {
+        ModuleKind::Lfo => {
+            let shape = params[1].round() as u32;
+            let speed = if params[4] >= 0.5 { specs[5].format(params[5]) } else { specs[3].format(params[3]) };
+            let about = format!("{} · {} · {speed}", name(0), name(1));
+            lfo::cycle(ui, 54.0, &|p| crate::dsp::lfo_shape(shape, p), params[2], None, &about);
+        }
+        ModuleKind::Modulator => {
+            let (mode, shape) = (params[0].round() as u32, params[1].round() as u32);
+            let (phase, signal) = app.modulator(module.id);
+            let amount = params[5];
+            if mode != 0 {
+                let about = format!("{} · output", name(0));
+                lfo::trace(ui, 54.0, ui.id().with(("modulator_trace", module.id)), signal, amount, &about);
+            } else if shape != DRAWN_SHAPE {
+                let speed = match params[3].round() as u32 {
+                    0 => specs[2].format(params[2]),
+                    1 => specs[4].format(params[4]),
+                    _ if name(8) == "1" => "1 beat".to_string(),
+                    _ => format!("{} beats", name(8)),
+                };
+                let about = format!("{} · {speed}", name(1));
+                let drawn = &module.shape;
+                let phase = (!module.mute).then_some(phase);
+                lfo::cycle(ui, 54.0, &|p| lfo::shape_at(shape, drawn, p), amount, phase, &about);
+            } else {
+                return;
+            }
+            ui.add_space(2.0);
+        }
+        _ => return,
+    }
+    ui.add_space(2.0);
+}
+
 /// Whether parameter `i` of a `kind` set to `params` does anything, so
 /// the list shows it: a Modulator's LFO settings only as an LFO, its rate,
 /// period or beats only as its Sync says, its attack and release only when
@@ -490,7 +533,7 @@ fn in_use(kind: ModuleKind, params: &[f32], i: usize) -> bool {
 
 /// A Modulator's drawn LFO shape, a cycle from left to right: click to add
 /// a point, drag one to move it, right-click one to take it away.
-fn shape_editor(app: &mut App, ui: &mut egui::Ui, id: u8) {
+fn shape_editor(app: &mut App, ui: &mut egui::Ui, id: u8, phase: Option<f32>) {
     let Some(m) = app.project.module(id) else { return };
     let mut points = if m.shape.is_empty() { DEFAULT_SHAPE.to_vec() } else { m.shape.clone() };
     let before = points.clone();
@@ -553,6 +596,11 @@ fn shape_editor(app: &mut App, ui: &mut egui::Ui, id: u8) {
         })
         .collect();
     painter.add(egui::Shape::line(line, Stroke::new(1.5, theme::SELECTED)));
+    if let Some(p) = phase {
+        let at = Pos2::new(x_of(p), y_of(interpolate(&points, p, false, false).unwrap_or(0.5)));
+        painter.line_segment([Pos2::new(at.x, rect.top()), Pos2::new(at.x, rect.bottom())], (1.0, theme::SCOPE));
+        painter.circle_filled(at, 3.5, Color32::WHITE);
+    }
     for &(x, v) in &points {
         painter.rect_filled(
             Rect::from_center_size(Pos2::new(x_of(x), y_of(v)), Vec2::splat(6.0)),

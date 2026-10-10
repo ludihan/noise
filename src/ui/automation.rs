@@ -465,7 +465,7 @@ fn timing(ui: &mut egui::Ui, env: &mut Envelope, pattern_lines: usize, lpb: u32)
 fn shape_menu(ui: &mut egui::Ui, env: &mut Envelope, pattern_lines: usize, lpb: u32, around: f32) {
     ui.menu_button("Shape", |ui| {
         for (k, name) in LFO_SHAPES.iter().enumerate() {
-            if ui.button(*name).clicked() {
+            if super::lfo::shape_button(ui, name, false, &|p| crate::dsp::lfo_shape(k as u32, p)).clicked() {
                 let (points, steps, curve) = lfo_points(k, env.span(pattern_lines, lpb), around);
                 (env.points, env.steps, env.curve) = (points, steps, curve);
                 ui.close();

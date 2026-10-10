@@ -153,11 +153,17 @@ fn lfo(ui: &mut egui::Ui, title: &str, tip: &str, lfo: &mut VoiceLfo, depth: &Pa
                 .width(90.0)
                 .show_ui(ui, |ui| {
                     for (i, shape) in LFO_SHAPES.iter().enumerate() {
-                        ui.selectable_value(&mut lfo.shape, i as u8, *shape);
+                        let wave = |p| crate::dsp::lfo_shape(i as u32, p);
+                        if super::lfo::shape_button(ui, shape, lfo.shape as usize == i, &wave).clicked() {
+                            lfo.shape = i as u8;
+                        }
                     }
                 });
         });
         ui.spacing_mut().item_spacing.y = 3.0;
+        let shape = lfo.shape as u32;
+        let about = format!("{} · {}", LFO_SHAPES[lfo.shape as usize], LFO_RATE.format(lfo.rate));
+        super::lfo::cycle(ui, 44.0, &|p| crate::dsp::lfo_shape(shape, p), 1.0, None, &about);
         bar(ui, &LFO_RATE, &mut lfo.rate, 260.0);
         bar(ui, depth, &mut lfo.depth, 260.0);
         bar(ui, &LFO_DELAY, &mut lfo.delay, 260.0);

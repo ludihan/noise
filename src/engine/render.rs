@@ -89,14 +89,14 @@ impl Engine {
             _ => Some(1.0),
         };
         let node = &mut nodes[i];
-        let offset = if mode == 4 {
-            amount * node.follow
+        let signal = if mode == 4 {
+            node.follow
         } else if let Some(target) = followed {
             // Followed through the attack and release, without jumps.
             let time = if target > node.follow { attack } else { release };
             let coef = 1.0 - (-(frames as f32) / (time.max(1e-4) * ctx.sr)).exp();
             node.follow += coef * (target - node.follow);
-            amount * node.follow
+            node.follow
         } else {
             let lines = match sync {
                 0 => None,
@@ -119,8 +119,10 @@ impl Engine {
                 dsp::lfo_shape(shape, node.phase)
             };
             node.phase = (node.phase + inc).fract();
-            amount * w * 0.5
+            w * 0.5
         };
+        node.signal = signal;
+        let offset = amount * signal;
         if module.mute {
             return;
         }
@@ -349,6 +351,11 @@ impl Engine {
         if let Ok(mut out) = s.automated.try_lock() {
             out.clear();
             out.extend_from_slice(&self.live);
+        }
+        for node in self.nodes.iter().filter(|n| n.kind.controls() && n.track.is_none()) {
+            let at = 2 * node.id as usize;
+            s.modulators[at].store(node.phase.to_bits(), Ordering::Relaxed);
+            s.modulators[at + 1].store(node.signal.to_bits(), Ordering::Relaxed);
         }
         if let Ok(mut out) = s.phrases.try_lock() {
             out.clear();

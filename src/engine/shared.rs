@@ -160,6 +160,9 @@ pub struct Shared {
     /// The values envelopes give parameters while the song plays, as
     /// (module, automatable parameter, value).
     pub automated: Mutex<Vec<(u8, usize, f32)>>,
+    /// Each Modulator's LFO phase (0..1) and what it puts out before its
+    /// Amount (-1..1), as f32 bits indexed by `2 * id` and `2 * id + 1`.
+    pub modulators: Vec<AtomicU32>,
     /// What each track's notes played lately, before effects, mono:
     /// `TRACK_SCOPE_LEN` frames per track, oldest first.
     pub track_scopes: Mutex<Vec<f32>>,
@@ -172,6 +175,13 @@ pub struct Shared {
 }
 
 impl Shared {
+    /// Modulator `id`'s phase and what it puts out, as `modulators` has
+    /// them.
+    pub fn modulator(&self, id: u8) -> (f32, f32) {
+        let at = |i: usize| f32::from_bits(self.modulators[2 * id as usize + i].load(Ordering::Relaxed));
+        (at(0), at(1))
+    }
+
     /// The peak levels of module `id`.
     pub fn level(&self, id: u8) -> [f32; 2] {
         let at = |ch: usize| f32::from_bits(self.levels[2 * id as usize + ch].load(Ordering::Relaxed));
@@ -195,6 +205,7 @@ impl Default for Shared {
             cpu: AtomicU32::new(0),
             levels: (0..512).map(|_| AtomicU32::new(0)).collect(),
             automated: Mutex::new(Vec::with_capacity(MAX_AUTOMATED)),
+            modulators: (0..512).map(|_| AtomicU32::new(0)).collect(),
             track_scopes: Mutex::new(vec![0.0; MAX_TRACKS * TRACK_SCOPE_LEN]),
             phrases: Mutex::new(Vec::with_capacity(MAX_PHRASES)),
             resample: Tape::default(),

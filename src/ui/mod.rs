@@ -10,6 +10,7 @@ mod help;
 mod icons;
 mod instruments;
 mod jobs;
+mod lfo;
 mod library;
 mod menu;
 mod mixer;
@@ -495,6 +496,12 @@ impl App {
         let live = self.shared.automated.lock().ok()?;
         // A Modulator's value comes after the envelope it moves on from.
         live.iter().rev().find(|a| a.0 == id && a.1 == param).map(|a| a.2)
+    }
+
+    /// Modulator `id`'s LFO phase (0..1) and what it puts out before its
+    /// Amount.
+    pub fn modulator(&self, id: u8) -> (f32, f32) {
+        self.shared.modulator(id)
     }
 
     /// The track scopes, `TRACK_SCOPE_LEN` frames a track.

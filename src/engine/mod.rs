@@ -348,6 +348,7 @@ impl Engine {
                     controls: Vec::new(),
                     phase: 0.0,
                     follow: 0.0,
+                    signal: 0.0,
                     last_note: (0.0, 0.0, 0),
                 },
             };
