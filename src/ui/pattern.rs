@@ -1269,7 +1269,7 @@ fn track_headers(app: &mut App, ui: &mut egui::Ui, layout: &Layout, h: f32) {
         painter.text(
             Pos2::new(row.left() + 28.0, row.center().y),
             Align2::LEFT_CENTER,
-            format!("{columns}"),
+            format!("{columns} {}", if columns == 1 { "note" } else { "notes" }),
             font.clone(),
             theme::TEXT_WEAK,
         );

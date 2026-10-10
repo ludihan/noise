@@ -908,14 +908,21 @@ impl eframe::App for App {
         // height it had, however it was closed.
         egui::Panel::bottom("lower_tabs").frame(frame).resizable(false).show(ui, |ui| self.lower_tabs(ui));
         if self.show_lower {
-            let panel = egui::Panel::bottom("lower").frame(frame).min_size(120.0);
+            // It never takes the whole middle: the view above keeps its tabs
+            // and some rows.
+            let most = (ui.available_height() - 180.0).max(120.0);
+            self.lower_height = self.lower_height.min(most);
+            let panel = egui::Panel::bottom("lower").frame(frame).min_size(120.0).max_size(most);
             let panel = if self.lower_reopen {
                 panel.exact_size(self.lower_height)
             } else {
                 panel.resizable(true).default_size(self.lower_height)
             };
-            let shown = panel.show(ui, |ui| self.lower_frame(ui));
-            self.lower_height = shown.response.rect.height();
+            let shown = panel.show(ui, |ui| {
+                ui.set_max_height(ui.available_height());
+                self.lower_frame(ui)
+            });
+            self.lower_height = shown.response.rect.height().min(most);
         }
         self.lower_reopen = !self.show_lower;
         egui::CentralPanel::default().frame(frame).show(ui, |ui| {

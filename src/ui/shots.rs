@@ -41,7 +41,7 @@ fn shots() {
         let env = app.pattern_mut().automation.first_mut().expect("an envelope in the demo's first pattern");
         env.every = 1.0;
         (env.points, env.steps, env.curve) = super::automation::lfo_points(0, 4.0, 0.5);
-        (app.lower, app.show_lower) = (super::Lower::Automation, true);
+        (app.lower, app.show_lower, app.lower_height) = (super::Lower::Automation, true, 300.0);
         super::automation::pick(app, &[1, 2]);
     });
     shot("busy", |app| {
@@ -116,5 +116,21 @@ fn shots() {
         app.selected_module = Some(5);
         app.view = View::Sampler;
         app.sampler.synth_tab = sampler::SynthTab::Synth;
+    });
+    shot("sampler", |app| {
+        // A Sampler's waveform.
+        let kit = app.project.modules.iter().find(|m| m.kind == ModuleKind::Sampler).expect("a Sampler").id;
+        app.selected_module = Some(kit);
+        app.view = View::Sampler;
+    });
+    shot("keyzones", |app| {
+        let kit = app.project.modules.iter().find(|m| m.kind == ModuleKind::Sampler).expect("a Sampler").id;
+        app.selected_module = Some(kit);
+        app.view = View::Sampler;
+        app.sampler.tab = sampler::Tab::Keyzones;
+    });
+    shot("track_fx", |app| {
+        app.show_track_fx(0);
+        app.lower_height = 270.0;
     });
 }
