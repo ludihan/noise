@@ -93,7 +93,7 @@ noise --demo-wav [out.wav]         # render the demo song
 | `src/ui/mixer.rs` | The mixer |
 | `src/ui/modules.rs`, `routing.rs`, `widgets.rs` | The module list and parameter panel; wiring modules with lists to tick; the parameter bars, chips and boxes the panels share |
 | `src/ui/automation.rs` | The automation editor |
-| `src/ui/sampler.rs`, `chain.rs`, `presets.rs`, `modulation.rs`, `phrase.rs`, `waveview.rs` | The instrument editor and the sampler, the device chain and its presets, the modulation and phrase pages, and the wave view |
+| `src/ui/sampler/` (the sample list, `waveform.rs`, `edit.rs` and `keyzones.rs`), `chain.rs`, `presets.rs`, `modulation.rs`, `phrase.rs`, `waveview.rs` | The instrument editor and the sampler, the device chain and its presets, the modulation and phrase pages, and the wave view |
 | `src/ui/spectrum.rs`, `trackscopes.rs` | The spectrum analyzer; the track scopes |
 | `src/ui/instruments.rs`, `browser.rs`, `files.rs`, `recorder.rs`, `help.rs`, `comments.rs`, `settings.rs`, `soundfonts.rs`, `theme.rs` | The instrument list, disk browser, file explorer, sample recorder, manual, song comments, preferences, the soundfont preset picker and colors |
 
