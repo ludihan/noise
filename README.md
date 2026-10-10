@@ -37,7 +37,7 @@ noise --demo-wav [out.wav]         # render the demo song
 - **Track effects**, on top of each instrument's
   own, **groups** that send tracks on through another track's effects as a
   bus, a per-track volume command (`Lxx`), and a **master chain** of
-  effects for the whole mix. **Sidechains**: a Compressor or Gate can listen to
+  effects for the whole mix. **Sidechains**: a Compressor, Gate or Vocoder can listen to
   another module's sound as its key input.
 - **Pattern sequencer and matrix** with per-slot mutes, block copying and
   sections, drag and drop and a right-click menu for slots; a **mixer**
@@ -48,7 +48,7 @@ noise --demo-wav [out.wav]         # render the demo song
   drawn shapes synced to beats, follower, key and velocity tracker,
   envelope, or a knob);
   Filter, Filter Pro, Analog Filter, Distortion, Delay, Echo, Reverb, Plate Reverb, Convolver (built-in or loaded impulses), Amplifier, LFO, Flanger, Chorus, Phaser,
-  Vocal Filter, Repeater, Multitap Delay, Ring Mod, WaveShaper, Scream Filter, Pitch Shifter, Vibrato, Stereo Expander, Comb Filter, Exciter, Cabinet Simulator, DC Blocker, Gate, Compressor, Maximizer, EQ, EQ 5 and EQ 10. Device chains with presets.
+  Vocal Filter, Vocoder, Repeater, Multitap Delay, Ring Mod, WaveShaper, Scream Filter, Pitch Shifter, Vibrato, Stereo Expander, Comb Filter, Exciter, Cabinet Simulator, DC Blocker, Gate, Compressor, Maximizer, EQ, EQ 5 and EQ 10. Device chains with presets.
 - **Sampler** with keyzones, a waveform editor with time-stretch, a slicer, per-voice pitch
   and filter envelopes (with key tracking and velocity) and LFOs, beat sync, autoseek and mute groups. Loads WAV, FLAC
   and Ogg Vorbis, and **SF2, SF3 and SFZ soundfonts**; records the audio input or the song (resampling).

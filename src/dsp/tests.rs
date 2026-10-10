@@ -1165,3 +1165,31 @@ fn plucked_strings_ring_in_tune_and_die_away() {
     left(s.as_mut(), &fast, 48000);
     assert!(left(s.as_mut(), &fast, 64).iter().all(|v| *v == 0.0));
 }
+
+#[test]
+fn the_vocoder_shapes_its_input_by_its_key() {
+    let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0, song_line: None };
+    let params: Vec<f32> = ModuleKind::Vocoder.params().iter().map(|p| p.default).collect();
+    // A buzzy carrier: a 110 Hz pulse train, every harmonic alike.
+    let carrier: Vec<Frame> = (0..48000).map(|i| if i % 436 == 0 { [4.0; 2] } else { [0.0; 2] }).collect();
+    let run = |key: &dyn Fn(usize) -> f32| {
+        let mut v = create(ModuleKind::Vocoder, ctx.sr);
+        let keys: Vec<Frame> = (0..48000).map(|i| [key(i); 2]).collect();
+        let mut out = vec![[0.0; 2]; 48000];
+        for ((o, i), k) in out.chunks_mut(MAX_BLOCK).zip(carrier.chunks(MAX_BLOCK)).zip(keys.chunks(MAX_BLOCK)) {
+            v.process_keyed(&ctx, &params, i, k, o);
+        }
+        out.split_off(24000)
+    };
+    let silent = run(&|_| 0.0);
+    assert!(silent.iter().all(|f| f[0].abs() < 1e-4), "no key, no sound");
+    let tone = |f: f32| move |i: usize| 0.5 * (TAU * f * i as f32 / 48000.0).sin();
+    // The carrier's 20th harmonic comes through with a key there, its
+    // 2nd with a key an octave above the pulse.
+    let f0 = 48000.0 / 436.0;
+    let (high, low) = (run(&tone(20.0 * f0)), run(&tone(2.0 * f0)));
+    assert!(level_at(&high, 20.0 * f0, 48000.0) > 5.0 * level_at(&high, 2.0 * f0, 48000.0));
+    assert!(level_at(&low, 2.0 * f0, 48000.0) > 5.0 * level_at(&low, 20.0 * f0, 48000.0));
+    let peak = high.iter().fold(0f32, |m, f| m.max(f[0].abs()));
+    assert!(peak > 0.02 && peak < 4.0, "{peak}");
+}

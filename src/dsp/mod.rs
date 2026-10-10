@@ -200,6 +200,7 @@ pub fn create(kind: ModuleKind, sr: f32) -> Box<dyn Dsp> {
         ModuleKind::Wavetable => Box::new(wavetable::Wavetable::new()),
         ModuleKind::Analog => Box::new(analog::Analog::new()),
         ModuleKind::PluckedString => Box::new(string::PluckedString::new()),
+        ModuleKind::Vocoder => Box::new(vocoder::Vocoder::new()),
         ModuleKind::Fm => Box::new(Fm::new()),
         ModuleKind::Drums => Box::new(Drums::new()),
         ModuleKind::Sampler => Box::new(Sampler::new()),
@@ -450,6 +451,7 @@ mod sampler;
 mod spectravoice;
 mod string;
 mod utility;
+mod vocoder;
 pub mod wavetable;
 pub use modulated::lfo_shape;
 pub use utility::LiveInput;

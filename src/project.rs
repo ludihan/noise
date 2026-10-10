@@ -480,6 +480,7 @@ pub enum ModuleKind {
     Convolver,
     Analog,
     PluckedString,
+    Vocoder,
 }
 
 /// How a parameter's value is shown.
@@ -1103,6 +1104,17 @@ static PLUCKED_STRING_PARAMS: [ParamSpec; 9] = [
     p("Detune", 0.0, 30.0, 6.0).unit(Cents),
     p("Pan", -1.0, 1.0, 0.0).unit(Pan),
 ];
+static VOCODER_PARAMS: [ParamSpec; 9] = [
+    i("Bands", 4.0, 32.0, 16.0),
+    p("Low", 50.0, 1000.0, 120.0).unit(Hz),
+    p("High", 1000.0, 12000.0, 7000.0).unit(Hz),
+    p("Sharpness", 1.0, 20.0, 6.0),
+    p("Attack", 0.0005, 0.1, 0.004).unit(Seconds),
+    p("Release", 0.005, 0.5, 0.05).unit(Seconds),
+    p("Noise", 0.0, 1.0, 0.0).unit(Percent),
+    p("Gain", 0.0, 8.0, 2.0).unit(Gain),
+    p("Mix", 0.0, 1.0, 1.0).unit(Percent),
+];
 static GLIDE_PARAMS: [ParamSpec; 2] = [c("Mode", 0.0, GLIDE_MODES), p("Time", 0.005, 2.0, 0.12).unit(Seconds)];
 static MODULATOR_PARAMS: [ParamSpec; 9] = [
     c("Mode", 0.0, MODULATOR_MODES),
@@ -1137,7 +1149,7 @@ pub static MIXER_PAN: ParamSpec = p("Pan", -1.0, 1.0, 0.0).unit(Pan);
 pub static MIXER_GAIN: ParamSpec = p("Fader", 0.0, 2.0, 1.0).unit(Gain);
 
 impl ModuleKind {
-    pub const ADDABLE: [ModuleKind; 48] = [
+    pub const ADDABLE: [ModuleKind; 49] = [
         ModuleKind::Generator,
         ModuleKind::Analog,
         ModuleKind::PluckedString,
@@ -1162,6 +1174,7 @@ impl ModuleKind {
         ModuleKind::Flanger,
         ModuleKind::Phaser,
         ModuleKind::VocalFilter,
+        ModuleKind::Vocoder,
         ModuleKind::Repeater,
         ModuleKind::RingMod,
         ModuleKind::Gate,
@@ -1209,6 +1222,7 @@ impl ModuleKind {
             ModuleKind::Flanger => ("Flanger", &FLANGER_PARAMS),
             ModuleKind::Phaser => ("Phaser", &PHASER_PARAMS),
             ModuleKind::VocalFilter => ("Vocal Filter", &VOCAL_FILTER_PARAMS),
+            ModuleKind::Vocoder => ("Vocoder", &VOCODER_PARAMS),
             ModuleKind::Repeater => ("Repeater", &REPEATER_PARAMS),
             ModuleKind::RingMod => ("Ring Mod", &RING_MOD_PARAMS),
             ModuleKind::Gate => ("Gate", &GATE_PARAMS),
@@ -1303,7 +1317,7 @@ impl ModuleKind {
     /// Whether the module listens to another module's sound, its key
     /// input, to decide what to do with its own.
     pub fn takes_key(self) -> bool {
-        matches!(self, ModuleKind::Compressor | ModuleKind::Gate)
+        matches!(self, ModuleKind::Compressor | ModuleKind::Gate | ModuleKind::Vocoder)
     }
 
     /// Whether the module's voices take a `Modulation`.
@@ -1921,7 +1935,7 @@ pub struct Module {
     /// `ModuleKind::automatable`) of each module it links to it moves.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub controls: Vec<(u8, usize)>,
-    /// The module whose sound a Compressor or Gate listens to, its key
+    /// The module whose sound a Compressor, Gate or Vocoder listens to, its key
     /// input, instead of its own: the sidechain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<u8>,

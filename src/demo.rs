@@ -584,6 +584,11 @@ fn instruments(p: &mut Project) -> Ids {
     set(p, ring_d, "Ring in D", &[(0, 50.0), (2, 0.7), (3, 0.4), (4, 0.3)]);
     let far = p.chain_insert(voices, 2, K::Echo).unwrap();
     set(p, far, "Far Echo", &[(0, 0.43), (1, 0.4), (2, 0.5), (3, 0.5), (4, 0.2)]);
+    // The drums speak through them, half way, from a Vocoder keyed by
+    // the kit.
+    let speak = p.chain_insert(voices, 0, K::Vocoder).unwrap();
+    set(p, speak, "Drum Talk", &[(0, 12.0), (5, 0.08), (7, 3.0), (8, 0.5)]);
+    p.module_mut(speak).unwrap().key = Some(drums);
     send(p, voices, hall);
 
     // The felt piano: two velocity layers, a filter that closes as notes
@@ -1138,6 +1143,10 @@ mod tests {
             }
             false
         };
+        // Keys the engine would refuse would leave an effect deaf.
+        for m in &p.modules {
+            assert!(m.key.is_none_or(|k| p.can_key(m.id, k)), "{}'s key", m.name);
+        }
         for m in p.modules.iter().filter(|m| m.kind.makes_sound() && m.kind.has_output()) {
             assert!(heard(m.id), "{} reaches the output", m.name);
         }

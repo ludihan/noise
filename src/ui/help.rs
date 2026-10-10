@@ -155,6 +155,10 @@ const MODULES: &[(&str, &str)] = &[
     ("Flanger", "Flanger with feedback, or a stereo chorus"),
     ("Phaser", "Up to 12 allpass stages swept between a floor and a ceiling, with feedback"),
     ("Vocal Filter", "Formant filters that make a sound say A, E, I, O or U, morphing between them"),
+    (
+        "Vocoder",
+        "Splits its Key (a voice, drums) into bands and gives each band of its own input (a synth) the key's level there, so the synth speaks with the key's voice: bands, the range they cover, how sharp they are, how fast they follow, noise for consonants, gain and mix",
+    ),
     ("Repeater", "While Hold is on, loops the last 8 lines to 1/16 line of its input: stutters"),
     ("Ring Mod", "The sound times a carrier wave, for bell and robot tones"),
     (
