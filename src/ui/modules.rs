@@ -3,7 +3,7 @@
 //! and the selected module's parameters beside it.
 
 use super::{App, instruments, routing, theme, widgets};
-use crate::project::{DEFAULT_SHAPE, DRAWN_SHAPE, Module, ModuleKind, OUTPUT_ID, interpolate};
+use crate::project::{DEFAULT_SHAPE, DRAWN_SHAPE, MACROS, Module, ModuleKind, OUTPUT_ID, interpolate};
 use eframe::egui::{self, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 
 /// The stripe along the top of a module: amber for instruments, green for
@@ -334,6 +334,12 @@ pub fn param_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
     let mut changed = false;
     let mut automate = None;
     let automated: Vec<usize> = app.pattern().automation.iter().filter(|e| e.module == id).map(|e| e.param).collect();
+    // The instrument whose macros can move these, and its macros' names.
+    let owner = app.project.macro_owner(id);
+    let macro_names: Vec<String> = owner
+        .and_then(|o| app.project.module(o))
+        .map_or(Vec::new(), |o| (0..MACROS).map(|k| o.macro_name(k)).collect());
+    let mut map = None;
     ui.spacing_mut().item_spacing.y = 3.0;
     for (i, (spec, v)) in module.kind.params().iter().zip(&mut params).enumerate() {
         if !in_use(module.kind, &shown, i) {
@@ -343,6 +349,16 @@ pub fn param_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
             if ui.button("Automate in This Pattern").clicked() {
                 automate = Some(i);
                 ui.close();
+            }
+            if !macro_names.is_empty() {
+                ui.menu_button("Map to Macro", |ui| {
+                    for (k, name) in macro_names.iter().enumerate() {
+                        if ui.button(name).clicked() {
+                            map = Some((k, i));
+                            ui.close();
+                        }
+                    }
+                });
             }
         });
         changed |= resp.changed();
@@ -362,6 +378,10 @@ pub fn param_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
                 m.params[i] = *v;
             }
         }
+        app.mark();
+    }
+    if let (Some(owner), Some((k, i))) = (owner, map) {
+        app.project.map_macro(owner, k, id, i);
         app.mark();
     }
     if let Some(i) = automate {

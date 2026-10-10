@@ -365,13 +365,17 @@ const TOPICS: &[Topic] = &[
                 "The Modulators moving any of these come last; + Add Modulator adds one.",
                 "A MultiSynth's panel lists the instruments it plays.",
             ]),
+            H("Macros"),
+            P(
+                "Every instrument has eight macros, in the panel left of its chain: knobs that each move any number of parameters of the instrument and its own effects at once. Right-click a parameter's bar and choose Map to Macro: the macro then moves it from where it is to the far end of its range, which you can change by right-clicking its line under the macro. Right-click a macro to name it, automate it or clear what it moves. Envelopes and Modulators move macros as they do any parameter, and instrument presets keep them.",
+            ),
             H("Presets"),
             P(
                 "Right-click a panel's name, or a row of the module list, for its color and presets: the factory's (the demo songs' devices), yours, saving the settings under a name, or going back to the defaults. Yours are kept in presets/<kind>/ in the data folder (usually ~/.local/share/noise).",
             ),
             H("Instrument presets"),
             P(
-                "The instrument list's + adds a whole instrument from Factory Instruments, the demo songs' (Felt Piano, Strings, Sub Bass, Bells, 808, Chip Arp, Vox Chops, Rain Break, Acid Line, Music Box, Rave Kit, Prism Lead, Orchestra Hit and the rest), or from My Instruments. An instrument preset holds the instrument with its samples, modulation and phrases, and the effects of its own chain. Right-click an instrument and Save as Preset to keep it in instruments/ in the data folder, its samples as WAV files beside it.",
+                "The instrument list's + adds a whole instrument from Factory Instruments, the demo songs' (Felt Piano, Strings, Sub Bass, Bells, 808, Chip Arp, Vox Chops, Rain Break, Acid Line, Music Box, Rave Kit, Prism Lead, Orchestra Hit and the rest), or from My Instruments. An instrument preset holds the instrument with its samples, modulation, macros and phrases, and the effects of its own chain. Right-click an instrument and Save as Preset to keep it in instruments/ in the data folder, its samples as WAV files beside it.",
             ),
         ],
     },

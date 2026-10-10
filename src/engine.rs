@@ -5,7 +5,7 @@
 
 use crate::dsp::{self, Ctx, Dsp, Frame, Playhead};
 use crate::project::{
-    Cell, FX_AUTOPAN, FX_BREAK, FX_MAYBE, FX_PHRASE, FX_REVERSE, FX_SLICE, FX_TRACK_VOLUME, FX_TREMOR, FX_WAIT,
+    Cell, FX_AUTOPAN, FX_BREAK, FX_MAYBE, FX_PHRASE, FX_REVERSE, FX_SLICE, FX_TRACK_VOLUME, FX_TREMOR, FX_WAIT, MACROS,
     MAX_COLUMNS, MAX_FX_COLUMNS, MAX_TRACKS, ModuleKind, Note, OUTPUT_ID, PhraseMode, Project,
 };
 use crate::sample::Sample;
@@ -342,6 +342,11 @@ struct Node {
     /// The mixer fader and pan envelopes set, used instead of the song's.
     mix_gain: Option<f32>,
     mix_pan: Option<f32>,
+    /// For an instrument, where envelopes and Modulators turn its macros,
+    /// used instead of the song's, and what the macros move: macro, node,
+    /// automatable parameter and the range it moves it over.
+    macros: [Option<f32>; MACROS],
+    macro_targets: Vec<(usize, usize, usize, f32, f32)>,
     /// For a MultiSynth: the nodes it passes notes to, the notes it holds
     /// and the next round-robin target.
     targets: Vec<usize>,
@@ -831,6 +836,7 @@ impl Engine {
                     n.key.clear();
                     n.targets.clear();
                     n.controls.clear();
+                    n.macro_targets.clear();
                     n
                 }
                 None => Node {
@@ -851,6 +857,8 @@ impl Engine {
                     automated: false,
                     mix_gain: None,
                     mix_pan: None,
+                    macros: [None; MACROS],
+                    macro_targets: Vec::new(),
                     targets: Vec::new(),
                     held: Vec::with_capacity(if m.kind.notes_only() { MAX_HELD } else { 0 }),
                     next_target: 0,
@@ -912,6 +920,21 @@ impl Engine {
             let Some(b) = base[src as usize] else { continue };
             self.nodes[j].key.push(b);
             self.nodes[j].key.extend(self.copies[b].into_iter().flatten());
+        }
+        // What each instrument's macros move: the node of the module named,
+        // its copy for the same track when there is one.
+        for j in 0..self.nodes.len() {
+            let m = &project.modules[self.nodes[j].module];
+            for (k, mac) in m.macros.iter().enumerate() {
+                for t in &mac.targets {
+                    let track = self.nodes[j].track;
+                    let found = (self.nodes.iter().position(|n| n.id == t.module && n.track == track))
+                        .or_else(|| base[t.module as usize]);
+                    if let Some(at) = found {
+                        self.nodes[j].macro_targets.push((k, at, t.param, t.from, t.to));
+                    }
+                }
+            }
         }
         self.output = base[OUTPUT_ID as usize];
         self.track_ends = (project.tracks.iter().enumerate())
@@ -1812,6 +1835,7 @@ impl Engine {
             node.automated = false;
             node.mix_gain = None;
             node.mix_pan = None;
+            node.macros = [None; MACROS];
         }
         self.live.clear();
         if !self.playing {
@@ -1828,21 +1852,9 @@ impl Engine {
                 continue;
             };
             let value = spec.value_at(t);
-            let n = module.params.len();
             // The module and its copies for tracks with effects.
             for node in self.nodes.iter_mut().filter(|n| n.id == env.module) {
-                if env.param == n {
-                    node.mix_gain = Some(value);
-                } else if env.param == n + 1 {
-                    node.mix_pan = Some(value);
-                } else {
-                    if !node.automated {
-                        node.params.clear();
-                        node.params.extend_from_slice(&module.params);
-                        node.automated = true;
-                    }
-                    node.params[env.param] = value;
-                }
+                node.set_param(module, env.param, value);
             }
             if self.live.len() < MAX_AUTOMATED {
                 self.live.push((env.module, env.param, value));
@@ -1958,26 +1970,8 @@ impl Engine {
             let target = &mut nodes[j];
             let m = &project.modules[target.module];
             let Some(spec) = m.kind.automatable(param) else { continue };
-            let count = m.params.len();
-            let base = match param {
-                p if p < count && target.automated => target.params[p],
-                p if p < count => m.params[p],
-                p if p == count => target.mix_gain.unwrap_or(m.gain),
-                _ => target.mix_pan.unwrap_or(m.pan),
-            };
-            let value = spec.value_at(spec.position(base) + offset);
-            if param < count {
-                if !target.automated {
-                    target.params.clear();
-                    target.params.extend_from_slice(&m.params);
-                    target.automated = true;
-                }
-                target.params[param] = value;
-            } else if param == count {
-                target.mix_gain = Some(value);
-            } else {
-                target.mix_pan = Some(value);
-            }
+            let value = spec.value_at(spec.position(target.param(m, param)) + offset);
+            target.set_param(m, param, value);
             if live.len() < MAX_AUTOMATED {
                 live.push((m.id, param, value));
             }
@@ -2007,6 +2001,19 @@ impl Engine {
                         s[0] += x[0];
                         s[1] += x[1];
                     }
+                }
+            }
+            // An instrument's macros set what they move before it plays.
+            for k in 0..self.nodes[i].macro_targets.len() {
+                let (mac, j, param, from, to) = self.nodes[i].macro_targets[k];
+                let m = &project.modules[self.nodes[i].module];
+                let turned = self.nodes[i].param(m, m.params.len() + 2 + mac);
+                let target = &project.modules[self.nodes[j].module];
+                let Some(spec) = target.kind.automatable(param) else { continue };
+                let value = spec.value_at(from + (to - from) * turned);
+                self.nodes[j].set_param(target, param, value);
+                if self.live.len() < MAX_AUTOMATED {
+                    self.live.push((target.id, param, value));
                 }
             }
             if self.nodes[i].kind.controls() {
@@ -2203,6 +2210,44 @@ impl Engine {
 
 /// Left and right gains that turn a stereo signal towards `pan` (-1..1)
 /// without making the near side louder.
+impl Node {
+    /// Automatable parameter `param` of the node's module `m` (see
+    /// `ModuleKind::automatable`) as it is this block: the song's value
+    /// or what an envelope, Modulator or macro set.
+    fn param(&self, m: &crate::project::Module, param: usize) -> f32 {
+        let n = m.params.len();
+        match param {
+            p if p < n && self.automated => self.params[p],
+            p if p < n => m.params[p],
+            p if p == n => self.mix_gain.unwrap_or(m.gain),
+            p if p == n + 1 => self.mix_pan.unwrap_or(m.pan),
+            p => self.macros.get(p - n - 2).copied().flatten().unwrap_or_else(|| m.macro_value(p - n - 2)),
+        }
+    }
+
+    /// Sets automatable parameter `param` for this block.
+    fn set_param(&mut self, m: &crate::project::Module, param: usize, value: f32) {
+        let n = m.params.len();
+        match param {
+            p if p < n => {
+                if !self.automated {
+                    self.params.clear();
+                    self.params.extend_from_slice(&m.params);
+                    self.automated = true;
+                }
+                self.params[p] = value;
+            }
+            p if p == n => self.mix_gain = Some(value),
+            p if p == n + 1 => self.mix_pan = Some(value),
+            p => {
+                if let Some(v) = self.macros.get_mut(p - n - 2) {
+                    *v = Some(value);
+                }
+            }
+        }
+    }
+}
+
 fn balance(pan: f32) -> (f32, f32) {
     ((1.0 - pan).min(1.0), (1.0 + pan).min(1.0))
 }
@@ -2210,7 +2255,7 @@ fn balance(pan: f32) -> (f32, f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::project::{Owner, Phrase};
+    use crate::project::{MacroTarget, Owner, Phrase};
 
     const SR: f32 = 8000.0;
 
@@ -2420,6 +2465,36 @@ mod tests {
         p.connect(after, OUTPUT_ID);
         assert!(!p.can_key(comp, after));
         assert!(!p.can_key(comp, comp));
+    }
+
+    #[test]
+    fn macros_move_their_instruments_parameters() {
+        let (mut p, a, b) = two_synths();
+        p.disconnect(b, OUTPUT_ID);
+        let level = |p: &Project| {
+            let mut e = engine(p.clone());
+            hold_notes(&mut e, &[a]);
+            render(&mut e, 2000);
+            loudness(&render(&mut e, 2000))
+        };
+        let full = level(&p);
+        // Macro 1 turns the Generator's volume from nothing to a quarter.
+        let m = p.module_mut(a).unwrap();
+        m.macro_mut(0).targets.push(MacroTarget { module: a, param: 0, from: 0.0, to: 0.25 });
+        assert_eq!(level(&p), 0.0, "turned down, it silences the synth");
+        p.module_mut(a).unwrap().macro_mut(0).value = 1.0;
+        let half = level(&p);
+        assert!(half > 0.1 && half < full, "{half} {full}");
+        // A Modulator can turn the macro, as it can any parameter.
+        p.module_mut(a).unwrap().macro_mut(0).value = 0.0;
+        let n = ModuleKind::Generator.params().len();
+        assert_eq!(p.module(a).unwrap().automatable_name(n + 2), "Macro 1");
+        let knob = p.add_module(ModuleKind::Modulator, [0.0, 0.0]).unwrap();
+        p.module_mut(knob).unwrap().params[0] = 5.0;
+        p.module_mut(knob).unwrap().params[5] = 1.0;
+        p.connect(knob, a);
+        p.set_control_param(knob, a, n + 2);
+        assert!(level(&p) > 0.1, "the Modulator turns it up");
     }
 
     #[test]

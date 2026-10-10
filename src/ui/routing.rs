@@ -101,13 +101,10 @@ pub fn control_targets(app: &mut App, ui: &mut egui::Ui, id: u8) {
     }
     let mut remove = None;
     for to in targets {
-        let Some(m) = app.project.module(to) else { continue };
+        let Some(m) = app.project.module(to).cloned() else { continue };
         let kind = m.kind;
         let current = app.project.control_param(id, to);
-        let param = |i: usize| {
-            let mixer = if i >= kind.params().len() { "Mixer " } else { "" };
-            format!("{mixer}{}", kind.automatable(i).map_or("?", |s| s.name))
-        };
+        let param = |i: usize| m.automatable_name(i);
         let mut pick = current;
         ui.horizontal(|ui| {
             ui.label(RichText::new(label(app, to)).small().color(theme::PAT_EFFECT));

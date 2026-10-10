@@ -1064,6 +1064,22 @@ static MODULATOR_PARAMS: [ParamSpec; 9] = [
     p("Release", 0.01, 2.0, 0.2).unit(Seconds),
     c("Beats", 4.0, MODULATOR_BEATS),
 ];
+/// How many macros an instrument has: knobs that each move several of its
+/// and its effects' parameters at once.
+pub const MACROS: usize = 8;
+const fn macro_knob(name: &'static str) -> ParamSpec {
+    p(name, 0.0, 1.0, 0.0).unit(Percent)
+}
+static MACRO_PARAMS: [ParamSpec; MACROS] = [
+    macro_knob("Macro 1"),
+    macro_knob("Macro 2"),
+    macro_knob("Macro 3"),
+    macro_knob("Macro 4"),
+    macro_knob("Macro 5"),
+    macro_knob("Macro 6"),
+    macro_knob("Macro 7"),
+    macro_knob("Macro 8"),
+];
 /// The pan control of a mixer strip.
 pub static MIXER_PAN: ParamSpec = p("Pan", -1.0, 1.0, 0.0).unit(Pan);
 /// The fader of a mixer strip, as automation sees it.
@@ -1181,20 +1197,21 @@ impl ModuleKind {
     }
 
     /// What envelopes can move: the module's parameters, then its mixer
-    /// strip's fader and pan.
+    /// strip's fader and pan, then an instrument's macros.
     pub fn automatable(self, i: usize) -> Option<&'static ParamSpec> {
         let n = self.params().len();
         match i {
             i if i < n => Some(&self.params()[i]),
             i if i == n => Some(&MIXER_GAIN),
             i if i == n + 1 => Some(&MIXER_PAN),
+            i if self.has_macros() => MACRO_PARAMS.get(i - n - 2),
             _ => None,
         }
     }
 
     /// How many parameters `automatable` knows.
     pub fn num_automatable(self) -> usize {
-        self.params().len() + 2
+        self.params().len() + 2 + if self.has_macros() { MACROS } else { 0 }
     }
 
     /// Whether the module plays notes (as opposed to processing audio).
@@ -1219,6 +1236,11 @@ impl ModuleKind {
     /// edits.
     pub fn holds_samples(self) -> bool {
         matches!(self, ModuleKind::Sampler | ModuleKind::Granular)
+    }
+
+    /// Whether the module is an instrument with macros: one that makes sound.
+    pub fn has_macros(self) -> bool {
+        self.is_instrument() && !self.notes_only()
     }
 
     /// Whether the module listens to another module's sound, its key
@@ -1846,6 +1868,9 @@ pub struct Module {
     /// input, instead of its own: the sidechain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<u8>,
+    /// An instrument's macros, `MACROS` of them once any is used.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub macros: Vec<Macro>,
     /// A Sampler's samples.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub samples: Vec<SampleSlot>,
@@ -1897,7 +1922,41 @@ impl Module {
         match i {
             i if i < n => self.params[i],
             i if i == n => self.gain,
-            _ => self.pan,
+            i if i == n + 1 => self.pan,
+            i => self.macro_value(i - n - 2),
+        }
+    }
+
+    /// Where macro `k` is turned to, 0..1.
+    pub fn macro_value(&self, k: usize) -> f32 {
+        self.macros.get(k).map_or(0.0, |m| m.value)
+    }
+
+    /// Macro `k`, made with the others the first time one is used.
+    pub fn macro_mut(&mut self, k: usize) -> &mut Macro {
+        if self.macros.len() < MACROS {
+            self.macros.resize(MACROS, Macro::default());
+        }
+        &mut self.macros[k.min(MACROS - 1)]
+    }
+
+    /// Macro `k`'s name: its own, or "Macro 1" and on.
+    pub fn macro_name(&self, k: usize) -> String {
+        match self.macros.get(k) {
+            Some(m) if !m.name.is_empty() => m.name.clone(),
+            _ => format!("Macro {}", k + 1),
+        }
+    }
+
+    /// What automatable parameter `i` is called in lists: its name, the
+    /// mixer's "Mixer Fader" and "Mixer Pan", or a macro's name.
+    pub fn automatable_name(&self, i: usize) -> String {
+        let n = self.kind.params().len();
+        match self.kind.automatable(i) {
+            Some(spec) if i < n => spec.name.to_string(),
+            Some(spec) if i < n + 2 => format!("Mixer {}", spec.name),
+            Some(_) => self.macro_name(i - n - 2),
+            None => "?".to_string(),
         }
     }
 
@@ -1916,6 +1975,7 @@ impl Module {
             color: None,
             controls: Vec::new(),
             key: None,
+            macros: Vec::new(),
             samples: Vec::new(),
             shape: Vec::new(),
             modulation: Modulation::default(),
@@ -1945,6 +2005,7 @@ impl Module {
         self.samples = other.samples.clone();
         self.modulation = other.modulation.clone();
         self.phrases = other.phrases.clone();
+        self.macros = other.macros.clone();
         (self.phrase_mode, self.selected_phrase) = (other.phrase_mode, other.selected_phrase);
     }
 }
@@ -1975,6 +2036,28 @@ fn yes() -> bool {
 
 fn default_tpl() -> u32 {
     6
+}
+
+/// A knob of an instrument's that moves several parameters at once.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Macro {
+    /// Empty for "Macro 1" and on.
+    pub name: String,
+    /// Where it is turned to, 0..1.
+    pub value: f32,
+    pub targets: Vec<MacroTarget>,
+}
+
+/// A parameter a macro moves: automatable parameter `param` of `module`,
+/// from `from` with the macro at 0 to `to` at 1, as places along its
+/// range (0..1) as its bar shows them.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MacroTarget {
+    pub module: u8,
+    pub param: usize,
+    pub from: f32,
+    pub to: f32,
 }
 
 /// A position in the song: the pattern it plays and the tracks muted
@@ -2194,6 +2277,9 @@ impl Project {
         self.modules.retain(|m| m.id != id);
         for m in &mut self.modules {
             m.key = m.key.filter(|&k| k != id);
+            for mac in &mut m.macros {
+                mac.targets.retain(|t| t.module != id);
+            }
         }
         self.links.retain(|&(a, b)| a != id && b != id);
         self.master.retain(|&m| m != id);
@@ -2286,6 +2372,30 @@ impl Project {
             }
         }
         true
+    }
+
+    /// The instrument whose macros can move module `id`: itself, or the
+    /// instrument whose own chain it is in.
+    pub fn macro_owner(&self, id: u8) -> Option<u8> {
+        let m = self.module(id)?;
+        if m.kind.has_macros() {
+            return Some(id);
+        }
+        let mut owners = self.modules.iter().filter(|i| i.kind.has_macros());
+        owners.find(|i| self.chain(i.id).effects.contains(&id)).map(|i| i.id)
+    }
+
+    /// Makes macro `k` of instrument `owner` move parameter `param` of
+    /// `module`, from where it is now to the far end of its range.
+    pub fn map_macro(&mut self, owner: u8, k: usize, module: u8, param: usize) {
+        let Some(m) = self.module(module) else { return };
+        let Some(spec) = m.kind.automatable(param) else { return };
+        let from = spec.position(m.automatable_value(param));
+        let to = if from < 0.5 { 1.0 } else { 0.0 };
+        let Some(inst) = self.module_mut(owner) else { return };
+        let mac = inst.macro_mut(k);
+        mac.targets.retain(|t| (t.module, t.param) != (module, param));
+        mac.targets.push(MacroTarget { module, param, from, to });
     }
 
     /// Solos `track` alone: the other tracks fall silent.

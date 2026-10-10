@@ -7,8 +7,8 @@
 //! whole mix goes through, then the output; a track's page is its own
 //! effects, which what it plays goes through on its way to the master.
 
-use super::{App, modules, pattern, routing, theme};
-use crate::project::{ModuleKind, OUTPUT_ID, Owner};
+use super::{App, modules, pattern, routing, theme, widgets};
+use crate::project::{MACROS, ModuleKind, OUTPUT_ID, Owner};
 use eframe::egui::{self, Align2, Color32, FontId, RichText, Sense, Stroke, StrokeKind, Vec2};
 
 /// Width of a device panel.
@@ -89,6 +89,10 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
             ui.set_min_height(h);
             match (id, track) {
                 (Some(id), _) if !master => {
+                    if inst.as_ref().is_some_and(|m| m.kind.has_macros()) {
+                        macros_panel(app, ui, id, h);
+                        ui.separator();
+                    }
                     device(app, ui, id, Place::Instrument, h, &mut action);
                 }
                 (_, Some(t)) => track_panel(app, ui, t, h),
@@ -490,4 +494,99 @@ fn ending(app: &mut App, ui: &mut egui::Ui, owner: Owner, last: u8, len: usize, 
         own.push(id);
         egui::ScrollArea::vertical().id_salt(("sends", id)).show(ui, |ui| routing::sends_checklist_except(app, ui, last, &own));
     });
+}
+
+/// An instrument's macros: knobs that each move parameters of it and its
+/// own effects, mapped from those parameters' menus, with what each moves
+/// listed under it.
+fn macros_panel(app: &mut App, ui: &mut egui::Ui, id: u8, h: f32) {
+    let Some(m) = app.project.module(id).cloned() else { return };
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(DEVICE_W * 0.9, h), Sense::hover());
+    ui.painter().rect(rect, 3.0, theme::FRAME_BG, Stroke::new(1.0, theme::FRAME_LINE), StrokeKind::Inside);
+    let inner = rect.shrink(5.0);
+    let mut child = ui.new_child(
+        egui::UiBuilder::new().id_salt(("macros", id)).max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+    child.shrink_clip_rect(inner);
+    let ui = &mut child;
+    theme::caption(ui, "MACROS");
+    let hint = "Right-click a parameter of the instrument or its effects and choose Map to Macro.";
+    ui.label(RichText::new(hint).small().color(theme::TEXT_WEAK));
+    ui.add_space(3.0);
+    let n = m.kind.params().len();
+    let mut automate = None;
+    egui::ScrollArea::vertical().id_salt(("macro_list", id)).auto_shrink(false).show(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = 3.0;
+        for k in 0..MACROS {
+            let Some(spec) = m.kind.automatable(n + 2 + k) else { continue };
+            let mac = m.macros.get(k).cloned().unwrap_or_default();
+            let shown = app.automated(id, n + 2 + k).unwrap_or(mac.value);
+            let (mut value, mut name, mut clear) = (shown, mac.name.clone(), false);
+            let resp = widgets::named_bar(ui, spec, &m.macro_name(k), &mut value, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Name");
+                    ui.text_edit_singleline(&mut name);
+                });
+                if ui.button("Automate in This Pattern").clicked() {
+                    automate = Some(n + 2 + k);
+                    ui.close();
+                }
+                if !mac.targets.is_empty() && ui.button("Clear Targets").clicked() {
+                    clear = true;
+                    ui.close();
+                }
+            });
+            if mac.targets.is_empty() {
+                resp.on_hover_text("Moves nothing yet");
+            }
+            let mut targets = mac.targets.clone();
+            let mut remove = None;
+            for (t, target) in targets.iter_mut().enumerate() {
+                let Some(tm) = app.project.module(target.module) else { continue };
+                let Some(tspec) = tm.kind.automatable(target.param) else { continue };
+                let what = format!("  {:02X} {} · {}", target.module, tm.name, tm.automatable_name(target.param));
+                ui.horizontal(|ui| {
+                    let tip = "Right-click to set what it moves the parameter from and to";
+                    let label = ui.add(
+                        egui::Label::new(RichText::new(what).small().color(theme::TEXT_WEAK))
+                            .truncate()
+                            .sense(Sense::click()),
+                    );
+                    label.on_hover_text(tip).context_menu(|ui| {
+                        ui.set_width(180.0);
+                        for (end, at) in [("From", &mut target.from), ("To", &mut target.to)] {
+                            let mut v = tspec.value_at(*at);
+                            widgets::named_bar(ui, tspec, end, &mut v, |_| {});
+                            *at = tspec.position(v);
+                        }
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if super::icons::button(ui, super::icons::Icon::Bin).on_hover_text("Stop moving it").clicked() {
+                            remove = Some(t);
+                        }
+                    });
+                });
+            }
+            if let Some(t) = remove {
+                targets.remove(t);
+            }
+            if clear {
+                targets.clear();
+            }
+            let renamed = name != mac.name;
+            if value != shown || renamed || targets != mac.targets {
+                let mac = app.project.module_mut(id).unwrap().macro_mut(k);
+                if value != shown {
+                    mac.value = value;
+                }
+                (mac.name, mac.targets) = (name, targets);
+                app.mark();
+            }
+            ui.add_space(2.0);
+        }
+    });
+    if let Some(i) = automate {
+        super::automation::add(app, id, i);
+        app.lower = super::Lower::Automation;
+    }
 }

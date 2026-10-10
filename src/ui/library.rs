@@ -43,9 +43,21 @@ impl InstrumentPreset {
             slot.path = None;
             slot.unsaved = slot.data.is_some();
         }
+        let mut placed = vec![(self.instrument.id, id)];
         for (k, effect) in self.effects.iter().enumerate() {
             let e = project.chain_insert(id, k, effect.kind)?;
             project.module_mut(e)?.take_sound(effect);
+            placed.push((effect.id, e));
+        }
+        // Its macros move the new modules, not the ones it was saved with.
+        for mac in &mut project.module_mut(id)?.macros {
+            mac.targets.retain_mut(|t| match placed.iter().find(|p| p.0 == t.module) {
+                Some(p) => {
+                    t.module = p.1;
+                    true
+                }
+                None => false,
+            });
         }
         if self.effects.is_empty() {
             project.connect(id, OUTPUT_ID);
@@ -233,5 +245,21 @@ mod tests {
         assert_eq!(chain.effects.len(), 3, "its EQ, exciter and room");
         assert_eq!(chain.outputs, [OUTPUT_ID]);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn macros_move_the_modules_a_preset_adds() {
+        let mut song = Project::empty();
+        let piano = factory().iter().find(|p| p.name == "Felt Piano").unwrap();
+        let id = piano.add_to(&mut song, [0.0; 2]).unwrap();
+        let room = *song.chain(id).effects.last().unwrap();
+        song.map_macro(id, 0, room, 0);
+        song.map_macro(id, 1, id, 0);
+        let preset = InstrumentPreset::of(&song, id).unwrap();
+        let copy = preset.add_to(&mut song, [0.0; 2]).unwrap();
+        let copy_room = *song.chain(copy).effects.last().unwrap();
+        let m = song.module(copy).unwrap();
+        assert_eq!(m.macros[0].targets[0].module, copy_room, "its own room, not the first one's");
+        assert_eq!(m.macros[1].targets[0].module, copy);
     }
 }

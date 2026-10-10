@@ -10,6 +10,11 @@ const BAR_H: f32 = 18.0;
 /// steps), double-click to reset it and right-click to type a value, with
 /// `more` adding to that menu. Choices open a menu instead.
 pub fn param_bar(ui: &mut Ui, spec: &ParamSpec, value: &mut f32, more: impl FnOnce(&mut Ui)) -> Response {
+    named_bar(ui, spec, spec.name, value, more)
+}
+
+/// `param_bar` under a name of its own, as a macro's.
+pub fn named_bar(ui: &mut Ui, spec: &ParamSpec, name: &str, value: &mut f32, more: impl FnOnce(&mut Ui)) -> Response {
     let (rect, mut resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), BAR_H), Sense::click_and_drag());
     let old = *value;
     if spec.choices.is_empty() {
@@ -18,7 +23,7 @@ pub fn param_bar(ui: &mut Ui, spec: &ParamSpec, value: &mut f32, more: impl FnOn
             *value = spec.default;
         }
         resp.context_menu(|ui| {
-            ui.label(egui::RichText::new(spec.name).color(theme::SELECTED));
+            ui.label(egui::RichText::new(name).color(theme::SELECTED));
             ui.horizontal(|ui| {
                 let speed = (spec.max - spec.min) / 400.0;
                 let mut field = egui::DragValue::new(value).range(spec.min..=spec.max).speed(speed);
@@ -43,7 +48,7 @@ pub fn param_bar(ui: &mut Ui, spec: &ParamSpec, value: &mut f32, more: impl FnOn
             }
         });
     }
-    draw(ui, rect, &resp, spec, *value);
+    draw(ui, rect, &resp, spec, name, *value);
     if *value != old {
         resp.mark_changed();
     }
@@ -68,7 +73,7 @@ fn drag(ui: &Ui, resp: &Response, rect: Rect, spec: &ParamSpec, value: &mut f32)
     }
 }
 
-fn draw(ui: &Ui, rect: Rect, resp: &Response, spec: &ParamSpec, value: f32) {
+fn draw(ui: &Ui, rect: Rect, resp: &Response, spec: &ParamSpec, name: &str, value: f32) {
     let painter = ui.painter();
     let hot = resp.hovered() || resp.dragged();
     painter.rect_filled(rect, 2.0, theme::INSET);
@@ -95,7 +100,7 @@ fn draw(ui: &Ui, rect: Rect, resp: &Response, spec: &ParamSpec, value: f32) {
     let line = if hot { Color32::from_gray(110) } else { theme::FRAME_LINE };
     painter.rect_stroke(rect, 2.0, Stroke::new(1.0, line), StrokeKind::Inside);
     let font = FontId::proportional(12.0);
-    painter.text(Pos2::new(rect.left() + 6.0, y), Align2::LEFT_CENTER, spec.name, font, theme::TEXT);
+    painter.text(Pos2::new(rect.left() + 6.0, y), Align2::LEFT_CENTER, name, font, theme::TEXT);
     let right = if spec.choices.is_empty() { 6.0 } else { 18.0 };
     let value_font = FontId::monospace(11.5);
     painter.text(

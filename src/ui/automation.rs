@@ -53,10 +53,7 @@ const LENGTHS: &[(f32, &str)] = &[(1.0, "Pattern"), (0.5, "1/2"), (0.25, "1/4"),
 /// "04 Filter · Cutoff".
 fn describe(app: &App, module: u8, param: usize) -> String {
     match app.project.module(module) {
-        Some(m) => {
-            let mixer = if param >= m.kind.params().len() { "Mixer " } else { "" };
-            format!("{module:02X} {} · {mixer}{}", m.name, m.kind.automatable(param).map_or("?", |s| s.name))
-        }
+        Some(m) => format!("{module:02X} {} · {}", m.name, m.automatable_name(param)),
         None => format!("{module:02X} (deleted)"),
     }
 }
@@ -136,10 +133,10 @@ fn list(app: &mut App, ui: &mut egui::Ui) {
                     let mut shown_heading = false;
                     for id in ids {
                         let Some(m) = app.project.module(id) else { continue };
-                        let (kind, name) = (m.kind, m.name.clone());
+                        let (kind, name, m) = (m.kind, m.name.clone(), m.clone());
                         let module_hit = matches(&name) || matches(kind.name());
                         let params: Vec<usize> = (0..kind.num_automatable())
-                            .filter(|&i| module_hit || kind.automatable(i).is_some_and(|s| matches(s.name)))
+                            .filter(|&i| module_hit || matches(&m.automatable_name(i)))
                             .collect();
                         if params.is_empty() {
                             continue;
@@ -156,10 +153,8 @@ fn list(app: &mut App, ui: &mut egui::Ui) {
                         let header = if filter.is_empty() { header } else { header.open(Some(true)) };
                         header.show(ui, |ui| {
                             for i in params {
-                                let Some(spec) = kind.automatable(i) else { continue };
-                                let mixer = if i >= kind.params().len() { "Mixer " } else { "" };
                                 let on = envelopes.contains(&(id, i));
-                                let text = format!("{}{mixer}{}", if on { "• " } else { "" }, spec.name);
+                                let text = format!("{}{}", if on { "• " } else { "" }, m.automatable_name(i));
                                 let selected = app.automation.selected == Some((id, i));
                                 // Automated ones are marked in the accent colour, but not
                                 // on the selection's own accent fill.
