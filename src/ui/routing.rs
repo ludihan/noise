@@ -166,3 +166,30 @@ pub fn color_menu(app: &mut App, ui: &mut egui::Ui, id: u8) {
         ui.close();
     }
 }
+
+/// What effect `id` listens to: its own input, or another module's sound
+/// as its key input, picked from those that wouldn't loop.
+pub fn key_picker(app: &mut App, ui: &mut egui::Ui, id: u8) {
+    let Some(key) = app.project.module(id).map(|m| m.key) else { return };
+    let shown = key.map_or_else(|| "Its own input".to_string(), |k| label(app, k));
+    let mut picked = key;
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Key").small());
+        egui::ComboBox::from_id_salt(("key_input", id))
+            .selected_text(shown)
+            .width(ui.available_width() - 4.0)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut picked, None, "Its own input");
+                let ids: Vec<u8> = app.project.modules.iter().map(|m| m.id).collect();
+                for k in ids.into_iter().filter(|&k| app.project.can_key(id, k)) {
+                    ui.selectable_value(&mut picked, Some(k), label(app, k));
+                }
+            })
+            .response
+            .on_hover_text("The sound it listens to, its sidechain: a kick here ducks what goes through it");
+    });
+    if picked != key {
+        app.project.module_mut(id).unwrap().key = picked;
+        app.mark();
+    }
+}

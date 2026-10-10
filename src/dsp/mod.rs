@@ -186,6 +186,11 @@ pub trait Dsp: Send {
     /// `module` left for the caller to fill in.
     fn playheads(&self, _out: &mut Vec<Playhead>) {}
     fn process(&mut self, ctx: &Ctx, params: &[f32], input: &[Frame], out: &mut [Frame]);
+    /// `process`, listening to `key` (another module's sound) instead of
+    /// `input` where the module takes a key input.
+    fn process_keyed(&mut self, ctx: &Ctx, params: &[f32], input: &[Frame], _key: &[Frame], out: &mut [Frame]) {
+        self.process(ctx, params, input, out);
+    }
 }
 
 pub fn create(kind: ModuleKind, sr: f32) -> Box<dyn Dsp> {

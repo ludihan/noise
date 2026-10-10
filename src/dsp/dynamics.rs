@@ -22,11 +22,15 @@ impl Dsp for Gate {
     }
 
     fn process(&mut self, ctx: &Ctx, p: &[f32], input: &[Frame], out: &mut [Frame]) {
+        self.process_keyed(ctx, p, input, input, out);
+    }
+
+    fn process_keyed(&mut self, ctx: &Ctx, p: &[f32], input: &[Frame], key: &[Frame], out: &mut [Frame]) {
         let (threshold, floor) = (p[0], p[4]);
         let coef = |t: f32| 1.0 - (-1.0 / (t.max(1e-5) * ctx.sr)).exp();
         let (att, rel) = (coef(p[1]), coef(p[3]));
-        for (o, i) in out.iter_mut().zip(input) {
-            if i[0].abs().max(i[1].abs()) > threshold {
+        for ((o, i), k) in out.iter_mut().zip(input).zip(key) {
+            if k[0].abs().max(k[1].abs()) > threshold {
                 self.hold = p[2] * ctx.sr;
             }
             if self.hold > 0.0 {
@@ -92,7 +96,8 @@ impl Dsp for Maximizer {
 
 // ---------------------------------------------------------------- compressor
 
-/// A feed-forward compressor following the louder channel.
+/// A feed-forward compressor following the louder channel of its input,
+/// or of its key input.
 #[derive(Default)]
 pub(super) struct Compressor {
     pub(super) env: f32,
@@ -104,11 +109,15 @@ impl Dsp for Compressor {
     }
 
     fn process(&mut self, ctx: &Ctx, p: &[f32], input: &[Frame], out: &mut [Frame]) {
+        self.process_keyed(ctx, p, input, input, out);
+    }
+
+    fn process_keyed(&mut self, ctx: &Ctx, p: &[f32], input: &[Frame], key: &[Frame], out: &mut [Frame]) {
         let (threshold, ratio, makeup, mix) = (p[0], p[1], p[4], p[5]);
         let coef = |t: f32| 1.0 - (-1.0 / (t.max(1e-5) * ctx.sr)).exp();
         let (att, rel) = (coef(p[2]), coef(p[3]));
-        for (o, i) in out.iter_mut().zip(input) {
-            let level = i[0].abs().max(i[1].abs());
+        for ((o, i), k) in out.iter_mut().zip(input).zip(key) {
+            let level = k[0].abs().max(k[1].abs());
             let c = if level > self.env { att } else { rel };
             self.env += c * (level - self.env);
             let gain = if self.env > threshold {

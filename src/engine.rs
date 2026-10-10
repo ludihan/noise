@@ -326,6 +326,9 @@ struct Node {
     module: usize,
     dsp: Box<dyn Dsp>,
     inputs: Vec<usize>,
+    /// For an effect with a key input, the nodes whose sound it listens to:
+    /// the module keying it and its copies for tracks.
+    key: Vec<usize>,
     buf: Vec<Frame>,
     /// Off while another module is soloed and this one neither feeds it
     /// nor is fed by it.
@@ -676,6 +679,8 @@ pub struct Engine {
     /// scope shows.
     track_ends: Vec<(usize, usize)>,
     scratch: Vec<Frame>,
+    /// What the key input of the effect being processed adds up to.
+    key_scratch: Vec<Frame>,
 
     playing: bool,
     loop_pattern: bool,
@@ -763,6 +768,7 @@ impl Engine {
             copies: Vec::new(),
             track_ends: Vec::new(),
             scratch: vec![[0.0; 2]; BLOCK],
+            key_scratch: vec![[0.0; 2]; BLOCK],
             playing: false,
             loop_pattern: false,
             pos_order: 0,
@@ -822,6 +828,7 @@ impl Engine {
                     let mut n = old.swap_remove(i);
                     n.module = mi;
                     n.inputs.clear();
+                    n.key.clear();
                     n.targets.clear();
                     n.controls.clear();
                     n
@@ -836,6 +843,7 @@ impl Engine {
                         kind => dsp::create(kind, self.sr),
                     },
                     inputs: Vec::new(),
+                    key: Vec::new(),
                     buf: vec![[0.0; 2]; BLOCK],
                     audible: true,
                     peak: [0.0; 2],
@@ -897,6 +905,14 @@ impl Engine {
                 self.nodes[b].inputs.push(a);
             }
         }
+        // An effect listening to a key input hears every copy of it.
+        for j in 0..self.nodes.len() {
+            let m = &project.modules[self.nodes[j].module];
+            let Some(src) = m.key.filter(|&k| project.can_key(m.id, k)) else { continue };
+            let Some(b) = base[src as usize] else { continue };
+            self.nodes[j].key.push(b);
+            self.nodes[j].key.extend(self.copies[b].into_iter().flatten());
+        }
         self.output = base[OUTPUT_ID as usize];
         self.track_ends = (project.tracks.iter().enumerate())
             .filter_map(|(t, track)| Some((t, base[*track.effects.last()? as usize]?)))
@@ -910,6 +926,7 @@ impl Engine {
         let mut edges: Vec<(usize, usize)> = Vec::new();
         for (j, node) in self.nodes.iter().enumerate() {
             edges.extend(node.inputs.iter().map(|&i| (i, j)));
+            edges.extend(node.key.iter().map(|&i| (i, j)));
             edges.extend(node.controls.iter().map(|&(t, _)| (j, t)));
         }
         let mut indeg = vec![0; n];
@@ -1982,6 +1999,16 @@ impl Engine {
                     s[1] += x[1];
                 }
             }
+            if !self.nodes[i].key.is_empty() {
+                let key = &mut self.key_scratch[..n];
+                key.fill([0.0; 2]);
+                for &j in &self.nodes[i].key {
+                    for (s, x) in key.iter_mut().zip(&self.nodes[j].buf[..n]) {
+                        s[0] += x[0];
+                        s[1] += x[1];
+                    }
+                }
+            }
             if self.nodes[i].kind.controls() {
                 let input_peak = scratch.iter().fold(0f32, |m, f| m.max(f[0].abs()).max(f[1].abs()));
                 Self::modulate(&mut self.nodes, &mut self.live, project, &ctx, i, n, input_peak);
@@ -1992,8 +2019,10 @@ impl Engine {
             if module.bypass && module.kind.has_input() {
                 // A switched-off effect lets its input through.
                 node.buf[..n].copy_from_slice(scratch);
-            } else {
+            } else if node.key.is_empty() {
                 node.dsp.process(&ctx, params, scratch, &mut node.buf[..n]);
+            } else {
+                node.dsp.process_keyed(&ctx, params, scratch, &self.key_scratch[..n], &mut node.buf[..n]);
             }
             let silent = module.mute || !node.audible;
             if let Some(tap) = node.dsp.track_tap() {
@@ -2356,6 +2385,41 @@ mod tests {
         for &id in ids {
             e.handle(Cmd::NoteOn { module: id, key: LIVE_KEY, note: 60, vel: 1.0 });
         }
+    }
+
+    #[test]
+    fn a_key_input_lets_another_sound_work_the_compressor() {
+        let (mut p, a, b) = two_synths();
+        p.disconnect(a, OUTPUT_ID);
+        // A heavy compressor on a, keyed by b.
+        let comp = p.add_module(ModuleKind::Compressor, [0.0, 0.0]).unwrap();
+        p.connect(a, comp);
+        p.connect(comp, OUTPUT_ID);
+        p.module_mut(comp).unwrap().params = vec![0.02, 20.0, 0.0001, 0.05, 1.0, 1.0];
+        // b is only heard through the compressor's key input.
+        p.disconnect(b, OUTPUT_ID);
+        let level = |p: &Project, notes: &[u8]| {
+            let mut e = engine(p.clone());
+            hold_notes(&mut e, notes);
+            render(&mut e, 4000);
+            loudness(&render(&mut e, 4000))
+        };
+        // On its own input it squashes a's note.
+        let own = level(&p, &[a]);
+        p.module_mut(comp).unwrap().key = Some(b);
+        assert!(p.can_key(comp, b));
+        // Keyed by a silent b it lets a through untouched; b playing ducks it.
+        let quiet_key = level(&p, &[a]);
+        let ducked = level(&p, &[a, b]);
+        assert!(quiet_key > 3.0 * own, "{quiet_key} {own}");
+        assert!(ducked < 0.5 * quiet_key, "{ducked} {quiet_key}");
+        // What the compressor feeds can't key it: that would loop.
+        let after = p.add_module(ModuleKind::Filter, [0.0, 0.0]).unwrap();
+        p.disconnect(comp, OUTPUT_ID);
+        p.connect(comp, after);
+        p.connect(after, OUTPUT_ID);
+        assert!(!p.can_key(comp, after));
+        assert!(!p.can_key(comp, comp));
     }
 
     #[test]

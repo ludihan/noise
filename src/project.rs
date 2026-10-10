@@ -1221,6 +1221,12 @@ impl ModuleKind {
         matches!(self, ModuleKind::Sampler | ModuleKind::Granular)
     }
 
+    /// Whether the module listens to another module's sound, its key
+    /// input, to decide what to do with its own.
+    pub fn takes_key(self) -> bool {
+        matches!(self, ModuleKind::Compressor | ModuleKind::Gate)
+    }
+
     /// Whether the module's voices take a `Modulation`.
     pub fn has_modulation(self) -> bool {
         matches!(self, ModuleKind::Sampler | ModuleKind::Generator | ModuleKind::Fm | ModuleKind::Wavetable)
@@ -1836,6 +1842,10 @@ pub struct Module {
     /// `ModuleKind::automatable`) of each module it links to it moves.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub controls: Vec<(u8, usize)>,
+    /// The module whose sound a Compressor or Gate listens to, its key
+    /// input, instead of its own: the sidechain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<u8>,
     /// A Sampler's samples.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub samples: Vec<SampleSlot>,
@@ -1905,6 +1915,7 @@ impl Module {
             bypass: false,
             color: None,
             controls: Vec::new(),
+            key: None,
             samples: Vec::new(),
             shape: Vec::new(),
             modulation: Modulation::default(),
@@ -2181,6 +2192,9 @@ impl Project {
             return;
         }
         self.modules.retain(|m| m.id != id);
+        for m in &mut self.modules {
+            m.key = m.key.filter(|&k| k != id);
+        }
         self.links.retain(|&(a, b)| a != id && b != id);
         self.master.retain(|&m| m != id);
         for t in &mut self.tracks {
@@ -2248,6 +2262,30 @@ impl Project {
             stack.extend(self.links.iter().filter(|l| l.0 == n).map(|l| l.1));
         }
         false
+    }
+
+    /// Whether module `effect` can listen to `source` as its key input: it
+    /// takes one, `source` makes sound, and neither the effect's sound nor
+    /// what it keys comes back round to `source`, which would loop.
+    pub fn can_key(&self, effect: u8, source: u8) -> bool {
+        let (Some(e), Some(s)) = (self.module(effect), self.module(source)) else { return false };
+        if effect == source || !e.kind.takes_key() || !s.kind.makes_sound() || !s.kind.has_output() {
+            return false;
+        }
+        let mut links: Vec<(u8, u8)> = self.signal_graph().1.iter().map(|(a, b)| (a.0, b.0)).collect();
+        links.extend(self.modules.iter().filter(|m| m.id != effect).filter_map(|m| Some((m.key?, m.id))));
+        let mut stack = vec![effect];
+        let mut seen = Vec::new();
+        while let Some(n) = stack.pop() {
+            if n == source {
+                return false;
+            }
+            if !seen.contains(&n) {
+                seen.push(n);
+                stack.extend(links.iter().filter(|l| l.0 == n).map(|l| l.1));
+            }
+        }
+        true
     }
 
     /// Solos `track` alone: the other tracks fall silent.

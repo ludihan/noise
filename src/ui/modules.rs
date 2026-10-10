@@ -374,6 +374,10 @@ pub fn param_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
     if module.kind == ModuleKind::Convolver {
         impulse_section(app, ui, &module);
     }
+    if module.kind.takes_key() {
+        ui.add_space(3.0);
+        routing::key_picker(app, ui, id);
+    }
 }
 
 /// A Convolver's own impulse: the sample loaded as one, to load or clear.

@@ -149,7 +149,10 @@ const MODULES: &[(&str, &str)] = &[
     ("Vocal Filter", "Formant filters that make a sound say A, E, I, O or U, morphing between them"),
     ("Repeater", "While Hold is on, loops the last 8 lines to 1/16 line of its input: stutters"),
     ("Ring Mod", "The sound times a carrier wave, for bell and robot tones"),
-    ("Gate", "Silences the sound while it is quieter than a threshold, with attack, hold, release and a floor"),
+    (
+        "Gate",
+        "Silences the sound while it is quieter than a threshold, with attack, hold, release and a floor. Its Key can be another module: then that sound opens and closes it (a sidechain)",
+    ),
     ("Pitch Shifter", "Moves the sound up or down by up to two octaves, with a grain size and feedback"),
     ("Stereo Expander", "Makes the sound wider or narrower, keeping the lows below Mono bass in the middle"),
     ("Comb Filter", "Rings at a note and its harmonics, with feedback and damping"),
@@ -178,7 +181,10 @@ const MODULES: &[(&str, &str)] = &[
     ),
     ("Plate Reverb", "A dense plate reverb after Dattorro: predelay, decay, damping and width"),
     ("EQ 5", "A parametric EQ: a low shelf, three peaks and a high shelf, each with its frequency, gain and width"),
-    ("Compressor", "Threshold, ratio, attack, release, makeup gain and mix"),
+    (
+        "Compressor",
+        "Threshold, ratio, attack, release, makeup gain and mix. Its Key can be another module, whose sound then turns it down (a sidechain): a kick ducking a pad or bass",
+    ),
     ("EQ", "A low shelf, a mid peak and a high shelf, each with its frequency"),
     ("Output", "The final mix"),
 ];

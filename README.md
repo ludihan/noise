@@ -37,7 +37,8 @@ noise --demo-wav [out.wav]         # render the demo song
 - **Track effects**, on top of each instrument's
   own, **groups** that send tracks on through another track's effects as a
   bus, a per-track volume command (`Lxx`), and a **master chain** of
-  effects for the whole mix.
+  effects for the whole mix. **Sidechains**: a Compressor or Gate can listen to
+  another module's sound as its key input.
 - **Pattern sequencer and matrix** with per-slot mutes, block copying and
   sections, drag and drop and a right-click menu for slots; a **mixer**
   strip for every module; **automation** envelopes of a pattern or part of
