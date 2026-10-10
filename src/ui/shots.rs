@@ -26,6 +26,10 @@ fn shot(name: &str, setup: impl FnOnce(&mut App)) {
 fn shots() {
     shot("pattern", |_| {});
     shot("mixer", |app| app.view = View::Mixer);
+    shot("neighbours", |app| {
+        // Near the top of the third slot: the second one's end shows above.
+        (app.slot, app.cursor.line) = (2, 3);
+    });
     shot("automation", |app| {
         // An envelope from line 8 for a bar, repeating.
         // The first envelope, which the panel shows first.

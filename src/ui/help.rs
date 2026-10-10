@@ -290,7 +290,7 @@ const TOPICS: &[Topic] = &[
         title: "Pattern editor",
         blocks: &[
             P(
-                "The cursor line stays in the middle and the pattern scrolls under it; the wheel moves the cursor. A red outline means edit mode is on: notes are written and the cursor moves on by STEP lines.",
+                "The cursor line stays in the middle and the pattern scrolls under it; the wheel moves the cursor. Above and below the pattern, the end of the one before it in the song and the start of the one after show dimmed, and the wheel, the arrow keys and Page Up and Down go on into them (with Shift, selecting, they stay in this pattern). A red outline means edit mode is on: notes are written and the cursor moves on by STEP lines.",
             ),
             Code(
                 "C-4 02 40 F8C\n│   │  │  └─ effect: command + hex argument\n│   │  └──── volume, 00–80, or a command such as O4\n│   └─────── module that plays the note (hex)\n└─────────── note",

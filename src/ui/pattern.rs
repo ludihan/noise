@@ -483,6 +483,22 @@ pub fn handle_keys(app: &mut App, ctx: &egui::Context) {
             }
             continue;
         }
+        // Up and down go on into the patterns before and after, unless
+        // Shift is extending the selection, which stays in this one.
+        let step = match key {
+            Key::ArrowUp => Some((-1, true)),
+            Key::ArrowDown => Some((1, true)),
+            Key::PageUp => Some((-16, false)),
+            Key::PageDown => Some((16, false)),
+            _ => None,
+        };
+        if let Some((delta, wrap)) = step
+            && !modifiers.shift
+        {
+            step_lines(app, delta, wrap);
+            deselect(app);
+            continue;
+        }
         let lines = app.pattern().lines;
         let tracks = app.pattern().num_tracks();
         let before = (app.cursor.line, lane(app));
@@ -851,6 +867,16 @@ pub fn editor(app: &mut App, ui: &mut egui::Ui) {
     if showing_played && app.follow {
         app.cursor.line = play_line.min(app.pattern().lines - 1);
     }
+    // The wheel scrolls the lines, on past the pattern's ends into the
+    // next; first, so the rows are laid out for the pattern it ends on.
+    if ui.rect_contains_pointer(ui.available_rect_before_wrap()) {
+        app.wheel += ui.input(|i| i.smooth_scroll_delta.y);
+        let steps = (app.wheel / row_h).trunc();
+        if steps != 0.0 && !(showing_played && app.follow) {
+            app.wheel -= steps * row_h;
+            step_lines(app, -steps as i64, false);
+        }
+    }
 
     let lines = app.pattern().lines;
     let lpb = app.project.lpb.max(1) as usize;
@@ -916,15 +942,6 @@ pub fn editor(app: &mut App, ui: &mut egui::Ui) {
         }
         let cur = app.cursor;
 
-        if resp.hovered() {
-            app.wheel += ui.input(|i| i.smooth_scroll_delta.y);
-            let steps = (app.wheel / row_h).trunc();
-            if steps != 0.0 && !(showing_played && app.follow) {
-                app.wheel -= steps * row_h;
-                let l = app.cursor.line as i64 - steps as i64;
-                app.cursor.line = l.clamp(0, lines as i64 - 1) as usize;
-            }
-        }
         // The cell under a point; left of the tracks, the cursor's track.
         let cell_at = |pos: Pos2| {
             let dl = ((pos.y - center_top) / row_h).floor() as i64;
@@ -1057,6 +1074,50 @@ pub fn editor(app: &mut App, ui: &mut egui::Ui) {
                 let shade = if c == 0 { 40 } else { 28 };
                 painter.line_segment([Pos2::new(sep, y), Pos2::new(sep, y + row_h)], (1.0, Color32::from_gray(shade)));
             }
+        }
+        // Above and below, the patterns before and after in the song, dim,
+        // a line marking where each starts.
+        let rows = visible(rect.top())..visible(rect.bottom()) + 1;
+        for l in rows.filter(|&l| l < 0 || l >= lines as i64) {
+            let Some((s, line)) = song_line(&app.project, app.slot, l) else { continue };
+            let other = &app.project.patterns[app.project.order[s].pattern];
+            let y = center_top + (l as f32 - cur.line as f32) * row_h;
+            let row = Rect::from_min_size(Pos2::new(rect.left(), y), Vec2::new(width, row_h));
+            let bg = if line % (lpb * 4) == 0 {
+                theme::PAT_BAR
+            } else if line % lpb == 0 {
+                theme::PAT_BEAT
+            } else {
+                theme::PAT_BG
+            };
+            painter.rect_filled(row, 0.0, bg.gamma_multiply(0.5));
+            if line == 0 {
+                painter.line_segment([row.left_top(), row.right_top()], (1.0, theme::FRAME_LINE));
+            }
+            let dim = |c: Color32| c.gamma_multiply(0.4);
+            let number = format!("{line:03}");
+            painter.text(
+                row.left_center() + Vec2::new(4.0, 0.0),
+                Align2::LEFT_CENTER,
+                number,
+                font.clone(),
+                dim(theme::PAT_LINE_NUMBER),
+            );
+            for &(lx, t, c, subs, _) in
+                layout.lanes.iter().filter(|l| l.1 < other.num_tracks() && l.2 < other.width(l.1))
+            {
+                let mut x = rect.left() + lx + char_w * 0.5;
+                for (text, color) in cell_text(&other.cell(t, c, line), subs) {
+                    painter.text(Pos2::new(x, y + row_h / 2.0), Align2::LEFT_CENTER, &text, font.clone(), dim(color));
+                    x += (text.len() + 1) as f32 * char_w;
+                }
+            }
+        }
+        // This pattern's own start and end, against its neighbours.
+        for edge in [0.0, lines as f32] {
+            let y = center_top + (edge - cur.line as f32) * row_h;
+            painter
+                .line_segment([Pos2::new(rect.left(), y), Pos2::new(rect.left() + width, y)], (1.0, theme::FRAME_LINE));
         }
     });
     if app.edit_mode {
@@ -1536,4 +1597,66 @@ fn common_key(app: &mut App, key: Key, repeat: bool, shift: bool) -> bool {
         _ => return false,
     }
     true
+}
+
+/// Where `line` lines from the top of slot `slot`'s pattern falls in the
+/// song: lines before it and past its end go on into the slots before and
+/// after. The slot and its line, or `None` past either end of the song.
+fn song_line(project: &Project, mut slot: usize, mut line: i64) -> Option<(usize, usize)> {
+    let lines_of = |s: usize| project.patterns[project.order[s].pattern].lines as i64;
+    loop {
+        if line < 0 {
+            slot = slot.checked_sub(1)?;
+            line += lines_of(slot);
+        } else if line >= lines_of(slot) {
+            line -= lines_of(slot);
+            slot += 1;
+            if slot >= project.order.len() {
+                return None;
+            }
+        } else {
+            return Some((slot, line as usize));
+        }
+    }
+}
+
+/// Moves the cursor `delta` lines, on into the patterns before and after
+/// this one. Past the song's ends it stops at its first or last line, or
+/// with `wrap` goes round to the other end of the pattern, as the arrow
+/// keys do in a song of one pattern.
+fn step_lines(app: &mut App, delta: i64, wrap: bool) {
+    let to = app.cursor.line as i64 + delta;
+    let last = app.project.order.len() - 1;
+    let (slot, line) = match song_line(&app.project, app.slot, to) {
+        Some(at) => at,
+        None if wrap => (app.slot, to.rem_euclid(app.pattern().lines as i64) as usize),
+        None if delta < 0 => (0, 0),
+        None => (last, app.project.patterns[app.project.order[last].pattern].lines - 1),
+    };
+    if slot != app.slot {
+        app.slot = slot;
+        app.anchor = None;
+    }
+    app.cursor.line = line;
+    app.clamp_cursor();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::project::Slot;
+
+    #[test]
+    fn lines_past_a_pattern_go_on_into_its_neighbours() {
+        // Slots of 16, 8 and 16 lines.
+        let mut p = Project::empty();
+        p.patterns = vec![Pattern::new("", 1, 16), Pattern::new("", 1, 8)];
+        p.order = vec![Slot::new(0), Slot::new(1), Slot::new(0)];
+        assert_eq!(song_line(&p, 1, 3), Some((1, 3)));
+        assert_eq!(song_line(&p, 1, -1), Some((0, 15)), "the end of the one before");
+        assert_eq!(song_line(&p, 1, 8), Some((2, 0)), "the start of the one after");
+        assert_eq!(song_line(&p, 0, 30), Some((2, 6)), "past a short one in between");
+        assert_eq!(song_line(&p, 0, -1), None, "nothing before the song");
+        assert_eq!(song_line(&p, 2, 16), None, "nor after it");
+    }
 }
