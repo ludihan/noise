@@ -274,8 +274,11 @@ pub struct App {
     file_dialog: Option<files::FileDialog>,
     preset_picker: Option<soundfonts::PresetPicker>,
     soundfont_loads: Vec<soundfonts::Loading>,
-    /// Work going on on a thread of its own: a render, export or import.
-    job: Option<jobs::Job>,
+    /// Work going on on threads of their own: renders, exports, saves…
+    jobs: Vec<jobs::Job>,
+    /// The window was asked to close while jobs ran: it closes when they
+    /// are done.
+    close_when_done: bool,
     browser: browser::Browser,
     /// Mouse wheel movement not yet turned into whole pattern lines.
     pub wheel: f32,
@@ -425,7 +428,8 @@ impl App {
             file_dialog: None,
             preset_picker: None,
             soundfont_loads: Vec::new(),
-            job: None,
+            jobs: Vec::new(),
+            close_when_done: false,
             browser: browser::Browser::new(browse_dir),
             wheel: 0.0,
             shown_cursor: None,
@@ -832,6 +836,14 @@ impl eframe::App for App {
         self.handle_midi();
         self.handle_dropped_files(&ctx);
 
+        // A save or render going on finishes first.
+        if ctx.input(|i| i.viewport().close_requested()) && !self.jobs.is_empty() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.close_when_done = true;
+        } else if self.close_when_done && self.jobs.is_empty() {
+            self.close_when_done = false;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
         if ctx.input(|i| i.viewport().close_requested()) && self.modified && !self.quitting {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.confirm = Some(Pending::Quit);

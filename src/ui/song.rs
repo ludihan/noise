@@ -52,22 +52,67 @@ impl App {
 
     /// Saves the song as its project folder, `path`.
     pub(super) fn save(&mut self) {
-        self.status = match project_dir::save(&mut self.project, std::path::Path::new(&self.path), &mut self.hashes) {
-            Ok(saved) => {
-                self.untitled = false;
-                self.modified = false;
-                let mut done = Vec::new();
-                if saved.written > 0 {
-                    done.push(format!("{} samples written", saved.written));
-                }
-                if saved.removed > 0 {
-                    done.push(format!("{} no longer played deleted", saved.removed));
-                }
-                let done = if done.is_empty() { String::new() } else { format!(" ({})", done.join(", ")) };
-                format!("Saved {}{done}", self.path)
+        self.save_then(None);
+    }
+
+    /// Saves a copy of the song on a thread, then does `then`: what was
+    /// waiting for it to be saved, such as quitting.
+    pub(super) fn save_then(&mut self, then: Option<Pending>) {
+        let (mut song, path, mut hashes) = (self.project.clone(), self.path.clone(), self.hashes.clone());
+        // Edits made while it saves make the song unsaved again.
+        self.modified = false;
+        jobs::spawn(self, format!("Saving {}", file_name(&path)), move |_| {
+            let saved = project_dir::save(&mut song, std::path::Path::new(&path), &mut hashes);
+            Box::new(move |app: &mut App| {
+                app.hashes = hashes;
+                app.saved(path, &song, saved, then);
+            })
+        });
+    }
+
+    /// Takes in what saving `song` to `path` did: its samples now point at
+    /// their files (those still in the song), and what waited for it goes
+    /// on, or asks again if the song was changed meanwhile.
+    fn saved(
+        &mut self,
+        path: String,
+        song: &Project,
+        saved: Result<project_dir::Saved, String>,
+        then: Option<Pending>,
+    ) {
+        let saved = match saved {
+            Ok(saved) => saved,
+            Err(e) => {
+                self.modified = true;
+                self.status = format!("Save failed: {e}");
+                return;
             }
-            Err(e) => format!("Save failed: {e}"),
         };
+        let written: Vec<&SampleSlot> = song.modules.iter().flat_map(|m| &m.samples).collect();
+        for slot in self.project.modules.iter_mut().flat_map(|m| &mut m.samples) {
+            let same =
+                |s: &&&SampleSlot| s.data.as_ref().zip(slot.data.as_ref()).is_some_and(|(a, b)| Arc::ptr_eq(a, b));
+            if let Some(s) = written.iter().find(same) {
+                (slot.path, slot.unsaved) = (s.path.clone(), false);
+            }
+        }
+        if path == self.path {
+            self.untitled = false;
+        }
+        let mut done = Vec::new();
+        if saved.written > 0 {
+            done.push(format!("{} samples written", saved.written));
+        }
+        if saved.removed > 0 {
+            done.push(format!("{} no longer played deleted", saved.removed));
+        }
+        let done = if done.is_empty() { String::new() } else { format!(" ({})", done.join(", ")) };
+        self.status = format!("Saved {path}{done}");
+        match then {
+            Some(p) if self.modified => self.confirm = Some(p),
+            Some(p) => self.perform(p),
+            None => {}
+        }
     }
 
     /// Opens the song at `path`, a project folder or a song file, reading it
@@ -188,10 +233,7 @@ impl App {
                 self.after_save = Some(pending);
                 self.pick_file(files::Purpose::SaveSong);
             } else {
-                self.save();
-                if !self.modified {
-                    self.perform(pending);
-                }
+                self.save_then(Some(pending));
             }
         } else if discard {
             let pending = self.confirm.take().unwrap();
@@ -426,12 +468,8 @@ impl App {
                     files::Purpose::OpenSong => self.request(open_or_import(path_str)),
                     files::Purpose::SaveSong => {
                         self.path = path_str;
-                        self.save();
-                        if let Some(p) = self.after_save.take()
-                            && !self.modified
-                        {
-                            self.perform(p);
-                        }
+                        let then = self.after_save.take();
+                        self.save_then(then);
                     }
                     files::Purpose::ExportProject => self.export_project(&path_str),
                     files::Purpose::ImportProject => self.request(Pending::Import(path_str)),
@@ -472,4 +510,43 @@ impl App {
 /// What a render cut off at its longest says it was cut off after.
 fn too_long() -> String {
     format!("{} hours: does the song ever end?", audio::MAX_RENDER_SECONDS / 3600)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui_kittest::Harness;
+
+    /// Runs frames until `app` has no jobs left.
+    fn finish_jobs(harness: &mut Harness<'_, App>) {
+        let start = std::time::Instant::now();
+        while !harness.state().jobs.is_empty() {
+            assert!(start.elapsed().as_secs() < 60, "the jobs never ended");
+            harness.step();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn saving_runs_beside_the_window_and_keeps_edits_made_meanwhile() {
+        let dir = std::env::temp_dir().join(format!("noise-save-{}", std::process::id()));
+        let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
+        let app = harness.state_mut();
+        (app.path, app.untitled) = (dir.to_string_lossy().into_owned(), false);
+        app.save();
+        assert!(!app.jobs.is_empty(), "it saves on a thread");
+        // An edit while it saves leaves the song unsaved.
+        app.project.title = "Changed".into();
+        app.mark();
+        finish_jobs(&mut harness);
+        let app = harness.state();
+        assert!(dir.join(project_dir::SONG_FILE).exists(), "{}", app.status);
+        assert!(app.modified, "the edit made meanwhile isn't saved");
+        let slots: Vec<&SampleSlot> = app.project.modules.iter().flat_map(|m| &m.samples).collect();
+        assert!(
+            !slots.is_empty() && slots.iter().all(|s| !s.unsaved && s.path.is_some()),
+            "samples point at their files"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 }

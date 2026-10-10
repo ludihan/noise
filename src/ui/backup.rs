@@ -51,10 +51,15 @@ impl App {
             let name = Path::new(&self.path).file_name().map_or("song".into(), |n| n.to_string_lossy().into_owned());
             name.trim_end_matches(".json").trim_end_matches(".noise").to_string()
         };
-        match write(&self.project, &clean(&stem), &dir, &mut self.hashes, now_utc()) {
-            Ok(path) => self.set_status(format!("Backed up the song to {}", path.display())),
-            Err(e) => self.set_status(format!("Could not back up the song to {}: {e}", dir.display())),
-        }
+        // Written on a thread, from a copy, as samples may need writing.
+        let (song, mut hashes) = (self.project.clone(), self.hashes.clone());
+        super::jobs::spawn(self, "Backing up the song", move |_| {
+            let done = write(&song, &clean(&stem), &dir, &mut hashes, now_utc());
+            Box::new(move |app: &mut App| match done {
+                Ok(path) => app.set_status(format!("Backed up the song to {}", path.display())),
+                Err(e) => app.set_status(format!("Could not back up the song to {}: {e}", dir.display())),
+            })
+        });
     }
 }
 

@@ -59,7 +59,7 @@ pub fn open(path: &Path) -> Result<(Project, Vec<String>), String> {
 
 /// The hashes of samples' audio, kept for the audio they were taken from,
 /// so saving doesn't hash the same audio again.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Hashes(HashMap<usize, (Arc<Sample>, String)>);
 
 impl Hashes {
