@@ -49,18 +49,7 @@ impl Engine {
                 NoteEv::Pitch(note) => node.last_note.0 = note,
                 _ => {}
             }
-            let dsp = &mut node.dsp;
-            match ev {
-                NoteEv::On(note, vel) => dsp.note_on(key, note, vel),
-                NoteEv::Off => dsp.note_off(key),
-                NoteEv::Pitch(note) => dsp.set_pitch(key, note),
-                NoteEv::Vel(vel) => dsp.set_velocity(key, vel),
-                NoteEv::Pan(pan) => dsp.set_pan(key, pan),
-                NoteEv::Offset(pos) => dsp.sample_offset(key, pos),
-                NoteEv::Reverse(on) => dsp.reverse(key, on),
-                NoteEv::Slice(k) => dsp.play_slice(key, k as usize),
-                NoteEv::Seek(frames) => dsp.seek(key, frames),
-            }
+            ev.apply(node.dsp.as_mut(), key);
             return;
         }
         if node.kind == ModuleKind::Glide {
@@ -107,12 +96,7 @@ impl Engine {
         if ev == NoteEv::Off {
             self.nodes[i].held.retain(|h| h.key != key);
         }
-        let ev = match ev {
-            NoteEv::On(note, vel) => NoteEv::On(note + held.detune, (vel * held.vel).min(1.0)),
-            NoteEv::Pitch(note) => NoteEv::Pitch(note + held.detune),
-            NoteEv::Vel(vel) => NoteEv::Vel((vel * held.vel).min(1.0)),
-            ev => ev,
-        };
+        let ev = ev.moved(held.detune, held.vel);
         let n = self.nodes[i].targets.len();
         for t in 0..n {
             if held.target.is_none_or(|h| h == t) {

@@ -65,6 +65,34 @@ enum NoteEv {
     Seek(f64),
 }
 
+impl NoteEv {
+    /// The event `transpose` semitones up and its velocity scaled by `vel`,
+    /// as a MultiSynth or a phrase plays it.
+    fn moved(self, transpose: f32, vel: f32) -> Self {
+        match self {
+            NoteEv::On(note, v) => NoteEv::On(note + transpose, (v * vel).min(1.0)),
+            NoteEv::Pitch(note) => NoteEv::Pitch(note + transpose),
+            NoteEv::Vel(v) => NoteEv::Vel((v * vel).min(1.0)),
+            ev => ev,
+        }
+    }
+
+    /// Gives the event to `dsp` for the notes on `key`.
+    fn apply(self, dsp: &mut dyn Dsp, key: u32) {
+        match self {
+            NoteEv::On(note, vel) => dsp.note_on(key, note, vel),
+            NoteEv::Off => dsp.note_off(key),
+            NoteEv::Pitch(note) => dsp.set_pitch(key, note),
+            NoteEv::Vel(vel) => dsp.set_velocity(key, vel),
+            NoteEv::Pan(pan) => dsp.set_pan(key, pan),
+            NoteEv::Offset(pos) => dsp.sample_offset(key, pos),
+            NoteEv::Reverse(on) => dsp.reverse(key, on),
+            NoteEv::Slice(k) => dsp.play_slice(key, k as usize),
+            NoteEv::Seek(frames) => dsp.seek(key, frames),
+        }
+    }
+}
+
 /// A phrase playing on a key of an instrument: which of its phrases, how
 /// far the note played moves the phrase and its velocity, the next line,
 /// its next tick and how long until it, and the phrase's notes and
@@ -88,18 +116,7 @@ impl PhrasePlayer {
     /// Passes an event of the phrase's track to the instrument's `dsp`,
     /// moved by the note played and scaled by its velocity.
     fn send(&self, dsp: &mut dyn Dsp, ev: NoteEv) {
-        let (key, t, v) = (self.key, self.transpose, self.vel);
-        match ev {
-            NoteEv::On(note, vel) => dsp.note_on(key, note + t, vel * v),
-            NoteEv::Off => dsp.note_off(key),
-            NoteEv::Pitch(note) => dsp.set_pitch(key, note + t),
-            NoteEv::Vel(vel) => dsp.set_velocity(key, vel * v),
-            NoteEv::Pan(pan) => dsp.set_pan(key, pan),
-            NoteEv::Offset(pos) => dsp.sample_offset(key, pos),
-            NoteEv::Reverse(on) => dsp.reverse(key, on),
-            NoteEv::Slice(k) => dsp.play_slice(key, k as usize),
-            NoteEv::Seek(frames) => dsp.seek(key, frames),
-        }
+        ev.moved(self.transpose, self.vel).apply(dsp, self.key);
     }
 }
 
