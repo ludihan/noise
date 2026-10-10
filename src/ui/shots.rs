@@ -35,7 +35,7 @@ fn shots() {
         // The first envelope, which the panel shows first.
         let env = app.pattern_mut().automation.first_mut().expect("an envelope in the demo's first pattern");
         env.every = 1.0;
-        env.points = vec![(0.0, 0.2), (8.0, 0.9), (16.0, 0.2)];
+        (env.points, env.steps, env.curve) = super::automation::lfo_points(0, 4.0, 0.5);
         (app.lower, app.show_lower) = (super::Lower::Automation, true);
     });
     shot("busy", |app| {

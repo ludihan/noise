@@ -2,7 +2,7 @@
 //! the course of a pattern, drawn in the lower frame.
 
 use super::{App, theme};
-use crate::project::{Envelope, ParamSpec};
+use crate::project::{Envelope, LFO_SHAPES, ParamSpec};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Vec2};
 
 #[derive(Default)]
@@ -227,7 +227,12 @@ fn editor(app: &mut App, ui: &mut egui::Ui) {
     });
     // Which lines it takes effect in, on a row of its own.
     let (pattern_lines, lpb) = (app.pattern().lines, app.project.lpb.max(1));
-    ui.horizontal(|ui| timing(ui, &mut env, pattern_lines, lpb));
+    let around = spec.position(value);
+    ui.horizontal(|ui| {
+        timing(ui, &mut env, pattern_lines, lpb);
+        ui.separator();
+        shape_menu(ui, &mut env, pattern_lines, lpb, around);
+    });
 
     let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
     let painter = ui.painter_at(rect);
@@ -451,5 +456,56 @@ fn timing(ui: &mut egui::Ui, env: &mut Envelope, pattern_lines: usize, lpb: u32)
     if after != before {
         let scale = after / before;
         env.points.iter_mut().for_each(|p| p.0 *= scale);
+    }
+}
+
+/// Draws one cycle of an LFO shape (`LFO_SHAPES`) into `env` over its
+/// lines, or over each repeat, swinging a quarter of the parameter's range
+/// either side of `around`, where the parameter is (0..1 along its bar).
+fn shape_menu(ui: &mut egui::Ui, env: &mut Envelope, pattern_lines: usize, lpb: u32, around: f32) {
+    ui.menu_button("Shape", |ui| {
+        for (k, name) in LFO_SHAPES.iter().enumerate() {
+            if ui.button(*name).clicked() {
+                let (points, steps, curve) = lfo_points(k, env.span(pattern_lines, lpb), around);
+                (env.points, env.steps, env.curve) = (points, steps, curve);
+                ui.close();
+            }
+        }
+    })
+    .response
+    .on_hover_text("Draw one cycle of a shape, as an LFO would play it; on Repeat it plays every interval");
+}
+
+/// The points of one cycle of LFO shape `shape` over `span` lines, around
+/// `around`, and whether they are steps or a curve.
+pub(super) fn lfo_points(shape: usize, span: f32, around: f32) -> (Vec<(f32, f32)>, bool, bool) {
+    let (lo, hi) = ((around - 0.25).max(0.0), (around + 0.25).min(1.0));
+    let mid = (lo + hi) / 2.0;
+    let at = |f: f32, v: f32| (f * span, v);
+    match shape {
+        0 => (vec![at(0.0, mid), at(0.25, hi), at(0.5, mid), at(0.75, lo), at(1.0, mid)], false, true),
+        1 => (vec![at(0.0, lo), at(0.5, hi), at(1.0, lo)], false, false),
+        2 => (vec![at(0.0, hi), at(0.5, lo)], true, false),
+        3 => (vec![at(0.0, hi), at(1.0, lo)], false, false),
+        _ => (vec![at(0.0, lo), at(1.0, hi)], false, false),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shapes_draw_one_cycle_around_the_value() {
+        // A sine over 4 lines around the middle: up a quarter, then down.
+        let (points, steps, curve) = lfo_points(0, 4.0, 0.5);
+        let mut env = Envelope::new(1, 0, points);
+        (env.steps, env.curve) = (steps, curve);
+        assert_eq!(env.value_at(1.0), Some(0.75));
+        assert_eq!(env.value_at(3.0), Some(0.25));
+        assert_eq!(env.value_at(4.0), Some(0.5), "and back where it started");
+        // Near the top of the range it stays inside it.
+        let (points, ..) = lfo_points(4, 8.0, 0.9);
+        assert!(points.iter().all(|p| (0.0..=1.0).contains(&p.1)) && points[1] == (8.0, 1.0));
     }
 }
