@@ -6,19 +6,51 @@ use super::{App, ScopeView, browser::Filter};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// Which frames and parts of the window are shown, kept in the settings
+/// file under their old names.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Panels {
+    #[serde(rename = "show_upper")]
+    pub upper: bool,
+    #[serde(rename = "show_matrix")]
+    pub matrix: bool,
+    #[serde(rename = "show_browser")]
+    pub browser: bool,
+    #[serde(rename = "show_sequencer")]
+    pub sequencer: bool,
+    #[serde(rename = "show_instruments")]
+    pub instruments: bool,
+    #[serde(rename = "show_song_settings")]
+    pub song_settings: bool,
+    #[serde(rename = "show_entry_settings")]
+    pub entry_settings: bool,
+    #[serde(rename = "show_cpu")]
+    pub cpu: bool,
+}
+
+impl Default for Panels {
+    fn default() -> Self {
+        Panels {
+            upper: true,
+            matrix: false,
+            browser: true,
+            sequencer: true,
+            instruments: true,
+            song_settings: true,
+            entry_settings: true,
+            cpu: true,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub midi_port: Option<String>,
     pub midi_velocity: bool,
-    pub show_upper: bool,
-    pub show_matrix: bool,
-    pub show_browser: bool,
-    pub show_sequencer: bool,
-    pub show_instruments: bool,
-    pub show_song_settings: bool,
-    pub show_entry_settings: bool,
-    pub show_cpu: bool,
+    #[serde(flatten)]
+    pub panels: Panels,
     /// The lower frame's height.
     pub lower_height: f32,
     pub scope_view: ScopeView,
@@ -45,14 +77,7 @@ impl Default for Settings {
         Settings {
             midi_port: None,
             midi_velocity: true,
-            show_upper: true,
-            show_matrix: false,
-            show_browser: true,
-            show_sequencer: true,
-            show_instruments: true,
-            show_song_settings: true,
-            show_entry_settings: true,
-            show_cpu: true,
+            panels: Panels::default(),
             lower_height: 270.0,
             scope_view: ScopeView::Scope,
             browser_dir: None,
@@ -96,14 +121,7 @@ impl App {
         Settings {
             midi_port: self.midi.port.clone(),
             midi_velocity: self.midi_velocity,
-            show_upper: self.show_upper,
-            show_matrix: self.show_matrix,
-            show_browser: self.show_browser,
-            show_sequencer: self.show_sequencer,
-            show_instruments: self.show_instruments,
-            show_song_settings: self.show_song_settings,
-            show_entry_settings: self.show_entry_settings,
-            show_cpu: self.show_cpu,
+            panels: self.panels,
             lower_height: self.lower_height,
             scope_view: self.scope_view,
             browser_dir: Some(self.browser.dir().to_path_buf()),
@@ -124,15 +142,8 @@ impl App {
     /// when no song was opened, which brings its own.
     pub fn apply_settings(&mut self, s: &Settings, song_given: bool) {
         self.midi_velocity = s.midi_velocity;
-        self.show_upper = s.show_upper;
         // The lower frame starts closed, to its tabs; a tab opens it.
-        self.show_matrix = s.show_matrix;
-        self.show_browser = s.show_browser;
-        self.show_sequencer = s.show_sequencer;
-        self.show_instruments = s.show_instruments;
-        self.show_song_settings = s.show_song_settings;
-        self.show_entry_settings = s.show_entry_settings;
-        self.show_cpu = s.show_cpu;
+        self.panels = s.panels;
         self.lower_height = s.lower_height.clamp(120.0, 2000.0);
         self.scope_view = s.scope_view;
         self.browser.filter = s.browser_filter;
@@ -191,7 +202,7 @@ mod tests {
         assert_eq!(Settings::load_from(&path), Settings::default(), "nothing saved yet");
         let s = Settings {
             midi_port: Some("Keys".into()),
-            show_browser: false,
+            panels: Panels { browser: false, ..Panels::default() },
             scope_view: ScopeView::Tracks,
             ..Settings::default()
         };
@@ -201,7 +212,7 @@ mod tests {
         // and fields they had that are gone now are passed over.
         std::fs::write(&path, r#"{"show_upper": false, "show_lower": true}"#).unwrap();
         let old = Settings::load_from(&path);
-        assert!(!old.show_upper && old.show_sequencer && old.midi_velocity);
+        assert!(!old.panels.upper && old.panels.sequencer && old.midi_velocity);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

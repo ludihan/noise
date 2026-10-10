@@ -9,12 +9,12 @@ impl App {
     pub(super) fn right_column(&mut self, ui: &mut egui::Ui) {
         let h = ui.available_height();
         let w = ui.available_width();
-        if self.show_instruments {
-            let list_h = if self.show_browser { (h * 0.38).clamp(132.0, 360.0) } else { h };
+        if self.panels.instruments {
+            let list_h = if self.panels.browser { (h * 0.38).clamp(132.0, 360.0) } else { h };
             widgets::boxed(ui, "instruments", Vec2::new(w, list_h), |ui| instruments::panel(self, ui));
         }
-        if self.show_browser {
-            if self.show_instruments {
+        if self.panels.browser {
+            if self.panels.instruments {
                 ui.add_space(5.0);
             }
             widgets::boxed(ui, "browser", Vec2::new(w, ui.available_height()), |ui| {
@@ -158,9 +158,9 @@ impl App {
     pub(super) fn view_tabs(&mut self, ui: &mut egui::Ui) {
         use icons::Icon;
         ui.horizontal(|ui| {
-            let (icon, tip) = if self.show_sequencer { (Icon::Left, "Hide") } else { (Icon::Right, "Show") };
+            let (icon, tip) = if self.panels.sequencer { (Icon::Left, "Hide") } else { (Icon::Right, "Show") };
             if icons::button(ui, icon).on_hover_text(format!("{tip} the pattern sequencer (Ctrl+2)")).clicked() {
-                self.show_sequencer = !self.show_sequencer;
+                self.panels.sequencer = !self.panels.sequencer;
             }
             for (view, label, key) in View::ALL {
                 let tab = egui::Button::selectable(self.view == view, label).min_size(Vec2::new(110.0, 22.0));
@@ -169,16 +169,16 @@ impl App {
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let right = self.show_instruments || self.show_browser;
+                let right = self.panels.instruments || self.panels.browser;
                 let (icon, tip) = if right { (Icon::Right, "Hide") } else { (Icon::Left, "Show") };
                 let tip = format!("{tip} the instrument list and disk browser (Ctrl+4, Ctrl+5)");
                 if icons::button(ui, icon).on_hover_text(tip).clicked() {
-                    (self.show_instruments, self.show_browser) = (!right, !right);
+                    (self.panels.instruments, self.panels.browser) = (!right, !right);
                 }
-                let (icon, tip) = if self.show_upper { (Icon::Up, "Hide") } else { (Icon::Down, "Show") };
+                let (icon, tip) = if self.panels.upper { (Icon::Up, "Hide") } else { (Icon::Down, "Show") };
                 let tip = format!("{tip} the scopes: track scopes, spectrum and wave view (Ctrl+1)");
                 if icons::button(ui, icon).on_hover_text(tip).clicked() {
-                    self.show_upper = !self.show_upper;
+                    self.panels.upper = !self.panels.upper;
                 }
             });
         });

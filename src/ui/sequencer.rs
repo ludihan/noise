@@ -23,7 +23,7 @@ fn matrix_tracks(app: &App) -> usize {
 
 /// Width the matrix takes beside the sequencer, in the extended view.
 pub fn matrix_width(app: &App) -> f32 {
-    if app.show_matrix { matrix_tracks(app) as f32 * BLOCK + 4.0 } else { 0.0 }
+    if app.panels.matrix { matrix_tracks(app) as f32 * BLOCK + 4.0 } else { 0.0 }
 }
 
 /// The track header over the matrix columns starting at `x`, in `header`:
@@ -234,7 +234,7 @@ enum Action {
 }
 
 pub fn panel(app: &mut App, ui: &mut egui::Ui) {
-    theme::caption(ui, if app.show_matrix { "PATTERN SEQUENCER · MATRIX" } else { "SEQUENCER" });
+    theme::caption(ui, if app.panels.matrix { "PATTERN SEQUENCER · MATRIX" } else { "SEQUENCER" });
     ui.horizontal_top(|ui| {
         ui.vertical(|ui| {
             ui.set_width(TOOLBAR_W - 4.0);
@@ -247,7 +247,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
 /// The sequence: the sections' labels and each slot's pattern, with the
 /// pattern names and the matrix in the extended view.
 fn slots(app: &mut App, ui: &mut egui::Ui) {
-    let extended = app.show_matrix;
+    let extended = app.panels.matrix;
     let (play_order, _) = app.play_position();
     let playing = app.is_playing();
     let tracks = matrix_tracks(app);
@@ -718,13 +718,13 @@ fn buttons(app: &mut App, ui: &mut egui::Ui) {
         }
     }
     ui.add_space(6.0);
-    let (icon, tip) = if app.show_matrix {
+    let (icon, tip) = if app.panels.matrix {
         (Icon::Left, "Show less: just the sections and the pattern numbers")
     } else {
         (Icon::Right, "Show more: the pattern names, and the matrix with each track's color and name")
     };
     if add(ui, icon, true, tip) {
-        app.show_matrix = !app.show_matrix;
+        app.panels.matrix = !app.panels.matrix;
     }
 }
 

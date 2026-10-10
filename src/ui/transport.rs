@@ -81,7 +81,7 @@ impl App {
             let right = ui
                 .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let x1 = ui.cursor().max.x;
-                    if self.show_cpu {
+                    if self.panels.cpu {
                         group(ui, |ui| self.cpu_meter(ui));
                     }
                     group(ui, |ui| self.master_volume(ui));
@@ -90,14 +90,14 @@ impl App {
                 .inner;
             width = left + right + if two_rows { self.settings_width } else { 0.0 };
         });
-        if two_rows && (self.show_song_settings || self.show_entry_settings) {
+        if two_rows && (self.panels.song_settings || self.panels.entry_settings) {
             ui.horizontal(|ui| {
                 let x0 = ui.cursor().min.x;
                 self.settings_groups(ui);
                 self.settings_width = ui.cursor().min.x - x0;
             });
         }
-        if !self.show_song_settings && !self.show_entry_settings {
+        if !self.panels.song_settings && !self.panels.entry_settings {
             self.settings_width = 0.0;
         }
         self.transport_width = width;
@@ -107,7 +107,7 @@ impl App {
     /// and the entry settings (octave, step, volume) of the transport.
     pub(super) fn settings_groups(&mut self, ui: &mut egui::Ui) {
         let playing = self.is_playing();
-        if self.show_song_settings {
+        if self.panels.song_settings {
             group(ui, |ui| {
                 transport_label(ui, "BPM");
                 // While an Fxx has changed the tempo, the field shows the
@@ -165,7 +165,7 @@ impl App {
                 }
             });
         }
-        if self.show_entry_settings {
+        if self.panels.entry_settings {
             group(ui, |ui| {
                 transport_label(ui, "OCT");
                 field(ui, 30.0, egui::DragValue::new(&mut self.octave).range(0..=9)).on_hover_text("Octave (- / =)");

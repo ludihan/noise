@@ -117,21 +117,21 @@ impl App {
                 ui.separator();
                 // The parts of the window that can be hidden, with their keys.
                 for (on, label, key) in [
-                    (&mut self.show_upper, "Upper Frame", "Ctrl+1"),
-                    (&mut self.show_sequencer, "Pattern Sequencer", "Ctrl+2"),
+                    (&mut self.panels.upper, "Upper Frame", "Ctrl+1"),
+                    (&mut self.panels.sequencer, "Pattern Sequencer", "Ctrl+2"),
                     (&mut self.show_lower, "Lower Frame", "Ctrl+3"),
-                    (&mut self.show_instruments, "Instrument List", "Ctrl+4"),
-                    (&mut self.show_browser, "Disk Browser", "Ctrl+5"),
+                    (&mut self.panels.instruments, "Instrument List", "Ctrl+4"),
+                    (&mut self.panels.browser, "Disk Browser", "Ctrl+5"),
                 ] {
                     if ui.add(egui::Button::selectable(*on, label).shortcut_text(key)).clicked() {
                         *on = !*on;
                     }
                 }
-                ui.checkbox(&mut self.show_matrix, "Extended Sequencer (names and matrix)");
+                ui.checkbox(&mut self.panels.matrix, "Extended Sequencer (names and matrix)");
                 ui.menu_button("Transport", |ui| {
-                    ui.checkbox(&mut self.show_song_settings, "Song Settings (BPM, LPB, TPL, Swing)");
-                    ui.checkbox(&mut self.show_entry_settings, "Note Entry (Octave, Step, Volume)");
-                    ui.checkbox(&mut self.show_cpu, "CPU Meter");
+                    ui.checkbox(&mut self.panels.song_settings, "Song Settings (BPM, LPB, TPL, Swing)");
+                    ui.checkbox(&mut self.panels.entry_settings, "Note Entry (Octave, Step, Volume)");
+                    ui.checkbox(&mut self.panels.cpu, "CPU Meter");
                 });
                 ui.separator();
                 ui.checkbox(&mut self.show_comments, "Song Comments");

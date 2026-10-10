@@ -285,17 +285,10 @@ pub struct App {
     /// Until when (in the UI's time) the pattern editor is scrolling to
     /// the cursor, so the cursor doesn't follow that scroll back.
     pub scrolling_to_cursor: f64,
-    show_upper: bool,
-    /// The disk browser below the instrument list, on the right.
-    show_browser: bool,
-    /// The other parts that can be hidden: the pattern
-    /// sequencer on the left, the instrument list on the right, groups of
-    /// the transport, and the lower frame folded to its tabs.
-    show_sequencer: bool,
-    show_instruments: bool,
-    show_song_settings: bool,
-    show_entry_settings: bool,
-    show_cpu: bool,
+    /// Which frames and parts of the window are shown: the upper frame,
+    /// the pattern sequencer and matrix, the instrument list and disk
+    /// browser on the right, and groups of the transport.
+    panels: settings::Panels,
     /// The transport's widths last frame: everything on one row, and the
     /// song and entry settings alone, which go to a second row when the
     /// window is too narrow for one.
@@ -311,8 +304,6 @@ pub struct App {
     show_comments: bool,
     /// The preferences as last written, to write them again when they change.
     saved_settings: settings::Settings,
-    /// The pattern matrix beside the sequencer.
-    show_matrix: bool,
 }
 
 impl App {
@@ -439,13 +430,7 @@ impl App {
             wheel: 0.0,
             shown_cursor: None,
             scrolling_to_cursor: 0.0,
-            show_upper: true,
-            show_browser: true,
-            show_sequencer: true,
-            show_instruments: true,
-            show_song_settings: true,
-            show_entry_settings: true,
-            show_cpu: true,
+            panels: Default::default(),
             transport_width: 0.0,
             settings_width: 0.0,
             lower_height: 270.0,
@@ -454,7 +439,6 @@ impl App {
             show_help: false,
             help: Default::default(),
             show_comments: false,
-            show_matrix: false,
             saved_settings: settings::Settings::default(),
         };
         // Preferences from the last session.
@@ -657,11 +641,11 @@ impl App {
             self.pick_file(files::Purpose::SaveSong);
         }
         for (key, on) in [
-            (Key::Num1, &mut self.show_upper),
-            (Key::Num2, &mut self.show_sequencer),
+            (Key::Num1, &mut self.panels.upper),
+            (Key::Num2, &mut self.panels.sequencer),
             (Key::Num3, &mut self.show_lower),
-            (Key::Num4, &mut self.show_instruments),
-            (Key::Num5, &mut self.show_browser),
+            (Key::Num4, &mut self.panels.instruments),
+            (Key::Num5, &mut self.panels.browser),
         ] {
             if ctrl(key) {
                 *on = !*on;
@@ -876,7 +860,7 @@ impl eframe::App for App {
             });
         // The right column runs from the transport to the bottom, beside
         // the upper and lower frames.
-        if self.show_instruments || self.show_browser {
+        if self.panels.instruments || self.panels.browser {
             egui::Panel::right("right")
                 .frame(frame)
                 .resizable(true)
@@ -884,14 +868,14 @@ impl eframe::App for App {
                 .min_size(200.0)
                 .show(ui, |ui| self.right_column(ui));
         }
-        if self.show_upper {
+        if self.panels.upper {
             egui::Panel::top("upper").frame(frame).show(ui, |ui| self.upper_frame(ui));
         }
         let matrix_w = sequencer::matrix_width(self);
-        if self.show_sequencer {
+        if self.panels.sequencer {
             // Narrow with just the pattern numbers; the extended view has
             // its own width, for the names and the matrix.
-            let panel = if self.show_matrix {
+            let panel = if self.panels.matrix {
                 egui::Panel::left("sequencer_extended").default_size(210.0 + matrix_w).min_size(150.0 + matrix_w)
             } else {
                 egui::Panel::left("sequencer").exact_size(sequencer::TOOLBAR_W + 92.0)
