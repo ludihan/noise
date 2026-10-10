@@ -1993,22 +1993,9 @@ impl Engine {
         for oi in 0..self.order.len() {
             let i = self.order[oi];
             let scratch = &mut self.scratch[..n];
-            scratch.fill([0.0; 2]);
-            for &j in &self.nodes[i].inputs {
-                for (s, x) in scratch.iter_mut().zip(&self.nodes[j].buf[..n]) {
-                    s[0] += x[0];
-                    s[1] += x[1];
-                }
-            }
+            mix(scratch, &self.nodes, &self.nodes[i].inputs);
             if !self.nodes[i].key.is_empty() {
-                let key = &mut self.key_scratch[..n];
-                key.fill([0.0; 2]);
-                for &j in &self.nodes[i].key {
-                    for (s, x) in key.iter_mut().zip(&self.nodes[j].buf[..n]) {
-                        s[0] += x[0];
-                        s[1] += x[1];
-                    }
-                }
+                mix(&mut self.key_scratch[..n], &self.nodes, &self.nodes[i].key);
             }
             // An instrument's macros set what they move before it plays.
             for k in 0..self.nodes[i].macro_targets.len() {
@@ -2217,6 +2204,17 @@ impl Engine {
 
 /// Left and right gains that turn a stereo signal towards `pan` (-1..1)
 /// without making the near side louder.
+/// `into`, cleared, with the sound of nodes `from` added up in it.
+fn mix(into: &mut [Frame], nodes: &[Node], from: &[usize]) {
+    into.fill([0.0; 2]);
+    for &j in from {
+        for (s, x) in into.iter_mut().zip(&nodes[j].buf) {
+            s[0] += x[0];
+            s[1] += x[1];
+        }
+    }
+}
+
 impl Node {
     /// Automatable parameter `param` of the node's module `m` (see
     /// `ModuleKind::automatable`) as it is this block: the song's value
