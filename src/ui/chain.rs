@@ -569,18 +569,109 @@ fn ending(app: &mut App, ui: &mut egui::Ui, owner: Owner, len: usize, h: f32, ac
     });
 }
 
-/// A menu of every effect, to add at place `at` of the chain.
+/// The effects by what they do, as the add menu groups them.
+const EFFECT_GROUPS: &[(&str, &[ModuleKind])] = &[
+    (
+        "Filters",
+        &[
+            ModuleKind::Filter,
+            ModuleKind::FilterPro,
+            ModuleKind::AnalogFilter,
+            ModuleKind::CombFilter,
+            ModuleKind::VocalFilter,
+            ModuleKind::ScreamFilter,
+        ],
+    ),
+    (
+        "Drive",
+        &[
+            ModuleKind::Distortion,
+            ModuleKind::WaveShaper,
+            ModuleKind::Cabinet,
+            ModuleKind::Exciter,
+            ModuleKind::RingMod,
+        ],
+    ),
+    (
+        "Delay and reverb",
+        &[
+            ModuleKind::Delay,
+            ModuleKind::Echo,
+            ModuleKind::Multitap,
+            ModuleKind::Reverb,
+            ModuleKind::PlateReverb,
+            ModuleKind::Convolver,
+            ModuleKind::Repeater,
+        ],
+    ),
+    (
+        "Modulation",
+        &[
+            ModuleKind::Chorus,
+            ModuleKind::Flanger,
+            ModuleKind::Phaser,
+            ModuleKind::Vibrato,
+            ModuleKind::Lfo,
+            ModuleKind::PitchShifter,
+            ModuleKind::Vocoder,
+        ],
+    ),
+    ("Dynamics", &[ModuleKind::Compressor, ModuleKind::Gate, ModuleKind::Maximizer, ModuleKind::Amplifier]),
+    (
+        "EQ and stereo",
+        &[ModuleKind::Eq, ModuleKind::Eq5, ModuleKind::Eq10, ModuleKind::StereoExpander, ModuleKind::DcBlocker],
+    ),
+];
+
+/// A menu of every effect, grouped by what it does, with a field to find
+/// one by name, to add at place `at` of the chain.
 fn add_effect_menu(ui: &mut egui::Ui, label: &str, at: usize, action: &mut Option<Action>) {
     ui.menu_button(label, |ui| {
-        let effects = ModuleKind::ADDABLE.into_iter().filter(|k| k.is_effect() && *k != ModuleKind::Send);
+        let key = egui::Id::new("effect_search");
+        let mut search: String = ui.data(|d| d.get_temp(key)).unwrap_or_default();
+        let field = ui.add(egui::TextEdit::singleline(&mut search).hint_text("Find an effect").desired_width(170.0));
+        if !field.has_focus() && search.is_empty() {
+            field.request_focus();
+        }
+        let wanted = search.trim().to_lowercase();
+        let mut pick = None;
         egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
-            for kind in effects {
-                if ui.button(kind.name()).clicked() {
-                    *action = Some(Action::Add(at, kind));
-                    ui.close();
+            let mut groups: Vec<(&str, Vec<ModuleKind>)> =
+                EFFECT_GROUPS.iter().map(|(name, kinds)| (*name, kinds.to_vec())).collect();
+            // Any effect not in a group yet still shows, last.
+            let rest: Vec<ModuleKind> = (ModuleKind::ADDABLE.into_iter())
+                .filter(|k| k.is_effect() && *k != ModuleKind::Send)
+                .filter(|k| !EFFECT_GROUPS.iter().any(|g| g.1.contains(k)))
+                .collect();
+            groups.push(("Other", rest));
+            for (name, kinds) in groups {
+                let kinds: Vec<ModuleKind> = kinds
+                    .into_iter()
+                    .filter(|k| wanted.is_empty() || k.name().to_lowercase().contains(&wanted))
+                    .collect();
+                if kinds.is_empty() {
+                    continue;
+                }
+                ui.label(RichText::new(name).small().color(theme::TEXT_WEAK));
+                for kind in kinds {
+                    if ui.button(kind.name()).clicked() {
+                        pick = Some(kind);
+                    }
                 }
             }
         });
+        // Enter takes the first one found.
+        if pick.is_none() && !wanted.is_empty() && field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            pick = ModuleKind::ADDABLE
+                .into_iter()
+                .find(|k| k.is_effect() && *k != ModuleKind::Send && k.name().to_lowercase().contains(&wanted));
+        }
+        if let Some(kind) = pick {
+            *action = Some(Action::Add(at, kind));
+            search.clear();
+            ui.close();
+        }
+        ui.data_mut(|d| d.insert_temp(key, search));
     })
     .response
     .on_hover_text("Add an effect at the end of the chain");
