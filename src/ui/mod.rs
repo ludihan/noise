@@ -20,6 +20,8 @@ mod routing;
 mod sampler;
 mod sequencer;
 mod settings;
+#[cfg(test)]
+mod shots;
 mod soundfonts;
 mod spectrum;
 mod theme;
@@ -308,6 +310,12 @@ pub struct App {
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, path: Option<String>) -> Self {
+        Self::start(cc, path, true)
+    }
+
+    /// The app on `path` (or the demo), with the sound card when `sound`;
+    /// without, as the screenshot test draws it.
+    pub fn start(cc: &eframe::CreationContext<'_>, path: Option<String>, sound: bool) -> Self {
         setup_style(&cc.egui_ctx);
         let mut status = String::from("Ready");
         let (mut song_path, mut untitled) = ("song".to_string(), true);
@@ -334,9 +342,10 @@ impl App {
         let (tx, rx) = mpsc::channel();
         let (gtx, garbage) = mpsc::channel();
         let shared = Arc::new(Shared::default());
-        let audio = match audio::start(Arc::new(project.clone()), rx, gtx, shared.clone()) {
-            Ok(a) => Some(a),
-            Err(e) => {
+        let audio = match sound.then(|| audio::start(Arc::new(project.clone()), rx, gtx, shared.clone())) {
+            None => None,
+            Some(Ok(a)) => Some(a),
+            Some(Err(e)) => {
                 status = format!("Audio unavailable: {e}");
                 None
             }
