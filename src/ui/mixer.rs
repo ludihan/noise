@@ -3,7 +3,7 @@
 //! master strip on the right.
 
 use super::{App, modules, theme, widgets};
-use crate::project::{MIXER_PAN, ModuleKind, OUTPUT_ID};
+use crate::project::{MIXER_PAN, ModuleKind, OUTPUT_ID, Owner};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Vec2};
 
 const STRIP_W: f32 = 96.0;
@@ -25,38 +25,73 @@ pub fn db_text(gain: f32) -> String {
     if gain < 1e-4 { "-inf dB".into() } else { format!("{:+.1} dB", 20.0 * gain.log10()) }
 }
 
-/// Instruments, then effects, each by number, then the send tracks as
-/// they are listed, and the output last. Sends have no strips: their
-/// amounts say how loud they send.
-fn strips(app: &App) -> Vec<u8> {
+/// The strips in their sections: the instruments, by number; the effects,
+/// chain by chain (the instruments' in their order, then the tracks', the
+/// send tracks' and the master's); and the send tracks as they are
+/// listed. Sends have no strips: their amounts say how loud they send.
+fn sections(app: &App) -> [(&'static str, &'static str, Vec<u8>); 3] {
     let p = &app.project;
-    let mut ids: Vec<(bool, u8)> = (p.modules.iter())
-        .filter(|m| m.id != OUTPUT_ID && m.kind.makes_sound())
-        .filter(|m| !matches!(m.kind, ModuleKind::Send | ModuleKind::Return))
-        .map(|m| (!m.kind.in_instrument_list(), m.id))
-        .collect();
-    ids.sort();
-    let sends = p.sends.iter().map(|s| s.module);
-    ids.into_iter().map(|(_, id)| id).chain(sends).chain([OUTPUT_ID]).collect()
+    let mut instruments: Vec<u8> =
+        (p.modules.iter()).filter(|m| m.kind.in_instrument_list() && m.kind.makes_sound()).map(|m| m.id).collect();
+    instruments.sort();
+    let mut effects: Vec<u8> = instruments.iter().flat_map(|&i| p.chain(i).effects).collect();
+    effects.extend(p.tracks.iter().flat_map(|t| t.effects.iter().copied()));
+    effects.extend(p.sends.iter().flat_map(|s| s.effects.iter().copied()));
+    effects.extend(&p.master);
+    effects.retain(|&e| p.module(e).is_some_and(|m| m.kind != ModuleKind::Send));
+    let sends = p.sends.iter().map(|s| s.module).collect();
+    [
+        ("INSTRUMENTS", "What each instrument plays, before its effects", instruments),
+        ("EFFECTS", "Each effect's output, chain by chain", effects),
+        ("SEND TRACKS", "What comes back from each send track, on its way to the master", sends),
+    ]
 }
 
 pub fn view(app: &mut App, ui: &mut egui::Ui) {
+    let effects_id = egui::Id::new("mixer_effects");
+    let mut show_effects = ui.data(|d| d.get_temp(effects_id)).unwrap_or(true);
     ui.horizontal(|ui| {
         theme::caption(ui, "MIXER");
-        let help =
-            "A strip per module, after its own settings. Click a name to select it; double-click a fader to reset it.";
+        let help = "Click a name to select it, double-click to show its chain; double-click a fader to reset it.";
         ui.label(RichText::new(help).small().color(theme::TEXT_WEAK));
-    });
-    let ids = strips(app);
-    egui::ScrollArea::horizontal().auto_shrink(false).show(ui, |ui| {
-        ui.horizontal_top(|ui| {
-            let first_send = app.project.sends.first().map(|s| s.module);
-            for id in ids {
-                if id == OUTPUT_ID || Some(id) == first_send {
-                    ui.add_space(10.0);
-                }
-                strip(app, ui, id);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let tip = "Show a strip for every effect too, or only the instruments, send tracks and master";
+            if theme::toggle(ui, show_effects, "Effects").on_hover_text(tip).clicked() {
+                show_effects = !show_effects;
             }
+        });
+    });
+    ui.data_mut(|d| d.insert_temp(effects_id, show_effects));
+    let sections = sections(app);
+    // The master stays on the right, however far the rest scrolls.
+    let master_w = STRIP_W + 14.0;
+    ui.horizontal_top(|ui| {
+        let h = ui.available_height();
+        let w = (ui.available_width() - master_w).max(STRIP_W);
+        ui.allocate_ui(Vec2::new(w, h), |ui| {
+            egui::ScrollArea::horizontal().auto_shrink(false).show(ui, |ui| {
+                ui.horizontal_top(|ui| {
+                    for (title, tip, ids) in sections {
+                        if ids.is_empty() || (title == "EFFECTS" && !show_effects) {
+                            continue;
+                        }
+                        ui.vertical(|ui| {
+                            ui.label(RichText::new(title).small().color(theme::TEXT_WEAK)).on_hover_text(tip);
+                            ui.horizontal_top(|ui| {
+                                for id in ids {
+                                    strip(app, ui, id);
+                                }
+                            });
+                        });
+                        ui.add_space(10.0);
+                    }
+                });
+            });
+        });
+        ui.separator();
+        ui.vertical(|ui| {
+            ui.label(RichText::new("MASTER").small().color(theme::TEXT_WEAK));
+            strip(app, ui, OUTPUT_ID);
         });
     });
 }
@@ -80,15 +115,18 @@ fn strip(app: &mut App, ui: &mut egui::Ui, id: u8) {
     ui.painter().with_clip_rect(head.shrink(2.0)).text(
         head.left_center() + Vec2::new(4.0, 0.0),
         Align2::LEFT_CENTER,
-        format!("{id:02X} {}", m.name),
+        if id == OUTPUT_ID { "Master".to_string() } else { format!("{id:02X} {}", m.name) },
         FontId::proportional(12.0),
         theme::SELECTED_TEXT,
     );
-    if resp.on_hover_text(format!("{id:02X} {}", m.name)).clicked() {
+    let resp = resp.on_hover_text(format!("{id:02X} {}: click to select it, double-click to show its chain", m.name));
+    if resp.double_clicked() {
         app.selected_module = Some(id);
-        if m.kind == ModuleKind::Return {
-            app.show_send(id);
+        if let Some(owner) = app.project.owner_of(id) {
+            app.show_chain(owner);
         }
+    } else if resp.clicked() {
+        app.selected_module = Some(id);
     }
 
     let kind = match m.kind {
@@ -105,9 +143,16 @@ fn strip(app: &mut App, ui: &mut egui::Ui, id: u8) {
         .filter_map(|l| app.project.module(l.1))
         .map(|t| if t.id == OUTPUT_ID { "Output".to_string() } else { format!("{:02X} {}", t.id, t.name) })
         .collect();
+    let owner = app.project.owner_of(id);
     let route = match (id, targets.is_empty()) {
         (OUTPUT_ID, _) => "to Sound card".to_string(),
         _ if m.kind == ModuleKind::Return => "to Master".to_string(),
+        _ if m.kind.is_effect() => match owner {
+            Some(Owner::Track(t)) => format!("in Track {:02}", t + 1),
+            Some(Owner::Module(OUTPUT_ID)) => "in Master".to_string(),
+            Some(Owner::Module(o)) => format!("in {}", app.project.module(o).map_or("?", |m| m.name.as_str())),
+            None => "in no chain".to_string(),
+        },
         (_, true) => "to nowhere".to_string(),
         _ => format!("to {}", targets.join(", ")),
     };

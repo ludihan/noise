@@ -363,10 +363,10 @@ const TOPICS: &[Topic] = &[
         title: "Mixer",
         blocks: &[
             P(
-                "Sound flows through modules rather than tracks, so the mixer (F3) has a strip for every module: instruments, then effects, with the output as the master strip on the right.",
+                "The mixer (F3) has a strip for every instrument, then every effect, chain by chain, each saying which chain it is in, then every send track; the master strip stays on the right however far the rest scroll. Effects, at the top right, hides the effects' strips for a smaller mixer.",
             ),
             P(
-                "Each strip shows the module's name (click to select it), where its sound goes, pan, a fader from -inf to +6 dB (double-click for 0 dB), stereo meters, and mute and solo. Fader and pan act after the module's own settings. Soloing a module keeps it, what feeds it and what it feeds audible.",
+                "Each strip shows the module's name (click to select it, double-click to show its chain), where its sound goes, pan, a fader from -inf to +6 dB (double-click for 0 dB), stereo meters, and mute and solo. Fader and pan act after the module's own settings. Soloing a module keeps it, what feeds it and what it feeds audible.",
             ),
         ],
     },
