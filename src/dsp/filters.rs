@@ -240,44 +240,58 @@ impl Dsp for FilterPro {
 /// outputs, after the Oberheim Xpander.
 #[derive(Default)]
 pub(super) struct AnalogFilter {
-    pub(super) stages: [[f32; 4]; 2],
+    pub(super) ladders: [Ladder; 2],
+}
+
+/// One channel of the ladder: its four stages' states.
+#[derive(Clone, Copy, Default)]
+pub(super) struct Ladder {
+    pub(super) stages: [f32; 4],
+}
+
+impl Ladder {
+    /// Takes `x` through the ladder for one frame, at `g`, the cutoff as
+    /// `tan(PI * cutoff / sr)`, and resonance `k`, 0..4, mixed to the
+    /// `LADDER_TYPES` type `kind`.
+    pub(super) fn tick(&mut self, x: f32, g: f32, k: f32, kind: u32) -> f32 {
+        // Zero-delay feedback, after Zavalishin: each stage is a
+        // trapezoidal one-pole, and the loop is solved for this frame, so
+        // full resonance (4) rings at any cutoff.
+        let big = g / (1.0 + g);
+        let s = &mut self.stages;
+        let past = (big.powi(3) * s[0] + big * big * s[1] + big * s[2] + s[3]) / (1.0 + g);
+        let u = ((x - k * past) / (1.0 + k * big.powi(4))).tanh();
+        let mut y = [0.0; 4];
+        let mut x = u;
+        for (st, yk) in s.iter_mut().zip(&mut y) {
+            let v = (x - *st) * big;
+            *yk = v + *st;
+            *st = *yk + v;
+            x = *yk;
+        }
+        // The feedback takes the level down; most of it is made up.
+        (match kind {
+            0 => y[3],
+            1 => y[1],
+            2 => 2.0 * (y[0] - y[1]),
+            _ => u - 4.0 * y[0] + 6.0 * y[1] - 4.0 * y[2] + y[3],
+        }) * (1.0 + 0.5 * k)
+    }
 }
 
 impl Dsp for AnalogFilter {
     fn reset(&mut self) {
-        self.stages = [[0.0; 4]; 2];
+        self.ladders = Default::default();
     }
 
     fn process(&mut self, ctx: &Ctx, p: &[f32], input: &[Frame], out: &mut [Frame]) {
         let kind = p[0].round() as u32;
-        // Zero-delay feedback, after Zavalishin: each stage is a
-        // trapezoidal one-pole, and the loop is solved for this frame, so
-        // full resonance (4) rings at any cutoff.
         let g = (PI * p[1].min(ctx.sr * 0.45) / ctx.sr).tan();
-        let big = g / (1.0 + g);
         let k = 4.0 * p[2].clamp(0.0, 1.0);
         let (drive, mix) = (p[3], p[4]);
-        // The feedback takes the level down; most of it is made up.
-        let makeup = 1.0 + 0.5 * k;
         for (o, i) in out.iter_mut().zip(input) {
             for ch in 0..2 {
-                let s = &mut self.stages[ch];
-                let past = (big.powi(3) * s[0] + big * big * s[1] + big * s[2] + s[3]) / (1.0 + g);
-                let u = ((i[ch] * drive - k * past) / (1.0 + k * big.powi(4))).tanh();
-                let mut y = [0.0; 4];
-                let mut x = u;
-                for (st, yk) in s.iter_mut().zip(&mut y) {
-                    let v = (x - *st) * big;
-                    *yk = v + *st;
-                    *st = *yk + v;
-                    x = *yk;
-                }
-                let wet = match kind {
-                    0 => y[3],
-                    1 => y[1],
-                    2 => 2.0 * (y[0] - y[1]),
-                    _ => u - 4.0 * y[0] + 6.0 * y[1] - 4.0 * y[2] + y[3],
-                } * makeup;
+                let wet = self.ladders[ch].tick(i[ch] * drive, g, k, kind);
                 o[ch] = i[ch] * (1.0 - mix) + wet * mix;
             }
         }

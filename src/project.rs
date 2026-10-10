@@ -478,6 +478,7 @@ pub enum ModuleKind {
     Wavetable,
     Granular,
     Convolver,
+    Analog,
 }
 
 /// How a parameter's value is shown.
@@ -1052,6 +1053,44 @@ static MULTISYNTH_PARAMS: [ParamSpec; 8] = [
     i("Low note", 0.0, 119.0, 0.0).unit(Unit::Note),
     i("High note", 0.0, 119.0, 119.0).unit(Unit::Note),
 ];
+pub const ANALOG_WAVES: &[&str] = &["Saw", "Square", "Triangle", "Sine"];
+pub const VOICE_MODES: &[&str] = &["Poly", "Mono", "Legato"];
+static ANALOG_PARAMS: [ParamSpec; 34] = [
+    p("Volume", 0.0, 1.0, 0.5).unit(Gain),
+    c("Osc 1", 0.0, ANALOG_WAVES),
+    c("Osc 2", 0.0, ANALOG_WAVES),
+    i("Osc 2 pitch", -24.0, 24.0, 0.0).unit(Semitones),
+    p("Osc 2 detune", -50.0, 50.0, 7.0).unit(Cents),
+    p("Osc mix", 0.0, 1.0, 0.5).unit(Percent),
+    p("Sub", 0.0, 1.0, 0.0).unit(Percent),
+    p("Noise", 0.0, 1.0, 0.0).unit(Percent),
+    p("Pulse width", 0.05, 0.95, 0.5).unit(Percent),
+    c("Filter", 0.0, LADDER_TYPES),
+    p("Cutoff", 20.0, 20000.0, 900.0).unit(Hz),
+    p("Resonance", 0.0, 1.0, 0.3).unit(Percent),
+    p("Env amount", -8.0, 8.0, 3.0).unit(Unit::Octaves),
+    p("Key track", 0.0, 1.0, 0.5).unit(Percent),
+    p("Velocity", 0.0, 4.0, 1.0).unit(Unit::Octaves),
+    p("Filter attack", 0.0, 4.0, 0.002).unit(Seconds),
+    p("Filter decay", 0.005, 4.0, 0.35).unit(Seconds),
+    p("Filter sustain", 0.0, 1.0, 0.2).unit(Percent),
+    p("Filter release", 0.005, 4.0, 0.3).unit(Seconds),
+    p("Attack", 0.0, 4.0, 0.003).unit(Seconds),
+    p("Decay", 0.005, 4.0, 0.4).unit(Seconds),
+    p("Sustain", 0.0, 1.0, 0.7).unit(Percent),
+    p("Release", 0.005, 4.0, 0.25).unit(Seconds),
+    c("LFO shape", 0.0, LFO_SHAPES),
+    p("LFO rate", 0.05, 20.0, 5.0).unit(Hz),
+    p("LFO to pitch", 0.0, 12.0, 0.0).unit(Semitones),
+    p("LFO to cutoff", 0.0, 4.0, 0.0).unit(Unit::Octaves),
+    p("LFO to width", 0.0, 0.45, 0.0).unit(Percent),
+    p("Env to pitch", -24.0, 24.0, 0.0).unit(Semitones),
+    c("Voices", 0.0, VOICE_MODES),
+    p("Glide", 0.0, 2.0, 0.0).unit(Seconds),
+    i("Unison", 1.0, 4.0, 1.0),
+    p("Spread", 0.0, 50.0, 12.0).unit(Cents),
+    p("Pan", -1.0, 1.0, 0.0).unit(Pan),
+];
 static GLIDE_PARAMS: [ParamSpec; 2] = [c("Mode", 0.0, GLIDE_MODES), p("Time", 0.005, 2.0, 0.12).unit(Seconds)];
 static MODULATOR_PARAMS: [ParamSpec; 9] = [
     c("Mode", 0.0, MODULATOR_MODES),
@@ -1086,8 +1125,9 @@ pub static MIXER_PAN: ParamSpec = p("Pan", -1.0, 1.0, 0.0).unit(Pan);
 pub static MIXER_GAIN: ParamSpec = p("Fader", 0.0, 2.0, 1.0).unit(Gain);
 
 impl ModuleKind {
-    pub const ADDABLE: [ModuleKind; 46] = [
+    pub const ADDABLE: [ModuleKind; 47] = [
         ModuleKind::Generator,
+        ModuleKind::Analog,
         ModuleKind::Wavetable,
         ModuleKind::Fm,
         ModuleKind::Drums,
@@ -1141,6 +1181,7 @@ impl ModuleKind {
             ModuleKind::Output => ("Output", &OUTPUT_PARAMS),
             ModuleKind::Generator => ("Generator", &GENERATOR_PARAMS),
             ModuleKind::Wavetable => ("Wavetable", &WAVETABLE_PARAMS),
+            ModuleKind::Analog => ("Analog Synth", &ANALOG_PARAMS),
             ModuleKind::Fm => ("FM", &FM_PARAMS),
             ModuleKind::Drums => ("Drums", &DRUM_PARAMS),
             ModuleKind::Sampler => ("Sampler", &SAMPLER_PARAMS),
@@ -1220,6 +1261,7 @@ impl ModuleKind {
             self,
             ModuleKind::Generator
                 | ModuleKind::Wavetable
+                | ModuleKind::Analog
                 | ModuleKind::Fm
                 | ModuleKind::Drums
                 | ModuleKind::Kicker

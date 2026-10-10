@@ -198,6 +198,7 @@ pub fn create(kind: ModuleKind, sr: f32) -> Box<dyn Dsp> {
         ModuleKind::Output => Box::new(Output),
         ModuleKind::Generator => Box::new(Generator::new()),
         ModuleKind::Wavetable => Box::new(wavetable::Wavetable::new()),
+        ModuleKind::Analog => Box::new(analog::Analog::new()),
         ModuleKind::Fm => Box::new(Fm::new()),
         ModuleKind::Drums => Box::new(Drums::new()),
         ModuleKind::Sampler => Box::new(Sampler::new()),
@@ -430,6 +431,7 @@ macro_rules! voice_controls {
 }
 
 // The modules in files of their own come after the macro they use.
+mod analog;
 pub mod convolver;
 mod delays;
 mod distortion;

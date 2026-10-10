@@ -1018,3 +1018,90 @@ fn the_voice_filter_follows_the_key_and_velocity() {
     assert!(level(&soft, 60.0, 0.25) < 0.7 * level(&open, 60.0, 0.25));
     assert!((level(&soft, 60.0, 1.0) / level(&open, 60.0, 1.0) - 1.0).abs() < 0.01);
 }
+
+/// The Analog Synth's defaults with `set` changed.
+fn analog_params(set: &[(usize, f32)]) -> Vec<f32> {
+    let mut p: Vec<f32> = ModuleKind::Analog.params().iter().map(|p| p.default).collect();
+    for &(i, v) in set {
+        p[i] = v;
+    }
+    p
+}
+
+/// Renders `frames` of the left channel of `dsp` in blocks.
+fn left(dsp: &mut dyn Dsp, params: &[f32], frames: usize) -> Vec<f32> {
+    let ctx = Ctx { sr: 48000.0, samples_per_line: 6000.0, song_line: None };
+    let mut out = vec![[0.0; 2]; frames];
+    for chunk in out.chunks_mut(MAX_BLOCK) {
+        dsp.process(&ctx, params, &[[0.0; 2]; MAX_BLOCK][..chunk.len()], chunk);
+    }
+    out.iter().map(|f| f[0]).collect()
+}
+
+/// Rising zero crossings a second in `x`, at 48 kHz.
+fn pitch_of(x: &[f32]) -> f32 {
+    x.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count() as f32 * 48000.0 / x.len() as f32
+}
+
+#[test]
+fn analog_synth_plays_its_note_through_a_closing_filter() {
+    // Sines, wide open, so the pitch is plain to count.
+    let sine = analog_params(&[(1, 3.0), (2, 3.0), (4, 0.0), (10, 5000.0), (11, 0.0), (12, 0.0)]);
+    let mut s = create(ModuleKind::Analog, 48000.0);
+    s.note_on(0, 69.0, 1.0);
+    let x = left(s.as_mut(), &sine, 24000);
+    let hz = pitch_of(&x[4800..]);
+    assert!((hz - 440.0).abs() < 5.0, "A-4: {hz}");
+    // A saw through the filter envelope: bright at first, darker once it
+    // has fallen to its sustain.
+    let saw = analog_params(&[(5, 0.0), (10, 300.0), (12, 5.0), (16, 1.0), (17, 0.0)]);
+    let mut s = create(ModuleKind::Analog, 48000.0);
+    s.note_on(0, 57.0, 1.0);
+    let x = left(s.as_mut(), &saw, 48000);
+    // The fifth harmonic of A-3 against its fundamental.
+    let bright = |from: usize| {
+        let f: Vec<Frame> = x[from..from + 2400].iter().map(|&v| [v, v]).collect();
+        level_at(&f, 1100.0, 48000.0) / level_at(&f, 220.0, 48000.0)
+    };
+    assert!(bright(0) > 4.0 * bright(40000), "{} {}", bright(0), bright(40000));
+}
+
+#[test]
+fn analog_synth_mono_voices_glide_and_legato_keeps_the_envelope() {
+    let sine = [(1, 3.0), (2, 3.0), (4, 0.0), (10, 5000.0), (11, 0.0), (12, 0.0)];
+    let mono = analog_params(&[sine.as_slice(), &[(29, 1.0), (30, 0.05)]].concat());
+    let mut s = create(ModuleKind::Analog, 48000.0);
+    s.note_on(0, 57.0, 1.0);
+    left(s.as_mut(), &mono, 9600);
+    s.note_on(1, 69.0, 1.0);
+    let x = left(s.as_mut(), &mono, 48000);
+    let early = pitch_of(&x[..1200]);
+    let late = pitch_of(&x[24000..]);
+    assert!(early < 400.0, "still on its way up: {early}");
+    assert!((late - 440.0).abs() < 5.0, "then there: {late}");
+    // One voice: the first note gave way.
+    let mut heads = 0;
+    let mut s2 = create(ModuleKind::Analog, 48000.0);
+    s2.note_on(0, 57.0, 1.0);
+    s2.note_on(1, 60.0, 1.0);
+    left(s2.as_mut(), &mono, 64);
+    s2.note_off(1);
+    let tail = left(s2.as_mut(), &mono, 48000);
+    heads += tail[40000..].iter().filter(|v| v.abs() > 1e-3).count();
+    assert_eq!(heads, 0, "letting go of the note playing ends it");
+
+    // Legato: a second note while the first is held doesn't start the
+    // filter envelope again, so it stays dark where Mono opens it.
+    let sweep = [(5, 0.0), (10, 300.0), (12, 5.0), (16, 1.0), (17, 0.0)];
+    let legato = analog_params(&[sweep.as_slice(), &[(29, 2.0)]].concat());
+    let retrig = analog_params(&[sweep.as_slice(), &[(29, 1.0)]].concat());
+    let second = |p: &[f32]| {
+        let mut s = create(ModuleKind::Analog, 48000.0);
+        s.note_on(0, 57.0, 1.0);
+        left(s.as_mut(), p, 48000);
+        s.note_on(1, 57.0, 1.0);
+        let f: Vec<Frame> = left(s.as_mut(), p, 2400).iter().map(|&v| [v, v]).collect();
+        level_at(&f, 1100.0, 48000.0) / level_at(&f, 220.0, 48000.0)
+    };
+    assert!(second(&retrig) > 4.0 * second(&legato), "{} {}", second(&legato), second(&retrig));
+}

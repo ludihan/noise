@@ -649,16 +649,17 @@ fn instruments(p: &mut Project) -> Ids {
     set(p, plate, "Swell Plate", &[(0, 0.8), (1, 0.03), (4, 0.4)]);
     send(p, swell_id, hall);
 
-    // The arp: a soft pulse with a filter envelope, playing its phrases,
-    // with a little bite from a scream filter before its echo.
-    let arp = add(p, K::Generator);
-    set(p, arp, "Ripple", &[(0, 0.07), (1, 1.0), (2, 0.002), (3, 0.15), (4, 0.15), (5, 0.2), (8, 0.25)]);
+    // The arp: an Analog Synth's soft pulse, a filter envelope plucking
+    // each note, playing its phrases, with a little bite from a scream
+    // filter before its echo.
+    let arp = add(p, K::Analog);
+    #[rustfmt::skip]
+    set(p, arp, "Ripple", &[
+        (0, 0.18), (1, 1.0), (5, 0.0), (8, 0.3),
+        (9, 1.0), (10, 900.0), (11, 0.35), (12, 2.0), (13, 0.3), (14, 1.0),
+        (16, 0.25), (17, 0.25), (19, 0.002), (20, 0.15), (21, 0.15), (22, 0.2),
+    ]);
     let m = p.module_mut(arp).unwrap();
-    m.modulation.filter = true;
-    m.modulation.cutoff = 1100.0;
-    m.modulation.resonance = 0.35;
-    m.modulation.filter_env =
-        VoiceEnvelope { on: true, points: vec![(0.0, 1.0), (0.2, 0.25)], sustain: None, curve: true, amount: 2.5 };
     m.phrases = vec![ripple(), sparkle()];
     m.phrase_mode = PhraseMode::Program;
     let arp_echo = p.chain_insert(arp, 0, K::Delay).unwrap();

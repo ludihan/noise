@@ -112,6 +112,10 @@ const VOL_COMMANDS: &[(&str, &str)] = &[
 const MODULES: &[(&str, &str)] = &[
     ("Generator", "Saw, square, triangle, sine or noise, with an ADSR envelope and unison"),
     (
+        "Analog Synth",
+        "A subtractive synth: two oscillators (saw, square, triangle or sine; the second tuned and detuned), a sub an octave down and noise, into a ladder filter on every voice with its own envelope, key tracking and velocity; an amp envelope, an LFO on the pitch, cutoff and pulse width, the filter envelope on the pitch, unison, and Poly, Mono or Legato voices with glide",
+    ),
+    (
         "Wavetable",
         "Waves from a table (Basic, Pulse, Sync, Fold or Vocal) that Position morphs through and Sweep moves while a note sounds, band-limited for every note, with up to seven detuned unison voices spread in stereo, an ADSR envelope and Modulation",
     ),

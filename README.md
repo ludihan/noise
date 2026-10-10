@@ -44,7 +44,7 @@ noise --demo-wav [out.wav]         # render the demo song
   strip for every module; **automation** envelopes of a pattern or part of
   one, picked from a filtered parameter browser; eight **macros** an
   instrument, each moving any parameters of it and its effects at once.
-- **Modules**: Generator, Wavetable (morphing, band-limited tables with unison), FM, Drums, Kicker, SpectraVoice, FMX, Sampler, Granular (a sample as a cloud of grains), Input (the sound card's input, live), MultiSynth, Glide (portamento between notes) and Modulator (LFO with
+- **Modules**: Generator, Analog Synth (two oscillators, sub and noise into a ladder filter per voice, with filter and amp envelopes, an LFO, unison, and mono and legato voices with glide), Wavetable (morphing, band-limited tables with unison), FM, Drums, Kicker, SpectraVoice, FMX, Sampler, Granular (a sample as a cloud of grains), Input (the sound card's input, live), MultiSynth, Glide (portamento between notes) and Modulator (LFO with
   drawn shapes synced to beats, follower, key and velocity tracker,
   envelope, or a knob);
   Filter, Filter Pro, Analog Filter, Distortion, Delay, Echo, Reverb, Plate Reverb, Convolver (built-in or loaded impulses), Amplifier, LFO, Flanger, Chorus, Phaser,
@@ -84,7 +84,7 @@ noise --demo-wav [out.wav]         # render the demo song
 | `src/concrete_hymn.rs` | The fifth demo song, and the kit it renders |
 | `src/project.rs` | Song data (patterns and their automation, the order list, tracks, modules, links); saved as JSON |
 | `src/project_dir.rs` | Project folders: saving a song with its samples named by hashes, deleting the unused ones; export and import as `.noise` files (zip archives) |
-| `src/dsp/` | The audio code for every module, a file to each family (`filters.rs`, `delays.rs`, `fm.rs`, `sampler.rs`…); `mod.rs` holds the `Dsp` trait, `create`, envelopes and voices, `tests.rs` the tests they share |
+| `src/dsp/` | The audio code for every module, a file to each family (`filters.rs`, `delays.rs`, `fm.rs`, `analog.rs`, `sampler.rs`…); `mod.rs` holds the `Dsp` trait, `create`, envelopes and voices, `tests.rs` the tests they share |
 | `src/sample.rs` | Loading WAV, FLAC and Ogg Vorbis samples; saving WAV |
 | `src/soundfont.rs` | SF2, SF3 and SFZ soundfonts turned into Sampler samples |
 | `src/engine.rs` | The sequencer, effects, automation, mixer and modules, run on the audio thread |

@@ -14,6 +14,30 @@ pub(super) fn poly_blep(t: f32, dt: f32) -> f32 {
     }
 }
 
+/// One sample of a band-limited saw (0), pulse of width `pw` (1), triangle
+/// (2) or sine (3) at `t` into its cycle, which moves `dt` a sample; the
+/// triangle integrates a square in `tri`, kept between samples.
+pub(super) fn blep_wave(wave: u32, t: f32, dt: f32, pw: f32, tri: &mut f32) -> f32 {
+    match wave {
+        0 => 2.0 * t - 1.0 - poly_blep(t, dt),
+        1 => {
+            let mut y = if t < pw { 1.0 } else { -1.0 };
+            y += poly_blep(t, dt);
+            y -= poly_blep(fract(t - pw + 1.0), dt);
+            y
+        }
+        2 => {
+            // Integrated band-limited square.
+            let mut sq = if t < 0.5 { 1.0 } else { -1.0 };
+            sq += poly_blep(t, dt);
+            sq -= poly_blep(fract(t + 0.5), dt);
+            *tri = dt * 4.0 * sq + (1.0 - dt * 0.5) * *tri;
+            *tri
+        }
+        _ => sine(t),
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 pub(super) struct GenVoice {
     pub(super) slot: VoiceSlot,
@@ -87,25 +111,7 @@ impl Dsp for Generator {
                 let mut sr_ = 0.0;
                 for (u, &dt) in dts.iter().enumerate().take(unison) {
                     let t = v.phase[u];
-                    let x = match wave {
-                        0 => 2.0 * t - 1.0 - poly_blep(t, dt),
-                        1 => {
-                            let mut y = if t < pw { 1.0 } else { -1.0 };
-                            y += poly_blep(t, dt);
-                            y -= poly_blep(fract(t - pw + 1.0), dt);
-                            y
-                        }
-                        2 => {
-                            // Integrated band-limited square.
-                            let mut sq = if t < 0.5 { 1.0 } else { -1.0 };
-                            sq += poly_blep(t, dt);
-                            sq -= poly_blep(fract(t + 0.5), dt);
-                            v.tri[u] = dt * 4.0 * sq + (1.0 - dt * 0.5) * v.tri[u];
-                            v.tri[u]
-                        }
-                        3 => sine(t),
-                        _ => self.rng.next(),
-                    };
+                    let x = if wave < 4 { blep_wave(wave, t, dt, pw, &mut v.tri[u]) } else { self.rng.next() };
                     v.phase[u] = fract(t + dt);
                     // Alternate unison voices left/right for width.
                     if unison > 1 && u % 2 == 1 {
