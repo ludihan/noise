@@ -4,6 +4,7 @@
 //! or where `NOISE_SHOTS` says.
 
 use super::{App, View, sampler};
+use crate::project::{ModuleKind, OUTPUT_ID};
 use egui_kittest::Harness;
 use std::path::PathBuf;
 
@@ -67,7 +68,7 @@ fn shots() {
         p.module_mut(inst).unwrap().macro_mut(0).name = "Brightness".into();
         p.module_mut(inst).unwrap().macro_mut(1).value = 0.4;
         // A Modulator moving two parameters of the effect, one upside down.
-        let lfo = p.add_module(crate::project::ModuleKind::Modulator, [0.0, 0.0]).unwrap();
+        let lfo = p.add_module(ModuleKind::Modulator, [0.0, 0.0]).unwrap();
         p.add_control(lfo, fx, 1);
         p.add_control(lfo, fx, 2);
         p.module_mut(lfo).unwrap().controls[1].depth = -0.6;
@@ -79,12 +80,33 @@ fn shots() {
         // A Modulator moving two parameters of an effect, selected in the
         // module list.
         let p = &mut app.project;
-        let fx = p.modules.iter().find(|m| m.kind == crate::project::ModuleKind::Distortion).expect("a Distortion").id;
-        let lfo = p.add_module(crate::project::ModuleKind::Modulator, [0.0, 0.0]).unwrap();
+        let fx = p.modules.iter().find(|m| m.kind == ModuleKind::Distortion).expect("a Distortion").id;
+        let lfo = p.add_module(ModuleKind::Modulator, [0.0, 0.0]).unwrap();
         p.add_control(lfo, fx, 1);
         p.add_control(lfo, fx, 2);
         p.module_mut(lfo).unwrap().controls[1].depth = -0.6;
         app.selected_module = Some(lfo);
-        (app.lower, app.show_lower, app.lower_height) = (super::Lower::Modules, true, 640.0);
+        app.show_chain(crate::project::Owner::Module(OUTPUT_ID));
+        app.lower_height = 640.0;
+    });
+    shot("send_track", |app| {
+        // Last Light's hall, which most of its instruments send to.
+        app.open_demo(0);
+        let hall = app.project.sends[0].module;
+        app.show_send(hall);
+    });
+    shot_at("sends", [2300.0, 900.0], |app| {
+        // An instrument whose chain ends with a Send.
+        app.open_demo(0);
+        let p = &app.project;
+        let sends = |id: u8| p.chain(id).effects.iter().any(|&e| p.module(e).unwrap().kind == ModuleKind::Send);
+        let inst = p.modules.iter().find(|m| m.kind.plays_sound() && sends(m.id)).expect("one that sends").id;
+        app.selected_module = Some(inst);
+        app.view = View::Sampler;
+        app.sampler.synth_tab = sampler::SynthTab::Synth;
+    });
+    shot("mixer_sends", |app| {
+        app.open_demo(0);
+        app.view = View::Mixer;
     });
 }

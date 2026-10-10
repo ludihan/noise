@@ -64,22 +64,24 @@ fn groups(app: &App) -> Vec<(String, Vec<u8>)> {
     let mut ids: Vec<u8> = p.modules.iter().map(|m| m.id).collect();
     ids.sort();
     let kind = |id: u8| p.module(id).map(|m| m.kind);
-    let effect = |id: u8| kind(id).is_some_and(|k| k.has_input() && k.has_output() && k.makes_sound());
+    let effect = |id: u8| kind(id).is_some_and(|k| k.is_effect());
     let pick = |f: &dyn Fn(u8) -> bool| ids.iter().copied().filter(|&id| f(id)).collect::<Vec<u8>>();
     let mut groups = vec![
-        ("Instruments".to_string(), pick(&|id| kind(id).is_some_and(|k| k.is_instrument()))),
-        ("Effects".to_string(), pick(&|id| effect(id) && !p.placed(id))),
+        ("Instruments".to_string(), pick(&|id| kind(id).is_some_and(|k| k.in_instrument_list()))),
+        ("Instrument effects".to_string(), pick(&|id| effect(id) && !p.placed(id))),
     ];
     for (t, track) in p.tracks.iter().enumerate().filter(|(_, t)| !t.effects.is_empty()) {
         groups.push((format!("Track {:02} · {}", t + 1, p.track_name(t)), track.effects.clone()));
     }
+    for send in &p.sends {
+        let name = p.module(send.module).map_or(String::new(), |m| m.name.clone());
+        let ids = send.effects.iter().copied().chain([send.module]).collect();
+        groups.push((format!("Send track · {name}"), ids));
+    }
     let mut master = p.master.clone();
     master.push(crate::project::OUTPUT_ID);
     groups.push(("Master".to_string(), master));
-    groups.push((
-        "Modulators and sources".to_string(),
-        pick(&|id| kind(id).is_some_and(|k| k.controls() || (!k.is_instrument() && !k.has_input() && k.makes_sound()))),
-    ));
+    groups.push(("Modulators".to_string(), pick(&|id| kind(id).is_some_and(|k| k.controls()))));
     groups.retain(|g| !g.1.is_empty());
     groups
 }

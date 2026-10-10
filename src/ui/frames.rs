@@ -69,9 +69,12 @@ impl App {
     pub(super) fn lower_tabs(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             for (tab, label, tip) in [
-                (Lower::Modules, "Modules", "Every module in a list, with the selected one's parameters and wiring"),
                 (Lower::Automation, "Automation", "Envelopes that move parameters over the pattern"),
-                (Lower::TrackFx, "Track FX", "Each track's effects, and the master chain the whole mix goes through"),
+                (
+                    Lower::TrackFx,
+                    "Track FX",
+                    "Each track's effects, the send tracks, and the master chain the whole mix goes through",
+                ),
             ] {
                 let open = self.show_lower && self.lower == tab;
                 let button = egui::Button::selectable(open, label).min_size(Vec2::new(90.0, 20.0));
@@ -94,9 +97,40 @@ impl App {
         self.clamp_cursor();
     }
 
-    /// The Track FX tab: a chip for each track in its color, and the
-    /// master, over the chosen one's effects. It follows the cursor's track.
+    /// Opens the lower frame on send track `id`'s effects.
+    pub fn show_send(&mut self, id: u8) {
+        self.show_lower = true;
+        self.lower = Lower::TrackFx;
+        self.track_fx = TrackFx::Send(id);
+    }
+
+    /// Shows the chain of `owner`: an instrument's in the instrument
+    /// editor, the others in the Track FX tab.
+    pub fn show_chain(&mut self, owner: crate::project::Owner) {
+        use crate::project::Owner;
+        match owner {
+            Owner::Track(t) => self.show_track_fx(t),
+            Owner::Module(OUTPUT_ID) => {
+                (self.show_lower, self.lower, self.track_fx) = (true, Lower::TrackFx, TrackFx::Master);
+            }
+            Owner::Module(id) if self.project.send_track(id).is_some() => self.show_send(id),
+            Owner::Module(id) => {
+                self.selected_module = Some(id);
+                self.view = View::Sampler;
+                self.sampler.synth_tab = super::sampler::SynthTab::Synth;
+            }
+        }
+    }
+
+    /// The Track FX tab: a chip for each track in its color, each send
+    /// track and the master, over the chosen one's effects. It follows the
+    /// cursor's track.
     pub(super) fn track_fx_page(&mut self, ui: &mut egui::Ui) {
+        if let TrackFx::Send(id) = self.track_fx
+            && self.project.send_track(id).is_none()
+        {
+            self.track_fx = TrackFx::Master;
+        }
         if self.cursor.track != self.fx_cursor {
             self.fx_cursor = self.cursor.track;
             self.track_fx = TrackFx::Track(self.cursor.track);
@@ -116,6 +150,29 @@ impl App {
                 }
             }
             ui.separator();
+            let sends: Vec<u8> = self.project.sends.iter().map(|s| s.module).collect();
+            for id in sends {
+                let Some(m) = self.project.module(id) else { continue };
+                let n = self.project.chain(id).effects.len();
+                let text = if n > 0 { format!("{}  {n}", m.name) } else { m.name.clone() };
+                let color = modules::module_color(m);
+                let tip = "A send track: effects that what Sends send here goes through; click to edit them";
+                if widgets::chip(ui, color, &text, self.track_fx == TrackFx::Send(id)).on_hover_text(tip).clicked() {
+                    self.track_fx = TrackFx::Send(id);
+                }
+            }
+            let tip = "Add a send track: effects, such as a reverb, that Sends in any chain send to";
+            if ui.button("+ Send Track").on_hover_text(tip).clicked() {
+                let name = self.project.next_send_name();
+                match self.project.add_send_track(&name) {
+                    Some(id) => {
+                        self.track_fx = TrackFx::Send(id);
+                        self.mark();
+                    }
+                    None => self.set_status("Too many modules"),
+                }
+            }
+            ui.separator();
             let n = self.project.master.len();
             let text = if n > 0 { format!("Master  {n}") } else { "Master".into() };
             let tip = "The master chain: effects the whole mix goes through before the output";
@@ -127,28 +184,19 @@ impl App {
         ui.add_space(3.0);
         let owner = match self.track_fx {
             TrackFx::Track(t) => crate::project::Owner::Track(t),
+            TrackFx::Send(id) => crate::project::Owner::Module(id),
             TrackFx::Master => crate::project::Owner::Module(OUTPUT_ID),
         };
         chain::page(self, ui, owner);
     }
 
-    /// The lower frame: the module graph, with the selected module's
-    /// parameters beside it, or the automation editor.
+    /// The lower frame: the automation editor, or the tracks', send
+    /// tracks' and master's effects.
     pub(super) fn lower_frame(&mut self, ui: &mut egui::Ui) {
         match self.lower {
-            Lower::Automation => return automation::panel(self, ui),
-            Lower::TrackFx => return self.track_fx_page(ui),
-            Lower::Modules => {}
+            Lower::Automation => automation::panel(self, ui),
+            Lower::TrackFx => self.track_fx_page(ui),
         }
-        let h = ui.available_height();
-        ui.horizontal(|ui| {
-            let params_w = 300.0;
-            let graph_w = ui.available_width() - params_w - 6.0;
-            widgets::boxed(ui, "modules", Vec2::new(graph_w, h), |ui| modules::list(self, ui));
-            widgets::boxed(ui, "params", Vec2::new(ui.available_width(), h), |ui| {
-                egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| modules::params_panel(self, ui));
-            });
-        });
     }
 
     /// Tabs that switch the middle of the window.

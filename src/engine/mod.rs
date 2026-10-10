@@ -313,6 +313,7 @@ impl Engine {
                     let mut n = old.swap_remove(i);
                     n.module = mi;
                     n.inputs.clear();
+                    n.sent.clear();
                     n.dry.clear();
                     n.key.clear();
                     n.targets.clear();
@@ -332,6 +333,8 @@ impl Engine {
                     inputs: Vec::new(),
                     key: Vec::new(),
                     buf: vec![[0.0; 2]; BLOCK],
+                    wet: if m.kind == ModuleKind::Send { vec![[0.0; 2]; BLOCK] } else { Vec::new() },
+                    sent: Vec::new(),
                     dry: Vec::new(),
                     audible: true,
                     peak: [0.0; 2],
@@ -398,6 +401,18 @@ impl Engine {
                 self.nodes[b].inputs.push(a);
             }
         }
+        // What each Send (and its copies) sends goes into its send track.
+        for i in 0..self.nodes.len() {
+            let m = &project.modules[self.nodes[i].module];
+            if m.kind != ModuleKind::Send {
+                continue;
+            }
+            let owner = project.owner_of(m.id).unwrap_or(crate::project::Owner::Module(OUTPUT_ID));
+            let to = m.send_to.filter(|&to| project.can_send(owner, to));
+            if let Some(j) = to.and_then(|to| project.send_entry(to)).and_then(|e| base[e as usize]) {
+                self.nodes[j].sent.push(i);
+            }
+        }
         // An effect listening to a key input hears every copy of it.
         for j in 0..self.nodes.len() {
             let m = &project.modules[self.nodes[j].module];
@@ -439,6 +454,7 @@ impl Engine {
         let mut edges: Vec<(usize, usize)> = Vec::new();
         for (j, node) in self.nodes.iter().enumerate() {
             edges.extend(node.inputs.iter().map(|&i| (i, j)));
+            edges.extend(node.sent.iter().map(|&i| (i, j)));
             edges.extend(node.key.iter().map(|&i| (i, j)));
             edges.extend(node.controls.iter().map(|&(t, ..)| (j, t)));
         }
@@ -476,12 +492,15 @@ impl Engine {
             while let Some(i) = stack.pop() {
                 if !std::mem::replace(&mut up[i], true) {
                     stack.extend(&self.nodes[i].inputs);
+                    stack.extend(&self.nodes[i].sent);
                 }
             }
             let mut stack = vec![s];
             while let Some(i) = stack.pop() {
                 if !std::mem::replace(&mut down[i], true) {
-                    stack.extend((0..n).filter(|&j| self.nodes[j].inputs.contains(&i)));
+                    stack.extend(
+                        (0..n).filter(|&j| self.nodes[j].inputs.contains(&i) || self.nodes[j].sent.contains(&i)),
+                    );
                     stack.extend(&self.nodes[i].targets);
                     stack.extend(self.nodes[i].controls.iter().map(|c| c.0));
                 }

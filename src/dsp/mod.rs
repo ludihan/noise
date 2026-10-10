@@ -201,6 +201,7 @@ pub fn create(kind: ModuleKind, sr: f32) -> Box<dyn Dsp> {
         ModuleKind::Analog => Box::new(analog::Analog::new()),
         ModuleKind::PluckedString => Box::new(string::PluckedString::new()),
         ModuleKind::Vocoder => Box::new(vocoder::Vocoder::new()),
+        ModuleKind::Send | ModuleKind::Return => Box::new(Thru),
         ModuleKind::Fm => Box::new(Fm::new()),
         ModuleKind::Drums => Box::new(Drums::new()),
         ModuleKind::Sampler => Box::new(Sampler::new()),

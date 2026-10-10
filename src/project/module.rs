@@ -33,6 +33,13 @@ pub struct Module {
     /// how far. A linked module with none listed has its first moved.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub controls: Vec<Control>,
+    /// The send track a Send sends to, by its `Return` module.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub send_to: Option<u8>,
+    /// The chain a Modulator was added on, where it shows even while it
+    /// moves nothing there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub home: Option<Owner>,
     /// The module whose sound a Compressor, Gate or Vocoder listens to, its key
     /// input, instead of its own: the sidechain.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -143,6 +150,8 @@ impl Module {
             bypass: false,
             color: None,
             controls: Vec::new(),
+            send_to: None,
+            home: None,
             key: None,
             macros: Vec::new(),
             samples: Vec::new(),

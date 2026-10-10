@@ -16,6 +16,10 @@ pub(super) struct Node {
     /// the module keying it and its copies for tracks.
     pub(super) key: Vec<usize>,
     pub(super) buf: Vec<Frame>,
+    /// For a Send: what it sends to its send track this block.
+    pub(super) wet: Vec<Frame>,
+    /// The Sends whose `wet` comes in here, with `inputs`.
+    pub(super) sent: Vec<usize>,
     /// For a module an effect listens to as its key input: its sound
     /// before its mixer strip, so a muted or faded-down kick still keys.
     pub(super) dry: Vec<Frame>,

@@ -22,7 +22,7 @@ enum Action {
 }
 
 fn instruments(app: &App) -> Vec<u8> {
-    let mut ids: Vec<u8> = app.project.modules.iter().filter(|m| m.kind.is_instrument()).map(|m| m.id).collect();
+    let mut ids: Vec<u8> = app.project.modules.iter().filter(|m| m.kind.in_instrument_list()).map(|m| m.id).collect();
     ids.sort();
     ids
 }
@@ -62,6 +62,10 @@ fn duplicate(app: &mut App, id: u8) {
 fn delete(app: &mut App, id: u8) {
     let list = instruments(app);
     let pos = list.iter().position(|&i| i == id).unwrap_or(0);
+    // Its effects go with it: no other chain has them.
+    for e in app.project.chain(id).effects {
+        app.project.remove_module(e);
+    }
     app.project.remove_module(id);
     let rest = instruments(app);
     app.selected_module = rest.get(pos.min(rest.len().saturating_sub(1))).copied();
@@ -102,7 +106,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
                 duplicate(app, selected.unwrap());
             }
             ui.menu_button("+", |ui| {
-                for kind in ModuleKind::ADDABLE.into_iter().filter(|k| k.is_instrument()) {
+                for kind in ModuleKind::ADDABLE.into_iter().filter(|k| k.in_instrument_list()) {
                     if ui.button(kind.name()).clicked() {
                         add(app, kind);
                         ui.close();

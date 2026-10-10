@@ -118,7 +118,7 @@ pub fn editor(app: &mut App, ui: &mut egui::Ui) {
                 RichText::new("Select an instrument in the list on the right, or add one.").color(theme::TEXT_WEAK),
             );
             ui.horizontal(|ui| {
-                for kind in ModuleKind::ADDABLE.into_iter().filter(|k| k.is_instrument()) {
+                for kind in ModuleKind::ADDABLE.into_iter().filter(|k| k.in_instrument_list()) {
                     if ui.button(format!("+ {}", kind.name())).clicked() {
                         instruments::add(app, kind);
                     }

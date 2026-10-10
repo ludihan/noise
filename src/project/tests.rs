@@ -652,7 +652,8 @@ fn matrix_blocks_copy_tracks_between_slots() {
 fn new_params_start_at_their_defaults() {
     let dir = temp_dir("params");
     let mut p = Project::empty();
-    let id = p.add_module(ModuleKind::Distortion, [0.0, 0.0]).unwrap();
+    let synth = p.add_module(ModuleKind::Generator, [0.0, 0.0]).unwrap();
+    let id = p.chain_insert(synth, 0, ModuleKind::Distortion).unwrap();
     p.module_mut(id).unwrap().params.truncate(3);
     let song = dir.join("old.json");
     std::fs::write(&song, serde_json::to_string(&p).unwrap()).unwrap();
@@ -759,7 +760,8 @@ fn missing_samples_are_warnings() {
 fn modulators_move_several_parameters_of_a_module() {
     let dir = temp_dir("controls");
     let mut p = Project::empty();
-    let f = p.add_module(ModuleKind::Filter, [0.0; 2]).unwrap();
+    let synth = p.add_module(ModuleKind::Generator, [0.0; 2]).unwrap();
+    let f = p.chain_insert(synth, 0, ModuleKind::Filter).unwrap();
     let lfo = p.add_module(ModuleKind::Modulator, [0.0; 2]).unwrap();
     let other = p.add_module(ModuleKind::Modulator, [0.0; 2]).unwrap();
     // Linked, it moves the first parameter until another is picked, and
@@ -810,5 +812,46 @@ fn new_parameters_keep_the_fader_and_pan_automated() {
     let params: Vec<usize> = q.controls_of(other, m).iter().map(|c| c.param).collect();
     assert_eq!(params, [n + 1, 3], "the pan, and what came before stays");
     assert_eq!(q.module(m).unwrap().params.len(), n);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn send_tracks_never_send_round_to_themselves() {
+    let mut p = Project::empty();
+    let synth = p.add_module(ModuleKind::Generator, [0.0; 2]).unwrap();
+    let (a, b) = (p.add_send_track("Send A").unwrap(), p.add_send_track("Send B").unwrap());
+    assert_eq!(p.next_send_name(), "Send C");
+    let send = p.chain_insert(a, 0, ModuleKind::Send).unwrap();
+    p.module_mut(send).unwrap().send_to = Some(b);
+    assert!(p.can_send(Owner::Module(synth), a) && p.can_send(Owner::Module(a), b));
+    assert!(!p.can_send(Owner::Module(b), a), "B would come back to itself through A");
+    assert!(!p.can_send(Owner::Module(a), a) && !p.can_send(Owner::Module(OUTPUT_ID), a));
+    assert_eq!(p.owner_of(send), Some(Owner::Module(a)));
+    assert_eq!(p.send_entry(a), Some(send));
+    // Deleting a send track deletes its effects, and Sends to it let go.
+    let to_a = p.chain_insert(synth, 0, ModuleKind::Send).unwrap();
+    p.module_mut(to_a).unwrap().send_to = Some(a);
+    p.remove_module(a);
+    assert!(p.module(send).is_none() && p.module(to_a).unwrap().send_to.is_none());
+    assert_eq!(p.sends.len(), 1);
+}
+
+#[test]
+fn send_tracks_are_saved() {
+    let dir = temp_dir("sends");
+    let mut p = Project::empty();
+    let synth = p.add_module(ModuleKind::Generator, [0.0; 2]).unwrap();
+    p.connect(synth, OUTPUT_ID);
+    let a = p.add_send_track("Hall").unwrap();
+    let verb = p.chain_insert(a, 0, ModuleKind::Reverb).unwrap();
+    let send = p.chain_insert(synth, 0, ModuleKind::Send).unwrap();
+    p.module_mut(send).unwrap().send_to = Some(a);
+    let song = dir.join("song.json");
+    std::fs::write(&song, serde_json::to_string(&p).unwrap()).unwrap();
+    let (q, _) = Project::load(song.to_str().unwrap()).unwrap();
+    assert_eq!(q.sends, p.sends);
+    assert_eq!(q.chain(a).effects, [verb]);
+    assert_eq!(q.module(send).unwrap().send_to, Some(a));
+    assert_eq!(q.chain(synth), Chain { effects: vec![send], outputs: vec![OUTPUT_ID] });
     std::fs::remove_dir_all(dir).unwrap();
 }

@@ -24,11 +24,15 @@ pub struct InstrumentPreset {
 }
 
 impl InstrumentPreset {
-    /// Instrument `id` of `project` and its own chain. MultiSynths, which
+    /// Instrument `id` of `project` and its own chain, but for its Sends.
+    /// MultiSynths, which
     /// only pass notes to other instruments, can't be presets.
     pub fn of(project: &Project, id: u8) -> Option<Self> {
         let m = project.module(id).filter(|m| m.kind.plays_sound())?;
-        let effects = project.chain(id).effects.iter().filter_map(|&e| project.module(e).cloned()).collect();
+        // Sends go to the song's send tracks; they stay with the song.
+        let effects = (project.chain(id).effects.iter())
+            .filter_map(|&e| project.module(e).filter(|m| m.kind != crate::project::ModuleKind::Send).cloned())
+            .collect();
         Some(Self { name: m.name.clone(), instrument: m.clone(), effects })
     }
 

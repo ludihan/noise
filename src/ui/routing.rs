@@ -1,9 +1,9 @@
-//! Wiring modules without a graph: lists of where a module sends its sound,
-//! notes or parameter changes, ticked on and off, as menus and panels in
-//! the instrument editor and the module list use them.
+//! Wiring modules without a graph, for the modules that need more than a
+//! chain: the instruments a MultiSynth plays, what a Modulator moves and
+//! follows, and what an effect listens to as its key input.
 
 use super::{App, theme};
-use crate::project::OUTPUT_ID;
+use crate::project::{ModuleKind, OUTPUT_ID};
 use eframe::egui::{self, RichText, Vec2};
 
 /// "04 Filter", or "00 Output".
@@ -11,8 +11,8 @@ pub fn label(app: &App, id: u8) -> String {
     app.project.module(id).map_or_else(|| format!("{id:02X} ?"), |m| format!("{id:02X} {}", m.name))
 }
 
-/// The modules `id` could link to: instruments for a MultiSynth, any
-/// module for a Modulator, and modules that take sound for the rest.
+/// The modules `id` could link to: instruments for a MultiSynth and any
+/// module with parameters for a Modulator. Sound goes along chains.
 pub fn candidates(app: &App, id: u8) -> Vec<u8> {
     let Some(kind) = app.project.module(id).map(|m| m.kind) else { return Vec::new() };
     let mut ids: Vec<u8> = app
@@ -27,7 +27,7 @@ pub fn candidates(app: &App, id: u8) -> Vec<u8> {
                 // Anything with parameters, other Modulators too.
                 m.kind.num_automatable() > 0
             } else {
-                m.kind.has_input()
+                false
             }
         })
         .map(|m| m.id)
@@ -51,16 +51,10 @@ pub fn set_link(app: &mut App, from: u8, to: u8, on: bool) {
     }
 }
 
-/// A box to tick for every module `id` could send to.
-pub fn sends_checklist(app: &mut App, ui: &mut egui::Ui, id: u8) {
-    sends_checklist_except(app, ui, id, &[]);
-}
-
-/// The same, leaving out `except`, such as the devices of the chain `id`
-/// ends, which sending back to would loop.
-pub fn sends_checklist_except(app: &mut App, ui: &mut egui::Ui, id: u8, except: &[u8]) {
+/// A box to tick for every instrument MultiSynth `id` could play.
+pub fn plays_checklist(app: &mut App, ui: &mut egui::Ui, id: u8) {
     let mut toggle = None;
-    for to in candidates(app, id).into_iter().filter(|t| !except.contains(t)) {
+    for to in candidates(app, id) {
         let on = app.project.links.contains(&(id, to));
         let mut ticked = on;
         if ui.checkbox(&mut ticked, label(app, to)).changed() {
@@ -78,7 +72,9 @@ pub fn sources_checklist(app: &mut App, ui: &mut egui::Ui, id: u8) {
         .project
         .modules
         .iter()
-        .filter(|m| m.id != id && m.kind.makes_sound() && m.id != OUTPUT_ID)
+        .filter(|m| m.id != id && m.kind.makes_sound() && m.id != OUTPUT_ID && m.kind != ModuleKind::Send)
+        // Devices placed in a track, send track or the master can't be.
+        .filter(|m| !app.project.placed(m.id))
         .map(|m| m.id)
         .collect();
     let mut toggle = None;

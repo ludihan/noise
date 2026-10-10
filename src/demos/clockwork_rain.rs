@@ -1477,6 +1477,8 @@ impl Project {
         .into_iter()
         .map(|(name, start)| Section { start, name: name.into() })
         .collect();
+        // Its shared effects become send tracks.
+        p.untangle();
         p
     }
 }

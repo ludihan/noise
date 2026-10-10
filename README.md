@@ -8,7 +8,7 @@ of effect modules.
 Press `F1` for the manual, which covers every part of the program, the keys
 and the effect commands.
 
-![The main window: the menu bar and transport along the top, the track scopes below them, the pattern sequencer with its buttons down its left, the pattern editor in the middle, the module list above the Modules and Automation tabs at the bottom, and the instrument list and disk browser on the right](docs/main.png)
+![The main window: the menu bar and transport along the top, the track scopes below them, the pattern sequencer with its buttons down its left, the pattern editor in the middle with the Automation and Track FX tabs under it, and the instrument list and disk browser on the right](docs/main.png)
 
 ## Building
 
@@ -35,13 +35,14 @@ noise --demo-wav [out.wav]         # render the demo song
   pattern breaks, line waits, reversed and sliced samples, `Yxx` (maybe play) and `Zxx`
   (pick a phrase), and fades, slides, glides, cuts and retriggers in the volume column.
 - **Track effects**, on top of each instrument's
-  own, **groups** that send tracks on through another track's effects as a
-  bus, a per-track volume command (`Lxx`), and a **master chain** of
+  own, **send tracks** that Sends in any chain send to, at their own
+  amounts, for shared reverbs and delays, **groups** that send tracks on
+  through another track's effects as a bus, a per-track volume command (`Lxx`), and a **master chain** of
   effects for the whole mix. **Sidechains**: a Compressor, Gate or Vocoder can listen to
   another module's sound as its key input.
 - **Pattern sequencer and matrix** with per-slot mutes, block copying and
   sections, drag and drop and a right-click menu for slots; a **mixer**
-  strip for every module; **automation** envelopes from one line to another
+  strip for every instrument, effect and send track; **automation** envelopes from one line to another
   or repeating every so many beats, picked from a filtered parameter
   browser, with LFO shapes drawn in, points picked and moved together,
   invert, reverse, thin out and copy and paste; eight **macros** an
@@ -93,7 +94,7 @@ noise --demo-wav [out.wav]         # render the demo song
 | `src/ui/pattern.rs`, `block.rs` | The pattern editor and track headers; block selection and edits |
 | `src/ui/sequencer.rs` | The pattern sequencer and matrix |
 | `src/ui/mixer.rs` | The mixer |
-| `src/ui/modules.rs`, `routing.rs`, `widgets.rs` | The module list and parameter panel; wiring modules with lists to tick; the parameter bars, chips and boxes the panels share |
+| `src/ui/modules.rs`, `routing.rs`, `widgets.rs` | A module's parameters as the device panels show them; wiring what needs more than a chain (MultiSynths, Modulators, key inputs); the parameter bars, chips and boxes the panels share |
 | `src/ui/automation.rs` | The automation editor |
 | `src/ui/sampler/` (the sample list, `waveform.rs`, `edit.rs` and `keyzones.rs`), `chain.rs`, `presets.rs`, `modulation.rs`, `phrase.rs`, `waveview.rs` | The instrument editor and the sampler, the device chain and its presets, the modulation and phrase pages, and the wave view |
 | `src/ui/spectrum.rs`, `trackscopes.rs` | The spectrum analyzer; the track scopes |
@@ -133,6 +134,13 @@ keep sounding while you edit during playback.
   node per copy (`Node::track`), sends a note to its track's copy through
   `Engine::copies`, and moves copies with their module's automation and
   Modulators. Songs without track effects get no copies.
+- Every sound goes along a chain: an instrument's effects are the links
+  each sends to the next (`Project::chain`), ending at the output; track,
+  send track (`Project::sends`) and master effects are placed. A Send
+  passes its input on (or not) and puts a copy in `Node::wet`, which the
+  engine adds into its send track's first node (`Node::sent`). Songs with
+  effects several chains fed are turned into send tracks on loading
+  (`Project::untangle`).
 - A Modulator's links are kept apart from audio as `Node::controls`; it
   runs before the modules it moves (`Engine::modulate`) and overrides
   their parameters for the block the way automation does.

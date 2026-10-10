@@ -1188,3 +1188,72 @@ fn effect_columns_act_on_every_note_column() {
     assert!(pitches.contains(&49.0) && pitches.contains(&56.0), "{pitches:?}");
     assert_eq!(e.bpm, 96.0);
 }
+
+/// A song as songs before send tracks could have it: two synths sending
+/// to the output and a shared reverb, and two more into a shared
+/// distortion, which goes to the output and the reverb too.
+fn shared_effects_song() -> (Project, [u8; 4]) {
+    let mut p = Project::empty();
+    let synths: [u8; 4] = std::array::from_fn(|_| p.add_module(ModuleKind::Generator, [0.0; 2]).unwrap());
+    let filter = p.chain_insert(synths[0], 0, ModuleKind::Filter).unwrap();
+    let reverb = p.add_module(ModuleKind::Reverb, [0.0; 2]).unwrap();
+    let fuzz = p.add_module(ModuleKind::Distortion, [0.0; 2]).unwrap();
+    for (from, to) in [(filter, reverb), (synths[1], OUTPUT_ID), (synths[1], reverb), (reverb, OUTPUT_ID)] {
+        assert!(p.connect(from, to));
+    }
+    for (from, to) in [(synths[2], fuzz), (synths[3], fuzz), (fuzz, OUTPUT_ID), (fuzz, reverb)] {
+        assert!(p.connect(from, to));
+    }
+    p.module_mut(synths[2]).unwrap().params[1] = 2.0;
+    (p, synths)
+}
+
+#[test]
+fn shared_effects_become_send_tracks_that_sound_the_same() {
+    let (before, synths) = shared_effects_song();
+    let mut after = before.clone();
+    after.untangle();
+    // Every chain is straight, to the output, and the shared effects are
+    // send tracks: the reverb's, and the distortion's, sending on to it.
+    assert_eq!(after.sends.len(), 2);
+    for &s in &synths {
+        assert_eq!(after.chain(s).outputs, [OUTPUT_ID]);
+    }
+    let fuzz_send = *after.chain(synths[2]).effects.last().unwrap();
+    assert_eq!(after.module(fuzz_send).unwrap().params[2], 1.0, "the distortion's feeders only fed it");
+    assert_eq!(after.chain(synths[1]).effects.len(), 1, "a Send to the reverb, keeping its sound");
+    let play = |p: &Project| {
+        let mut e = engine(p.clone());
+        for (k, &s) in synths.iter().enumerate() {
+            e.handle(Cmd::NoteOn { module: s, key: LIVE_KEY + k as u32, note: 48 + 5 * k as u8, vel: 1.0 });
+        }
+        render(&mut e, 20_000)
+    };
+    let (a, b) = (play(&before), play(&after));
+    assert!(a.iter().any(|x| x.abs() > 0.05));
+    let worst = a.iter().zip(&b).map(|(x, y)| (x - y).abs()).fold(0f32, f32::max);
+    assert!(worst < 1e-4, "off by {worst}");
+}
+
+#[test]
+fn sends_send_at_their_amount_and_can_mute_their_source() {
+    let mut p = Project::empty();
+    let synth = p.add_module(ModuleKind::Generator, [0.0; 2]).unwrap();
+    p.connect(synth, OUTPUT_ID);
+    let ret = p.add_send_track("Send A").unwrap();
+    let send = p.chain_insert(synth, 0, ModuleKind::Send).unwrap();
+    let play = |p: &Project| {
+        let mut e = engine(p.clone());
+        e.handle(Cmd::NoteOn { module: synth, key: LIVE_KEY, note: 60, vel: 1.0 });
+        render(&mut e, 4000).iter().fold(0f32, |m, x| m.max(x.abs()))
+    };
+    let dry = play(&p);
+    p.module_mut(send).unwrap().send_to = Some(ret);
+    assert!((play(&p) / dry - 2.0).abs() < 0.01, "the copy comes back through the send track");
+    p.module_mut(send).unwrap().params[0] = 0.5;
+    assert!((play(&p) / dry - 1.5).abs() < 0.01);
+    p.module_mut(send).unwrap().params[2] = 1.0;
+    assert!((play(&p) / dry - 0.5).abs() < 0.01, "only the copy");
+    p.module_mut(ret).unwrap().mute = true;
+    assert!(play(&p) < 1e-6, "and the send track's fader mutes it");
+}

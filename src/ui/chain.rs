@@ -1,11 +1,10 @@
-//! An instrument's device chain: the
-//! instrument itself and the effects only it feeds, each a panel of
-//! parameters, in the order the sound goes through them, then the effects
-//! it shares with other instruments, where the sound goes, and the
-//! Modulators moving any of them. Everything about an instrument's sound is
-//! edited here. The output's page is the master chain: the effects the
-//! whole mix goes through, then the output; a track's page is its own
-//! effects, which what it plays goes through on its way to the master.
+//! An instrument's device chain: the instrument itself and its effects,
+//! each a panel of parameters, in the order the sound goes through them,
+//! and the Modulators moving any of them. Everything about an instrument's
+//! sound is edited here. The output's page is the master chain: the
+//! effects the whole mix goes through, then the output; a track's page is
+//! its own effects, which what it plays goes through on its way to the
+//! master; a send track's is the effects what Sends send it goes through.
 
 use super::{App, modules, pattern, routing, theme, widgets};
 use crate::project::{MACROS, ModuleKind, OUTPUT_ID, Owner};
@@ -22,8 +21,6 @@ enum Place {
     Output,
     /// Its own effect `k` of `n`.
     Own(usize, usize),
-    /// An effect other instruments go through too.
-    Shared,
     Modulator,
 }
 
@@ -34,26 +31,11 @@ enum Action {
     Move(u8, i32),
     /// A Modulator, starting on this device.
     AddModulator(u8),
+    /// A Send at the end of the chain, to this send track, or to a new one.
+    AddSend(usize, Option<u8>),
     Select(u8),
     /// An effect dragged by its name and let go at this x.
     Drop(u8, f32),
-}
-
-/// The effects after the chain: those its outputs lead through, in the
-/// order the sound reaches them, up to the output.
-fn shared_effects(app: &App, outputs: &[u8]) -> Vec<u8> {
-    let mut found = Vec::new();
-    let mut queue: Vec<u8> = outputs.to_vec();
-    while !queue.is_empty() {
-        let at = queue.remove(0);
-        let Some(m) = app.project.module(at) else { continue };
-        if at == OUTPUT_ID || found.contains(&at) || !m.kind.makes_sound() {
-            continue;
-        }
-        found.push(at);
-        queue.extend(app.project.links.iter().filter(|l| l.0 == at).map(|l| l.1));
-    }
-    found
 }
 
 pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
@@ -67,19 +49,22 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
         return;
     }
     let master = id == Some(OUTPUT_ID);
+    let send = id.filter(|&id| app.project.send_track(id).is_some());
     // A MultiSynth's links carry notes: it has no sound to follow.
     let notes_only = inst.as_ref().is_some_and(|m| m.kind.notes_only());
     let chain = app.project.chain(owner);
-    let shared = if notes_only || track.is_some() { Vec::new() } else { shared_effects(app, &chain.outputs) };
-    // The Modulators moving anything this sound goes through.
+    // The Modulators moving anything this sound goes through, those added
+    // here, and on the master those that have no place.
     let mut reach: Vec<u8> = id.into_iter().collect();
     reach.extend(&chain.effects);
-    reach.extend(&shared);
-    let modulators: Vec<u8> = app
-        .project
-        .modules
-        .iter()
-        .filter(|m| m.kind.controls() && app.project.links.iter().any(|l| l.0 == m.id && reach.contains(&l.1)))
+    let links = &app.project.links;
+    let modulators: Vec<u8> = (app.project.modules.iter())
+        .filter(|m| m.kind.controls())
+        .filter(|m| {
+            let moves = links.iter().any(|l| l.0 == m.id && reach.contains(&l.1));
+            let homeless = m.home.is_none() && !links.iter().any(|l| l.0 == m.id);
+            moves || m.home == Some(owner) || (master && homeless)
+        })
         .map(|m| m.id)
         .collect();
     let mut action = None;
@@ -88,6 +73,7 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
         ui.horizontal_top(|ui| {
             ui.set_min_height(h);
             match (id, track) {
+                (Some(id), _) if send.is_some() => send_panel(app, ui, id, h),
                 (Some(id), _) if !master => {
                     if inst.as_ref().is_some_and(|m| m.kind.plays_sound()) {
                         macros_panel(app, ui, id, h);
@@ -127,8 +113,7 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
                 if !chain.effects.is_empty() || !master {
                     arrow(ui, h);
                 }
-                let last = chain.effects.last().copied().or(id).unwrap_or(OUTPUT_ID);
-                ending(app, ui, owner, last, chain.effects.len(), h, &mut action);
+                ending(app, ui, owner, chain.effects.len(), h, &mut action);
                 if master {
                     arrow(ui, h);
                     device(app, ui, OUTPUT_ID, Place::Output, h, &mut action);
@@ -136,10 +121,6 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
                 if let Some(t) = track {
                     arrow(ui, h);
                     to_master(app, ui, t, h);
-                }
-                for &e in &shared {
-                    arrow(ui, h);
-                    device(app, ui, e, Place::Shared, h, &mut action);
                 }
             }
             ui.separator();
@@ -150,7 +131,7 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
             if let Some(&target) = reach.first() {
                 ui.vertical(|ui| {
                     ui.set_width(150.0);
-                    let tip = "A Modulator moves a parameter with an LFO, or by following a sound's level";
+                    let tip = "A Modulator moves parameters with an LFO, or by following a sound's level";
                     if ui.button("+ Add Modulator").on_hover_text(tip).clicked() {
                         action = Some(Action::AddModulator(target));
                     }
@@ -163,6 +144,7 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
         (Some(m), _) => m.name.clone(),
         _ => String::new(),
     };
+    let _ = send;
     match action {
         Some(Action::Add(after, kind)) => {
             if let Some(new) = app.project.chain_insert(owner, after, kind) {
@@ -188,10 +170,27 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
             Some(m) => {
                 // It starts on the device's first parameter; pick another below.
                 app.project.connect(m, target);
+                app.project.module_mut(m).unwrap().home = Some(owner);
                 app.mark();
             }
             None => app.set_status("Too many modules"),
         },
+        Some(Action::AddSend(at, to)) => {
+            let to = to.or_else(|| {
+                let name = app.project.next_send_name();
+                app.project.add_send_track(&name)
+            });
+            match (to, app.project.chain_insert(owner, at, ModuleKind::Send)) {
+                (Some(to), Some(new)) => {
+                    let name = app.project.module(to).map(|m| m.name.clone()).unwrap_or_default();
+                    let m = app.project.module_mut(new).unwrap();
+                    (m.send_to, m.name) = (Some(to), format!("To {name}"));
+                    app.set_status(format!("{} sends to {name}", if notes_only { "It" } else { "The chain" }));
+                    app.mark();
+                }
+                _ => app.set_status("Too many modules"),
+            }
+        }
         Some(Action::Select(m)) => app.selected_module = Some(m),
         // Drops are handled where the devices' places are known.
         Some(Action::Drop(..)) | None => {}
@@ -333,7 +332,7 @@ fn device(app: &mut App, ui: &mut egui::Ui, id: u8, place: Place, h: f32, action
         FontId::proportional(12.5),
         theme::SELECTED_TEXT,
     );
-    let tag = if place == Place::Shared { format!("{} · shared", m.kind.name()) } else { m.kind.name().to_string() };
+    let tag = m.kind.name().to_string();
     ui.painter().text(
         head.right_center() - Vec2::new(5.0, 0.0),
         Align2::RIGHT_CENTER,
@@ -372,7 +371,7 @@ fn device(app: &mut App, ui: &mut egui::Ui, id: u8, place: Place, h: f32, action
                     app.mark();
                 }
             }
-            Place::Own(..) | Place::Shared => {
+            Place::Own(..) => {
                 let label = if m.bypass { "Off" } else { "On" };
                 if theme::toggle(ui, !m.bypass, label)
                     .on_hover_text("Switch the effect off: the sound goes past it")
@@ -410,18 +409,15 @@ fn device(app: &mut App, ui: &mut egui::Ui, id: u8, place: Place, h: f32, action
         }
         if !matches!(place, Place::Instrument | Place::Output) {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let tip = if place == Place::Shared { "Delete this effect, for every instrument" } else { "Remove it" };
-                if super::icons::button(ui, super::icons::Icon::Bin).on_hover_text(tip).clicked() {
+                if super::icons::button(ui, super::icons::Icon::Bin).on_hover_text("Remove it").clicked() {
                     *action =
                         Some(if matches!(place, Place::Own(..)) { Action::Remove(id) } else { Action::Delete(id) });
                 }
             });
         }
     });
-    if place == Place::Shared {
-        let from: Vec<String> =
-            app.project.links.iter().filter(|l| l.1 == id).map(|l| routing::label(app, l.0)).collect();
-        ui.label(RichText::new(format!("Fed by {}", from.join(", "))).small().color(theme::TEXT_WEAK));
+    if m.kind == ModuleKind::Send {
+        send_target(app, ui, id);
     }
     if m.kind == ModuleKind::Drums {
         let drums = "C kick · D snare · F# closed hat · A# open hat · others tom";
@@ -434,12 +430,7 @@ fn device(app: &mut App, ui: &mut egui::Ui, id: u8, place: Place, h: f32, action
             ui.add_space(6.0);
             theme::caption(ui, "PLAYS");
             ui.label(RichText::new("The instruments it passes its notes to").small().color(theme::TEXT_WEAK));
-            routing::sends_checklist(app, ui, id);
-        }
-        if place == Place::Shared {
-            ui.add_space(6.0);
-            theme::caption(ui, "SENDS TO");
-            routing::sends_checklist(app, ui, id);
+            routing::plays_checklist(app, ui, id);
         }
         if place == Place::Modulator {
             ui.add_space(6.0);
@@ -457,42 +448,199 @@ fn device(app: &mut App, ui: &mut egui::Ui, id: u8, place: Place, h: f32, action
     rect
 }
 
-/// After the instrument's own devices: adding an effect, and where the
-/// sound of `last` goes.
-fn ending(app: &mut App, ui: &mut egui::Ui, owner: Owner, last: u8, len: usize, h: f32, action: &mut Option<Action>) {
+/// After a chain's devices: adding an effect or a Send, and where the
+/// sound goes next.
+fn ending(app: &mut App, ui: &mut egui::Ui, owner: Owner, len: usize, h: f32, action: &mut Option<Action>) {
     ui.vertical(|ui| {
         ui.set_width(150.0);
         ui.set_max_height(h);
         ui.menu_button("+ Add Effect", |ui| {
-            for kind in ModuleKind::ADDABLE.into_iter().filter(|k| k.has_input() && k.has_output() && k.makes_sound()) {
-                if ui.button(kind.name()).clicked() {
-                    *action = Some(Action::Add(len, kind));
-                    ui.close();
+            let effects = ModuleKind::ADDABLE.into_iter().filter(|k| k.is_effect() && *k != ModuleKind::Send);
+            egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
+                for kind in effects {
+                    if ui.button(kind.name()).clicked() {
+                        *action = Some(Action::Add(len, kind));
+                        ui.close();
+                    }
                 }
-            }
+            });
         })
         .response
         .on_hover_text("At the end of the chain");
-        let id = match owner {
-            Owner::Module(OUTPUT_ID) | Owner::Track(_) => {
-                let hint = if owner == Owner::Module(OUTPUT_ID) {
-                    "Effects here process the whole mix, in order, before the output. Drag them by their names to reorder them."
-                } else {
-                    "Effects here process what this track plays, in order. Drag them by their names to reorder them."
-                };
-                ui.add_space(8.0);
-                ui.label(RichText::new(hint).small().color(theme::TEXT_WEAK));
-                return;
-            }
-            Owner::Module(id) => id,
-        };
+        // The master can't send: what it sends would come round to it.
+        if owner != Owner::Module(OUTPUT_ID) {
+            ui.menu_button("+ Add Send", |ui| {
+                let sends: Vec<u8> = app.project.sends.iter().map(|s| s.module).collect();
+                for to in sends.into_iter().filter(|&to| app.project.can_send(owner, to)) {
+                    if ui.button(format!("To {}", routing::label(app, to))).clicked() {
+                        *action = Some(Action::AddSend(len, Some(to)));
+                        ui.close();
+                    }
+                }
+                let tip = "A send track of its own, for a reverb or a delay several chains share";
+                if ui.button("To a New Send Track").on_hover_text(tip).clicked() {
+                    *action = Some(Action::AddSend(len, None));
+                    ui.close();
+                }
+            })
+            .response
+            .on_hover_text("Send a copy of the sound here to a send track: for effects several chains share");
+        }
         ui.add_space(8.0);
-        theme::caption(ui, "SENDS TO");
-        let hint = "The output, or effects other instruments go through too. Several at once split the sound.";
+        let hint = match owner {
+            Owner::Module(OUTPUT_ID) => {
+                "Effects here process the whole mix, in order, before the output. Drag them by their names to reorder them."
+            }
+            Owner::Track(_) => {
+                "Effects here process what this track plays, in order. Drag them by their names to reorder them."
+            }
+            Owner::Module(id) if app.project.send_track(id).is_some() => {
+                "Effects here process what Sends send this send track, in order, then its fader takes it to the master."
+            }
+            Owner::Module(_) => {
+                "The sound goes on to the effects of the track playing it, then the master. + Add Send sends a copy to a send track, for a reverb or a delay several instruments share."
+            }
+        };
         ui.label(RichText::new(hint).small().color(theme::TEXT_WEAK));
-        let mut own = app.project.chain(id).effects;
-        own.push(id);
-        egui::ScrollArea::vertical().id_salt(("sends", id)).show(ui, |ui| routing::sends_checklist_except(app, ui, last, &own));
+        // A chain that went nowhere can go to the output again.
+        if let Owner::Module(id) = owner
+            && app.project.module(id).is_some_and(|m| m.kind.starts_chain())
+            && app.project.chain(id).outputs.is_empty()
+        {
+            ui.add_space(6.0);
+            ui.label(RichText::new("It goes nowhere: it is silent.").small().color(theme::RECORD));
+            if ui.button("Send to the Output").clicked() {
+                let last = app.project.chain(id).effects.last().copied().unwrap_or(id);
+                app.project.connect(last, OUTPUT_ID);
+                app.mark();
+            }
+        }
+    });
+}
+
+/// Where a Send sends: a send track it can send to, picked from a list
+/// that can also make a new one, and a way there.
+fn send_target(app: &mut App, ui: &mut egui::Ui, id: u8) {
+    let Some(owner) = app.project.owner_of(id) else { return };
+    let to = app.project.module(id).and_then(|m| m.send_to);
+    let shown = to.map_or_else(|| "Nowhere".to_string(), |t| routing::label(app, t));
+    let mut picked = to;
+    let mut new = false;
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("To").small());
+        egui::ComboBox::from_id_salt(("send_to", id))
+            .selected_text(shown)
+            .width(ui.available_width() - 30.0)
+            .show_ui(ui, |ui| {
+                let sends: Vec<u8> = app.project.sends.iter().map(|s| s.module).collect();
+                for s in sends.into_iter().filter(|&s| app.project.can_send(owner, s)) {
+                    ui.selectable_value(&mut picked, Some(s), routing::label(app, s));
+                }
+                ui.separator();
+                if ui.button("New Send Track").clicked() {
+                    new = true;
+                }
+            })
+            .response
+            .on_hover_text("The send track it sends to");
+        let show = ui.add_enabled_ui(to.is_some(), |ui| super::icons::button(ui, super::icons::Icon::Right)).inner;
+        if show.on_hover_text("Show the send track").clicked()
+            && let Some(t) = to
+        {
+            app.show_send(t);
+        }
+    });
+    if new {
+        let name = app.project.next_send_name();
+        picked = app.project.add_send_track(&name);
+    }
+    if picked != to {
+        let name = picked.and_then(|t| app.project.module(t)).map(|m| m.name.clone());
+        let m = app.project.module_mut(id).unwrap();
+        m.send_to = picked;
+        // A Send named for where it went is named for where it goes.
+        if m.name == "Send" || m.name.starts_with("To ") {
+            m.name = name.map_or_else(|| "Send".to_string(), |n| format!("To {n}"));
+        }
+        app.mark();
+    }
+    if to.is_none() {
+        ui.label(RichText::new("Pick a send track for it to send to.").small().color(theme::RECORD));
+    }
+}
+
+/// The panel a send track's chain starts with: its name on its color, its
+/// mute and solo, what sends to it and how much, and deleting it.
+fn send_panel(app: &mut App, ui: &mut egui::Ui, id: u8, h: f32) {
+    let Some(m) = app.project.module(id).cloned() else { return };
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(DEVICE_W, h), Sense::hover());
+    ui.painter().rect(rect, 3.0, theme::FRAME_BG, Stroke::new(1.0, theme::FRAME_LINE), StrokeKind::Inside);
+    let inner = rect.shrink(5.0);
+    let mut child = ui.new_child(
+        egui::UiBuilder::new()
+            .id_salt(("send_panel", id))
+            .max_rect(inner)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+    child.shrink_clip_rect(inner);
+    let ui = &mut child;
+    let (head, resp) = ui.allocate_exact_size(Vec2::new(inner.width(), 20.0), Sense::click());
+    let color = if m.mute { Color32::from_gray(80) } else { modules::module_color(&m) };
+    ui.painter().rect_filled(head, 2.0, color);
+    ui.painter().with_clip_rect(head.shrink(2.0)).text(
+        head.left_center() + Vec2::new(5.0, 0.0),
+        Align2::LEFT_CENTER,
+        "SEND TRACK",
+        FontId::proportional(11.0),
+        theme::SELECTED_TEXT,
+    );
+    resp.on_hover_text("Right-click for its color").context_menu(|ui| {
+        ui.menu_button("Color", |ui| routing::color_menu(app, ui, id));
+    });
+    let mut name = m.name.clone();
+    if ui.add(egui::TextEdit::singleline(&mut name).desired_width(f32::INFINITY)).changed() {
+        app.project.module_mut(id).unwrap().name = name;
+        app.mark_layout();
+    }
+    ui.horizontal(|ui| {
+        if theme::toggle(ui, m.mute, "Mute").on_hover_text("Silence this send track").clicked() {
+            app.project.module_mut(id).unwrap().mute = !m.mute;
+            app.mark();
+        }
+        if theme::toggle(ui, m.solo, "Solo").on_hover_text("Hear only this, and what sends to it").clicked() {
+            app.project.module_mut(id).unwrap().solo = !m.solo;
+            app.mark();
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let tip = "Delete this send track and its effects; Sends to it send nowhere";
+            if super::icons::button(ui, super::icons::Icon::Bin).on_hover_text(tip).clicked() {
+                app.project.remove_module(id);
+                app.track_fx = super::TrackFx::Master;
+                app.mark();
+            }
+        });
+    });
+    ui.add_space(6.0);
+    theme::caption(ui, "FED BY");
+    let sends: Vec<(u8, f32)> =
+        (app.project.modules.iter()).filter(|s| s.send_to == Some(id)).map(|s| (s.id, s.params[0])).collect();
+    if sends.is_empty() {
+        let hint = "Nothing sends here yet. Add a Send to a chain with + Add Send.";
+        ui.label(RichText::new(hint).small().color(theme::TEXT_WEAK));
+    }
+    egui::ScrollArea::vertical().id_salt(("fed_by", id)).auto_shrink(false).show(ui, |ui| {
+        for (s, amount) in sends {
+            let Some(owner) = app.project.owner_of(s) else { continue };
+            let from = match owner {
+                Owner::Track(t) => format!("Track {:02} {}", t + 1, app.project.track_name(t)),
+                Owner::Module(o) => routing::label(app, o),
+            };
+            let text = format!("{from}  {}", super::mixer::db_text(amount));
+            let resp = ui.add(egui::Button::new(RichText::new(text).small()).frame(false));
+            if resp.on_hover_text("Show the chain this Send is in").clicked() {
+                app.show_chain(owner);
+            }
+        }
     });
 }
 

@@ -123,9 +123,8 @@ impl View {
 /// What the lower frame shows.
 #[derive(Clone, Copy, PartialEq)]
 pub enum Lower {
-    Modules,
     Automation,
-    /// The track effects and the master chain.
+    /// The track effects, the send tracks and the master chain.
     TrackFx,
 }
 
@@ -133,6 +132,8 @@ pub enum Lower {
 #[derive(Clone, Copy, PartialEq)]
 pub enum TrackFx {
     Track(usize),
+    /// A send track, by its fader.
+    Send(u8),
     Master,
 }
 
@@ -411,7 +412,7 @@ impl App {
             gesture_open: false,
             changed: false,
             audio_dirty: false,
-            lower: Lower::Modules,
+            lower: Lower::TrackFx,
             track_fx: TrackFx::Track(0),
             fx_cursor: 0,
             automation: Default::default(),
@@ -599,7 +600,7 @@ impl App {
 
     /// The module new notes are written to.
     pub fn instrument(&self) -> Option<u8> {
-        self.selected_module.filter(|id| self.project.module(*id).is_some_and(|m| m.kind.is_instrument()))
+        self.selected_module.filter(|id| self.project.module(*id).is_some_and(|m| m.kind.in_instrument_list()))
     }
 
     fn undo(&mut self) {

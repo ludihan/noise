@@ -217,6 +217,8 @@ impl Project {
                 .collect();
         // It ends on its last chord rather than starting over.
         p.end_with_stop();
+        // Its shared effects become send tracks.
+        p.untangle();
         p
     }
 }

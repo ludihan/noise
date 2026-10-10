@@ -55,6 +55,11 @@ pub enum ModuleKind {
     Analog,
     PluckedString,
     Vocoder,
+    /// Sends a copy of the sound in a chain to a send track.
+    Send,
+    /// A send track's fader: where its effects end, on their way to the
+    /// master.
+    Return,
 }
 
 /// How a parameter's value is shown.
@@ -711,6 +716,11 @@ static MODULATOR_PARAMS: [ParamSpec; 11] = [
     p("Phase", 0.0, 1.0, 0.0).unit(Percent),
     c("Polarity", 0.0, POLARITIES),
 ];
+/// What a Send does with the sound it sends on: lets it carry on down the
+/// chain too, or only sends it.
+pub const SEND_MODES: &[&str] = &["Keep source", "Mute source"];
+static SEND_PARAMS: [ParamSpec; 3] =
+    [p("Amount", 0.0, 2.0, 1.0).unit(Gain), p("Pan", -1.0, 1.0, 0.0).unit(Pan), c("Mode", 0.0, SEND_MODES)];
 /// How many macros an instrument has: knobs that each move several of its
 /// and its effects' parameters at once.
 pub const MACROS: usize = 8;
@@ -736,7 +746,7 @@ pub static MIXER_PAN: ParamSpec = p("Pan", -1.0, 1.0, 0.0).unit(Pan);
 pub static MIXER_GAIN: ParamSpec = p("Fader", 0.0, 2.0, 1.0).unit(Gain);
 
 impl ModuleKind {
-    pub const ADDABLE: [ModuleKind; 49] = [
+    pub const ADDABLE: [ModuleKind; 50] = [
         ModuleKind::Generator,
         ModuleKind::Analog,
         ModuleKind::PluckedString,
@@ -786,6 +796,7 @@ impl ModuleKind {
         ModuleKind::Eq5,
         ModuleKind::Compressor,
         ModuleKind::Eq,
+        ModuleKind::Send,
     ];
 
     /// The kind's name and its parameters.
@@ -810,6 +821,8 @@ impl ModuleKind {
             ModuleKind::Phaser => ("Phaser", &PHASER_PARAMS),
             ModuleKind::VocalFilter => ("Vocal Filter", &VOCAL_FILTER_PARAMS),
             ModuleKind::Vocoder => ("Vocoder", &VOCODER_PARAMS),
+            ModuleKind::Send => ("Send", &SEND_PARAMS),
+            ModuleKind::Return => ("Send Track", &[]),
             ModuleKind::Repeater => ("Repeater", &REPEATER_PARAMS),
             ModuleKind::RingMod => ("Ring Mod", &RING_MOD_PARAMS),
             ModuleKind::Gate => ("Gate", &GATE_PARAMS),
@@ -928,6 +941,23 @@ impl ModuleKind {
     /// Whether the module outputs sound, and so has a mixer strip.
     pub fn makes_sound(self) -> bool {
         !self.notes_only() && !self.controls()
+    }
+
+    /// Whether the module's sound starts a chain of its own: an instrument
+    /// that makes sound, or the sound card's input.
+    pub fn starts_chain(self) -> bool {
+        self.plays_sound() || self == ModuleKind::Input
+    }
+
+    /// Whether the module is listed with the instruments, each with a
+    /// chain: those that play notes, and the sound card's input.
+    pub fn in_instrument_list(self) -> bool {
+        self.is_instrument() || self == ModuleKind::Input
+    }
+
+    /// Whether the module is an effect, to go in a chain.
+    pub fn is_effect(self) -> bool {
+        self.has_input() && self.has_output() && self.makes_sound() && self != ModuleKind::Return
     }
 
     pub fn has_input(self) -> bool {

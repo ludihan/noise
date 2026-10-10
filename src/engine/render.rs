@@ -164,6 +164,12 @@ impl Engine {
             let i = self.order[oi];
             let scratch = &mut self.scratch[..n];
             mix(scratch, &self.nodes, &self.nodes[i].inputs, |n| &n.buf);
+            for &j in &self.nodes[i].sent {
+                for (s, x) in scratch.iter_mut().zip(&self.nodes[j].wet) {
+                    s[0] += x[0];
+                    s[1] += x[1];
+                }
+            }
             if !self.nodes[i].key.is_empty() {
                 mix(&mut self.key_scratch[..n], &self.nodes, &self.nodes[i].key, |n| &n.dry);
             }
@@ -187,7 +193,20 @@ impl Engine {
             let node = &mut self.nodes[i];
             let module = &project.modules[node.module];
             let params = if node.automated { &node.params } else { &module.params };
-            if module.bypass && module.kind.has_input() {
+            if module.kind == ModuleKind::Send {
+                // A copy goes to the send track, at its amount and pan; the
+                // sound carries on down the chain unless it mutes it.
+                let on = !module.bypass && !module.mute && node.audible;
+                let (amount, (l, r)) = (if on { params[0] } else { 0.0 }, balance(params[1]));
+                for (w, x) in node.wet[..n].iter_mut().zip(scratch.iter()) {
+                    *w = [x[0] * amount * l, x[1] * amount * r];
+                }
+                if params[2] >= 0.5 && on {
+                    node.buf[..n].fill([0.0; 2]);
+                } else {
+                    node.buf[..n].copy_from_slice(scratch);
+                }
+            } else if module.bypass && module.kind.has_input() {
                 // A switched-off effect lets its input through.
                 node.buf[..n].copy_from_slice(scratch);
             } else if node.key.is_empty() {

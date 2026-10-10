@@ -127,8 +127,9 @@ pub struct TrackCells {
 }
 
 /// Whose device chain: an instrument's (or, for the output, the master
-/// chain), or a track's.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// chain, and for a send track's `Return`, that send track's), or a
+/// track's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Owner {
     Module(u8),
     Track(usize),
@@ -151,6 +152,16 @@ pub struct Chain {
     /// Where the chain sends its sound: usually the output, or effects that
     /// other instruments feed too.
     pub outputs: Vec<u8>,
+}
+
+/// A send track: effects that what Sends send it goes through, then its
+/// `Return` module, its fader, on to the master. It plays no notes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SendTrack {
+    /// Its `Return` module, which also gives it its name and color.
+    pub module: u8,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effects: Vec<u8>,
 }
 
 /// Song-wide settings of a track, shared by every pattern.
@@ -215,6 +226,9 @@ pub struct Project {
     /// of `links`; `audio_links` puts them in the sound's path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub master: Vec<u8>,
+    /// The send tracks, in the order they are shown.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sends: Vec<SendTrack>,
     /// Settings for every track number, `MAX_TRACKS` of them.
     #[serde(default)]
     pub tracks: Vec<Track>,
@@ -241,6 +255,7 @@ impl Project {
             modules: vec![Module::new(OUTPUT_ID, ModuleKind::Output, [580.0, 90.0])],
             links: vec![],
             master: Vec::new(),
+            sends: Vec::new(),
             tracks: vec![Track::default(); MAX_TRACKS],
             track_mute: Vec::new(),
         }
@@ -273,9 +288,21 @@ impl Project {
         if id == OUTPUT_ID {
             return;
         }
+        // A send track goes with its fader, and its effects with it.
+        if let Some(i) = self.sends.iter().position(|s| s.module == id) {
+            let send = self.sends.remove(i);
+            for e in send.effects {
+                self.remove_module(e);
+            }
+        }
+        for send in &mut self.sends {
+            send.effects.retain(|&e| e != id);
+        }
         self.modules.retain(|m| m.id != id);
         for m in &mut self.modules {
             m.key = m.key.filter(|&k| k != id);
+            m.send_to = m.send_to.filter(|&k| k != id);
+            m.home = m.home.filter(|&h| h != Owner::Module(id));
             m.controls.retain(|c| c.module != id);
             for mac in &mut m.macros {
                 mac.targets.retain(|t| t.module != id);
@@ -510,6 +537,9 @@ impl Project {
             }
             // The output's chain is the master chain.
             Owner::Module(OUTPUT_ID) => return Chain { effects: self.master.clone(), outputs: Vec::new() },
+            Owner::Module(id) if let Some(send) = self.send_track(id) => {
+                return Chain { effects: send.effects.clone(), outputs: Vec::new() };
+            }
             Owner::Module(id) => id,
         };
         let mut effects = Vec::new();
@@ -535,13 +565,21 @@ impl Project {
 
     /// The links as the sound takes them: what goes to the output goes
     /// through the master chain first, effect after effect, then out.
+    /// Each send track's effects come one after another, then its fader,
+    /// which goes to the master too.
     pub fn audio_links(&self) -> Vec<(u8, u8)> {
-        let Some(&first) = self.master.first() else { return self.links.clone() };
-        let mut links: Vec<(u8, u8)> = self
-            .links
-            .iter()
-            .map(|&(a, b)| if b == OUTPUT_ID && self.carries_audio(a) { (a, first) } else { (a, b) })
-            .collect();
+        let mut links = self.links.clone();
+        for send in &self.sends {
+            let path: Vec<u8> = send.effects.iter().copied().chain([send.module]).collect();
+            links.extend(path.windows(2).map(|w| (w[0], w[1])));
+            links.push((send.module, OUTPUT_ID));
+        }
+        let Some(&first) = self.master.first() else { return links };
+        for l in &mut links {
+            if l.1 == OUTPUT_ID && self.carries_audio(l.0) {
+                l.1 = first;
+            }
+        }
         links.extend(self.master.windows(2).map(|w| (w[0], w[1])));
         links.push((*self.master.last().unwrap(), OUTPUT_ID));
         links
@@ -550,7 +588,81 @@ impl Project {
     /// Whether module `id` is in the master chain or a track's, where its
     /// place, not links, says where its sound goes.
     pub fn placed(&self, id: u8) -> bool {
-        self.master.contains(&id) || self.tracks.iter().any(|t| t.effects.contains(&id))
+        self.master.contains(&id)
+            || self.tracks.iter().any(|t| t.effects.contains(&id))
+            || self.sends.iter().any(|s| s.module == id || s.effects.contains(&id))
+    }
+
+    /// The send track whose fader, its `Return`, is module `id`.
+    pub fn send_track(&self, id: u8) -> Option<&SendTrack> {
+        self.sends.iter().find(|s| s.module == id)
+    }
+
+    /// Where what a Send sends to send track `id` goes in: its first
+    /// effect, or its fader.
+    pub fn send_entry(&self, id: u8) -> Option<u8> {
+        let send = self.send_track(id)?;
+        Some(send.effects.first().copied().unwrap_or(send.module))
+    }
+
+    /// Adds a send track called `name`; returns its `Return`.
+    pub fn add_send_track(&mut self, name: &str) -> Option<u8> {
+        let id = self.add_module(ModuleKind::Return, [0.0; 2])?;
+        self.module_mut(id).unwrap().name = name.to_string();
+        self.sends.push(SendTrack { module: id, effects: Vec::new() });
+        Some(id)
+    }
+
+    /// A name for a new send track: "Send A", "Send B" and on.
+    pub fn next_send_name(&self) -> String {
+        let taken = |n: &str| self.sends.iter().any(|s| self.module(s.module).is_some_and(|m| m.name == n));
+        (b'A'..=b'Z').map(|c| format!("Send {}", c as char)).find(|n| !taken(n)).unwrap_or_else(|| "Send".into())
+    }
+
+    /// Whether a Send in `owner`'s chain can send to send track `to`: not
+    /// from the master, whose sound would come round again, nor from a
+    /// send track that `to` sends on to.
+    pub fn can_send(&self, owner: Owner, to: u8) -> bool {
+        match owner {
+            _ if self.send_track(to).is_none() => false,
+            Owner::Module(OUTPUT_ID) => false,
+            Owner::Module(from) if self.send_track(from).is_some() => from != to && !self.sends_on(to, from),
+            _ => true,
+        }
+    }
+
+    /// Whether send track `from`'s sound reaches send track `to` through
+    /// the Sends among its effects, or theirs.
+    fn sends_on(&self, from: u8, to: u8) -> bool {
+        let mut stack = vec![from];
+        let mut seen = Vec::new();
+        while let Some(at) = stack.pop() {
+            if at == to {
+                return true;
+            }
+            if seen.contains(&at) {
+                continue;
+            }
+            seen.push(at);
+            let effects = self.send_track(at).map(|s| s.effects.clone()).unwrap_or_default();
+            stack.extend(effects.iter().filter_map(|&e| self.module(e)?.send_to));
+        }
+        false
+    }
+
+    /// The chain module `id` is in, as a device or as what starts it.
+    pub fn owner_of(&self, id: u8) -> Option<Owner> {
+        if id == OUTPUT_ID || self.master.contains(&id) {
+            return Some(Owner::Module(OUTPUT_ID));
+        }
+        if let Some(t) = self.tracks.iter().position(|t| t.effects.contains(&id)) {
+            return Some(Owner::Track(t));
+        }
+        if let Some(s) = self.sends.iter().find(|s| s.module == id || s.effects.contains(&id)) {
+            return Some(Owner::Module(s.module));
+        }
+        let starts = self.modules.iter().filter(|m| m.kind.starts_chain());
+        starts.map(|m| m.id).find(|&s| s == id || self.chain(s).effects.contains(&id)).map(Owner::Module)
     }
 
     /// The instruments track `t`'s notes play, in any pattern: those its
@@ -658,6 +770,90 @@ impl Project {
         false
     }
 
+    /// Turns effects that several chains fed, or that a chain fed beside
+    /// the output, as songs before send tracks could have them, into send
+    /// tracks: each becomes a send track's first effect, with the effects
+    /// only it fed after it, and what fed it gets a Send to the send track
+    /// at the end of its chain, letting its sound carry on to the output
+    /// only if it did before. Effects nothing feeds are deleted. Songs
+    /// sound as they did.
+    pub fn untangle(&mut self) {
+        let starts: Vec<u8> = self.modules.iter().filter(|m| m.kind.starts_chain()).map(|m| m.id).collect();
+        let sends_on = |outputs: &[u8]| outputs.iter().any(|&o| o != OUTPUT_ID);
+        let fed: Vec<(u8, Chain)> =
+            starts.iter().map(|&s| (s, self.chain(s))).filter(|(_, c)| sends_on(&c.outputs)).collect();
+        // The shared effects, as the chains and they themselves reach them.
+        let mut heads: Vec<(u8, Chain)> = Vec::new();
+        let mut queue: Vec<u8> = fed.iter().flat_map(|(_, c)| c.outputs.clone()).collect();
+        while let Some(h) = (!queue.is_empty()).then(|| queue.remove(0)) {
+            if h == OUTPUT_ID || heads.iter().any(|x| x.0 == h) || self.placed(h) {
+                continue;
+            }
+            if !self.module(h).is_some_and(|m| m.kind.is_effect()) {
+                continue;
+            }
+            let chain = self.chain(h);
+            queue.extend(chain.outputs.iter().copied());
+            heads.push((h, chain));
+        }
+        let mut track_of: Vec<(u8, u8)> = Vec::new();
+        for (h, _) in &heads {
+            let (name, color) = self.module(*h).map(|m| (m.name.clone(), m.color)).unwrap();
+            let Some(ret) = self.add_send_track(&name) else { return };
+            self.module_mut(ret).unwrap().color = color;
+            track_of.push((*h, ret));
+        }
+        // The Sends a chain going to `outputs` ends with.
+        let sends_for = |p: &mut Project, outputs: &[u8]| -> Vec<u8> {
+            let to: Vec<u8> =
+                (outputs.iter()).filter_map(|o| track_of.iter().find(|t| t.0 == *o).map(|t| t.1)).collect();
+            let mut made = Vec::new();
+            for (k, &ret) in to.iter().enumerate() {
+                let Some(id) = p.add_module(ModuleKind::Send, [0.0; 2]) else { break };
+                let name = p.module(ret).map(|m| m.name.clone()).unwrap_or_default();
+                let m = p.module_mut(id).unwrap();
+                (m.send_to, m.name) = (Some(ret), format!("To {name}"));
+                if k + 1 == to.len() && !outputs.contains(&OUTPUT_ID) {
+                    m.params[2] = 1.0;
+                }
+                made.push(id);
+            }
+            made
+        };
+        for (h, chain) in &heads {
+            let mut effects = vec![*h];
+            effects.extend(&chain.effects);
+            effects.extend(sends_for(self, &chain.outputs));
+            let ret = track_of.iter().find(|t| t.0 == *h).unwrap().1;
+            if chain.outputs.is_empty() {
+                // It went nowhere: it stays silent.
+                self.module_mut(ret).unwrap().mute = true;
+            }
+            self.sends.iter_mut().find(|s| s.module == ret).unwrap().effects = effects;
+        }
+        for (s, chain) in &fed {
+            let mut effects = chain.effects.clone();
+            effects.extend(sends_for(self, &chain.outputs));
+            self.set_chain(Owner::Module(*s), &effects, &[OUTPUT_ID]);
+        }
+        // Send tracks are wired by their places, as the master is; links
+        // into them, from chains or each other, are gone.
+        let placed: Vec<u8> = self.modules.iter().map(|m| m.id).filter(|&id| self.placed(id)).collect();
+        let modulators: Vec<u8> = self.modules.iter().filter(|m| m.kind.controls()).map(|m| m.id).collect();
+        self.links.retain(|l| {
+            let audio = !modulators.contains(&l.0) && !modulators.contains(&l.1);
+            !(audio && (placed.contains(&l.0) || placed.contains(&l.1)))
+        });
+        // Effects no chain has are deleted.
+        let mut kept: Vec<u8> = starts.iter().flat_map(|&s| self.chain(s).effects).collect();
+        kept.extend(placed);
+        let stray: Vec<u8> =
+            self.modules.iter().filter(|m| m.kind.is_effect() && !kept.contains(&m.id)).map(|m| m.id).collect();
+        for id in stray {
+            self.remove_module(id);
+        }
+    }
+
     /// Whether links from module `id` carry sound, rather than notes or
     /// parameter changes.
     fn carries_audio(&self, id: u8) -> bool {
@@ -675,6 +871,10 @@ impl Project {
             }
             Owner::Module(OUTPUT_ID) => {
                 self.master = effects.to_vec();
+                return;
+            }
+            Owner::Module(id) if let Some(send) = self.sends.iter_mut().find(|s| s.module == id) => {
+                send.effects = effects.to_vec();
                 return;
             }
             Owner::Module(id) => id,
@@ -1031,8 +1231,7 @@ impl Project {
         let mut seen = vec![OUTPUT_ID];
         let mut keep = |p: &Project, chain: &mut Vec<u8>| {
             chain.retain(|&id| {
-                let effect =
-                    p.module(id).is_some_and(|m| m.kind.has_input() && m.kind.has_output() && m.kind.makes_sound());
+                let effect = p.module(id).is_some_and(|m| m.kind.is_effect());
                 effect && !seen.contains(&id) && {
                     seen.push(id);
                     true
@@ -1045,7 +1244,29 @@ impl Project {
         for t in &mut tracks {
             keep(&p, &mut t.effects);
         }
-        (p.master, p.tracks) = (master, tracks);
+        // Send tracks too, each with its own fader.
+        let mut sends = std::mem::take(&mut p.sends);
+        let mut faders = Vec::new();
+        sends.retain(|s| {
+            p.module(s.module).is_some_and(|m| m.kind == ModuleKind::Return) && !faders.contains(&s.module) && {
+                faders.push(s.module);
+                true
+            }
+        });
+        for s in &mut sends {
+            keep(&p, &mut s.effects);
+        }
+        (p.master, p.tracks, p.sends) = (master, tracks, sends);
+        // Faders of no send track are deleted.
+        let lost: Vec<u8> = (p.modules.iter())
+            .filter(|m| m.kind == ModuleKind::Return && p.send_track(m.id).is_none())
+            .map(|m| m.id)
+            .collect();
+        p.modules.retain(|m| !lost.contains(&m.id));
+        let returns: Vec<u8> = p.sends.iter().map(|s| s.module).collect();
+        for m in &mut p.modules {
+            m.send_to = m.send_to.filter(|r| returns.contains(r));
+        }
         let stray: Vec<(u8, u8)> =
             (p.links.iter().copied()).filter(|&(a, b)| p.placed(a) || (p.placed(b) && p.carries_audio(a))).collect();
         p.links.retain(|l| !stray.contains(l));
@@ -1143,6 +1364,7 @@ impl Project {
         for (a, b) in links {
             p.connect(a, b);
         }
+        p.untangle();
         // Targets a Modulator no longer links to are forgotten.
         let (links, kinds) = (p.links.clone(), kinds);
         for m in &mut p.modules {

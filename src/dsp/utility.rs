@@ -15,6 +15,16 @@ impl Dsp for Output {
     }
 }
 
+/// Lets its input through as it is: a send track's fader, whose level the
+/// mixer strip sets, and a Send, whose sending the engine does.
+pub(super) struct Thru;
+
+impl Dsp for Thru {
+    fn process(&mut self, _: &Ctx, _: &[f32], input: &[Frame], out: &mut [Frame]) {
+        out.copy_from_slice(input);
+    }
+}
+
 /// Modules that make no sound of their own; the engine routes their notes.
 pub(super) struct Silent;
 

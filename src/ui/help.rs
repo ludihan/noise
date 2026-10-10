@@ -142,6 +142,10 @@ const MODULES: &[(&str, &str)] = &[
     ),
     ("MultiSynth", "Passes the notes it gets on to the instruments it is connected to"),
     (
+        "Send",
+        "Sends a copy of the sound in its chain to a send track, at an amount, keeping or muting the sound itself",
+    ),
+    (
         "Glide",
         "Passes notes on to the instruments it is connected to, sliding each from the last note on its column in Time, whatever the distance; Legato slides only a note played over the last one, without starting it again",
     ),
@@ -221,7 +225,7 @@ const TOPICS: &[Topic] = &[
                 "Upper frame: the master scope with peak meters, the track scopes, the spectrum or the wave view.",
                 "Left: the pattern sequencer, and in its extended view the pattern matrix.",
                 "Middle: the pattern editor (F2), the mixer (F3) or the instrument editor (F4).",
-                "Lower frame: the module list with the selected module's parameters, the automation editor, or the track and master effects, opened with the tabs along the bottom.",
+                "Lower frame: the automation editor, or the effects of the tracks, the send tracks and the master, opened with the tabs along the bottom.",
                 "Right: the instrument list, with the disk browser below it. Drag the column's edge to widen it.",
             ]),
             P(
@@ -375,8 +379,7 @@ const TOPICS: &[Topic] = &[
             List(&[
                 "The instrument comes first; its panel mutes and solos it.",
                 "Its own effects follow, in order. Each can be switched off, moved by dragging its name or with the left and right arrows, or removed with the bin. + Add Effect adds one at the end.",
-                "Sends to lists where the sound goes next: the output, or effects other instruments share. Tick several to split it.",
-                "Shared effects come next, marked shared; the bin deletes one for every instrument.",
+                "From there the sound goes on to the effects of the track playing it, then the master. + Add Send puts a Send at the end of the chain, to a send track or a new one: the way to share a reverb or a delay.",
                 "The Modulators moving any of these come last; + Add Modulator adds one.",
                 "A MultiSynth's panel lists the instruments it plays.",
             ]),
@@ -386,11 +389,11 @@ const TOPICS: &[Topic] = &[
             ),
             H("Presets"),
             P(
-                "Right-click a panel's name, or a row of the module list, for its color and presets: the factory's (the demo songs' devices), yours, saving the settings under a name, or going back to the defaults. Yours are kept in presets/<kind>/ in the data folder (usually ~/.local/share/noise).",
+                "Right-click a panel's name for its color and presets: the factory's (the demo songs' devices), yours, saving the settings under a name, or going back to the defaults. Yours are kept in presets/<kind>/ in the data folder (usually ~/.local/share/noise).",
             ),
             H("Instrument presets"),
             P(
-                "The instrument list's + adds a whole instrument from Factory Instruments, the demo songs' (Felt Piano, Strings, Sub Bass, Bells, 808, Chip Arp, Vox Chops, Rain Break, Acid Line, Music Box, Rave Kit, Prism Lead, Orchestra Hit and the rest), or from My Instruments. An instrument preset holds the instrument with its samples, modulation, macros and phrases, and the effects of its own chain. Right-click an instrument and Save as Preset to keep it in instruments/ in the data folder, its samples as WAV files beside it.",
+                "The instrument list's + adds a whole instrument from Factory Instruments, the demo songs' (Felt Piano, Strings, Sub Bass, Bells, 808, Chip Arp, Vox Chops, Rain Break, Acid Line, Music Box, Rave Kit, Prism Lead, Orchestra Hit and the rest), or from My Instruments. An instrument preset holds the instrument with its samples, modulation, macros and phrases, and the effects of its own chain, but not its Sends, which belong to the song. Right-click an instrument and Save as Preset to keep it in instruments/ in the data folder, its samples as WAV files beside it.",
             ),
         ],
     },
@@ -421,7 +424,7 @@ const TOPICS: &[Topic] = &[
         blocks: &[
             Table(MODULES),
             P(
-                "The lower frame's Modules tab lists every module as a table: instruments, effects, MultiSynths and Modulators, and the output last. Each row has its color, number, name, kind, level, where it sends, and mute, solo and off switches. Click a row to edit it on the right, with what feeds it and where it sends as lists to tick. Double-click an instrument to hear it; right-click a row for its color, to duplicate or delete it. + Add adds any module.",
+                "Every module lives in a chain: instruments, the sound card's Input, MultiSynths and Glides in the instrument list, each with its chain of effects in the Instrument tab; effects in a chain, an instrument's, a track's, a send track's or the master's; Modulators beside the chains of what they move. The sound goes along a chain, one device after another; only modules that need more than one input take another: a Compressor, Gate or Vocoder's key input, a Modulator following a sound, and send tracks, which what Sends send comes into.",
             ),
             H("Parameters"),
             P(
@@ -435,9 +438,20 @@ const TOPICS: &[Topic] = &[
             P(
                 "A note module, connected to instruments as a MultiSynth is: each note it passes on starts where the last one on its key (its column, for a track) was and slides to its own pitch in Time, near or far. In Legato mode only a note played over the last one, as a track does with no note-off between, slides, and it goes on sounding rather than starting again; a note after a gap jumps. Slides and vibrato on the note still apply.",
             ),
+            H("Send"),
+            P(
+                "Sends a copy of the sound at its place in a chain to a send track, at its Amount and Pan. Keep source lets the sound carry on down the chain too; Mute source only sends it, so the chain goes through the send track's effects instead. Its To list picks the send track, or makes a new one, and the arrow beside it shows it. It can't send from the master, nor from a send track to one that sends back to it.",
+            ),
+            H("Send tracks"),
+            P(
+                "A send track plays no notes: what Sends send it goes through its effects, then its fader, to the master. Add one with + Send Track in the Track FX tab, or from a Send's list; its chip there opens it. Its first panel names it, mutes and solos it, deletes it with its effects, and lists what sends to it and how loud: click one for its chain. Put a reverb or a delay on one and send several instruments to it, each by its own amount, rather than giving each its own. The mixer has a strip for each, between the effects and the master.",
+            ),
+            P(
+                "Songs from before send tracks open with each effect several chains fed, or a chain fed beside the output, as a send track of its own, and a Send to it at the end of those chains; they sound as they did.",
+            ),
             H("Track effects and the master chain"),
             P(
-                "Each track can have effects of its own: what it plays goes through them after each instrument's own effects, then on to the master. Open them with the lower frame's Track FX tab, the FX badge on a track's header (shown once it has any) or Track Effects… in the header's menu. The tab's chips pick a track, in its colors, and follow the pattern cursor; the last chip is the master chain, the effects the whole mix goes through before the output.",
+                "Each track can have effects of its own: what it plays goes through them after each instrument's own effects, then on to the master. Open them with the lower frame's Track FX tab, the FX badge on a track's header (shown once it has any) or Track Effects… in the header's menu. The tab's chips pick a track, in its colors, and follow the pattern cursor; then come the send tracks and + Send Track, and the last chip is the master chain, the effects the whole mix goes through before the output.",
             ),
             P(
                 "+ Add Effect adds one at the end; drag one by its name, or use its arrows, to move it; the bin removes it. Modulators and automation move them like any other effect, and the mixer shows a strip for each. A track with effects shows their sound in its track scope.",
