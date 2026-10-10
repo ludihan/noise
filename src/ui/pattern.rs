@@ -478,13 +478,8 @@ pub fn handle_keys(app: &mut App, ctx: &egui::Context) {
             if super::phrase::handle_key(app, key, repeat) {
                 continue;
             }
-            match key {
-                Key::Space if !repeat && modifiers.shift => app.play_from_cursor(),
-                Key::Space if !repeat => app.toggle_play(),
-                Key::Escape => app.edit_mode = !app.edit_mode,
-                Key::Minus => app.octave = app.octave.saturating_sub(1),
-                Key::Equals | Key::Plus => app.octave = (app.octave + 1).min(9),
-                _ => note_key(app, key, repeat, false),
+            if !common_key(app, key, repeat, modifiers.shift) {
+                note_key(app, key, repeat, false);
             }
             continue;
         }
@@ -553,12 +548,10 @@ pub fn handle_keys(app: &mut App, ctx: &egui::Context) {
             continue;
         }
 
+        if common_key(app, key, repeat, modifiers.shift) {
+            continue;
+        }
         match key {
-            Key::Space if !repeat && modifiers.shift => app.play_from_cursor(),
-            Key::Space if !repeat => app.toggle_play(),
-            Key::Escape => app.edit_mode = !app.edit_mode,
-            Key::Minus => app.octave = app.octave.saturating_sub(1),
-            Key::Equals | Key::Plus => app.octave = (app.octave + 1).min(9),
             Key::Delete if selection(app).is_some() => apply(app, Op::Delete),
             Key::Delete if app.edit_mode => {
                 let cur = app.cursor;
@@ -1528,4 +1521,19 @@ fn header(app: &mut App, ui: &mut egui::Ui) {
             None => ui.label(egui::RichText::new("No instrument selected").color(theme::TEXT_WEAK)),
         };
     });
+}
+
+/// The keys that work the same in every view: Space plays (from the cursor
+/// with Shift) or stops, Escape switches edit mode, - and = change the
+/// octave. True when `key` was one of them.
+fn common_key(app: &mut App, key: Key, repeat: bool, shift: bool) -> bool {
+    match key {
+        Key::Space if !repeat && shift => app.play_from_cursor(),
+        Key::Space if !repeat => app.toggle_play(),
+        Key::Escape => app.edit_mode = !app.edit_mode,
+        Key::Minus => app.octave = app.octave.saturating_sub(1),
+        Key::Equals | Key::Plus => app.octave = (app.octave + 1).min(9),
+        _ => return false,
+    }
+    true
 }
