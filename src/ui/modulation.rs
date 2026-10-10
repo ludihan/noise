@@ -4,8 +4,9 @@
 
 use super::{App, theme, widgets};
 use crate::project::{
-    FILTER_CUTOFF, FILTER_ENV_AMOUNT, FILTER_MODES, FILTER_RESONANCE, LFO_DELAY, LFO_RATE, LFO_SHAPES, Modulation,
-    PITCH_AMOUNT, ParamSpec, TREMOLO_DEPTH, VIBRATO_DEPTH, VoiceEnvelope, VoiceLfo, set_point,
+    FILTER_CUTOFF, FILTER_ENV_AMOUNT, FILTER_KEY_TRACK, FILTER_MODES, FILTER_RESONANCE, FILTER_VELOCITY, LFO_DELAY,
+    LFO_RATE, LFO_SHAPES, Modulation, PITCH_AMOUNT, ParamSpec, TREMOLO_DEPTH, VIBRATO_DEPTH, VoiceEnvelope, VoiceLfo,
+    set_point,
 };
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Vec2};
 
@@ -62,8 +63,8 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, id: u8) {
 }
 
 /// A parameter bar of a fixed width.
-fn bar(ui: &mut egui::Ui, spec: &ParamSpec, value: &mut f32, width: f32) {
-    ui.allocate_ui(Vec2::new(width, 18.0), |ui| widgets::param_bar(ui, spec, value, |_| {}));
+fn bar(ui: &mut egui::Ui, spec: &ParamSpec, value: &mut f32, width: f32) -> egui::Response {
+    ui.allocate_ui(Vec2::new(width, 18.0), |ui| widgets::param_bar(ui, spec, value, |_| {})).inner
 }
 
 /// Where the Sampler's sounding notes are in envelope `which` (0 pitch,
@@ -101,6 +102,11 @@ fn filter(app: &mut App, ui: &mut egui::Ui, id: u8, m: &mut Modulation) {
             });
         bar(ui, &FILTER_CUTOFF, &mut m.cutoff, 180.0);
         bar(ui, &FILTER_RESONANCE, &mut m.resonance, 160.0);
+        bar(ui, &FILTER_KEY_TRACK, &mut m.key_track, 150.0).on_hover_text(
+            "How far higher notes open the filter, and lower ones close it, from C-4: all the way, it follows the note",
+        );
+        bar(ui, &FILTER_VELOCITY, &mut m.velocity, 150.0)
+            .on_hover_text("How many octaves softer notes close the filter, down from where the hardest leave it");
     });
     ui.horizontal(|ui| {
         let tip = "Move the cutoff with this envelope";

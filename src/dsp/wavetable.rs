@@ -190,7 +190,7 @@ impl Dsp for Wavetable {
         let norm = 1.0 / (unison as f32).sqrt();
         let block = out.len() as f32 / ctx.sr;
         for v in self.voices.iter_mut().filter(|v| v.env.active()) {
-            let mut mb = v.md.block(&self.mods, !v.slot.released, out.len(), ctx.sr);
+            let mut mb = v.md.block(&self.mods, &v.slot, out.len(), ctx.sr);
             // Where in the table this block reads: two frames and between.
             let at = (position + sweep * v.age).clamp(0.0, 1.0) * (FRAMES - 1) as f32;
             let frame = (at as usize).min(FRAMES - 2);

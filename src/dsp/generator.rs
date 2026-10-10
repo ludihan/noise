@@ -73,7 +73,7 @@ impl Dsp for Generator {
 
         for v in self.voices.iter_mut().filter(|v| v.env.active()) {
             let (pl, pr) = pan_gains(p[9] + v.slot.pan);
-            let mut mb = v.md.block(&self.mods, !v.slot.released, out.len(), ctx.sr);
+            let mut mb = v.md.block(&self.mods, &v.slot, out.len(), ctx.sr);
             let mut dts = [0.0; 4];
             for (u, dt) in dts.iter_mut().enumerate().take(unison) {
                 // Unison voices fan out symmetrically around the note.

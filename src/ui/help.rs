@@ -489,7 +489,7 @@ const TOPICS: &[Topic] = &[
             ),
             H("Modulation"),
             P(
-                "Changes every voice while it plays: a pitch envelope, a filter with a cutoff envelope, and vibrato and tremolo LFOs. Envelopes run in seconds from the note's start: click to add a point, drag it, right-click to delete it, double-click to make it the sustain point. Generators and FM have the same page.",
+                "Changes every voice while it plays: a pitch envelope, a filter with a cutoff envelope, key tracking (higher notes open it, lower ones close it, from C-4) and velocity (softer notes close it by up to so many octaves), and vibrato and tremolo LFOs. Envelopes run in seconds from the note's start: click to add a point, drag it, right-click to delete it, double-click to make it the sustain point. Generators and FM have the same page.",
             ),
             H("Granular"),
             P(

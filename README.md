@@ -48,7 +48,7 @@ noise --demo-wav [out.wav]         # render the demo song
   Filter, Filter Pro, Analog Filter, Distortion, Delay, Echo, Reverb, Plate Reverb, Convolver (built-in or loaded impulses), Amplifier, LFO, Flanger, Chorus, Phaser,
   Vocal Filter, Repeater, Multitap Delay, Ring Mod, WaveShaper, Scream Filter, Pitch Shifter, Vibrato, Stereo Expander, Comb Filter, Exciter, Cabinet Simulator, DC Blocker, Gate, Compressor, Maximizer, EQ, EQ 5 and EQ 10. Device chains with presets.
 - **Sampler** with keyzones, a waveform editor with time-stretch, a slicer, per-voice pitch
-  and filter envelopes and LFOs, beat sync, autoseek and mute groups. Loads WAV, FLAC
+  and filter envelopes (with key tracking and velocity) and LFOs, beat sync, autoseek and mute groups. Loads WAV, FLAC
   and Ogg Vorbis, and **SF2, SF3 and SFZ soundfonts**; records the audio input or the song (resampling).
 - **Presets** for instruments (with their samples and effects) and for
   devices: factory ones from the demo song, and your own, kept where

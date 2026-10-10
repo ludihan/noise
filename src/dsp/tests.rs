@@ -984,3 +984,37 @@ fn slices_have_settings_of_their_own() {
     assert!((out[0] - 0.25).abs() < 0.02, "half of 0.5: {}", out[0]);
     assert!((out[60] - 0.3).abs() < 0.02, "looped back to its start: {}", out[60]);
 }
+
+#[test]
+fn the_voice_filter_follows_the_key_and_velocity() {
+    let sr = 48000.0;
+    let ctx = Ctx { sr, samples_per_line: 6000.0, song_line: None };
+    let params: Vec<f32> = ModuleKind::Generator.params().iter().map(|p| p.default).collect();
+    // How loud a saw on `note` comes through the voice filter, per velocity.
+    let level = |m: &Modulation, note: f32, vel: f32| {
+        let mut dsp = create(ModuleKind::Generator, sr);
+        dsp.set_modulation(m);
+        dsp.note_on(0, note, vel);
+        let mut out = vec![[0.0; 2]; 64];
+        let mut sum = 0.0;
+        for k in 0..400 {
+            dsp.process(&ctx, &params, &[], &mut out);
+            if k > 100 {
+                sum += out.iter().map(|f| f[0] * f[0]).sum::<f32>();
+            }
+        }
+        (sum / vel / vel).sqrt()
+    };
+    let low = Modulation { filter: true, cutoff: 150.0, resonance: 0.0, ..Modulation::default() };
+    let tracked = Modulation { key_track: 1.0, ..low.clone() };
+    // Three octaves above C-4 the plain filter cuts most of a saw; the
+    // tracked one moves up with the note.
+    assert!(level(&tracked, 84.0, 1.0) > 2.0 * level(&low, 84.0, 1.0));
+    // At C-4 tracking changes nothing.
+    assert!((level(&tracked, 48.0, 1.0) / level(&low, 48.0, 1.0) - 1.0).abs() < 0.01);
+    // A soft note closes a filter that follows velocity; a hard one doesn't.
+    let soft = Modulation { cutoff: 2000.0, velocity: 3.0, ..low.clone() };
+    let open = Modulation { cutoff: 2000.0, ..low };
+    assert!(level(&soft, 60.0, 0.25) < 0.7 * level(&open, 60.0, 0.25));
+    assert!((level(&soft, 60.0, 1.0) / level(&open, 60.0, 1.0) - 1.0).abs() < 0.01);
+}

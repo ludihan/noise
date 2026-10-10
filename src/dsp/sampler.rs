@@ -297,7 +297,7 @@ impl Dsp for Sampler {
             let len = frames.len() as f64;
             let (pl, pr) = pan_gains(pan + z.pan + v.slot.pan);
 
-            let mut mb = v.md.block(m, !v.slot.released, out.len(), ctx.sr);
+            let mut mb = v.md.block(m, &v.slot, out.len(), ctx.sr);
             let semis = v.slot.note + v.shift + transpose + z.tune - z.base_note + mb.bend;
             let pitch = 2f64.powf(semis as f64 / 12.0);
             let rate = if z.beat_sync > 0.0 {

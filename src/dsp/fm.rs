@@ -56,7 +56,7 @@ impl Dsp for Fm {
         let mod_mul = (-1.0 / (mod_decay.max(0.001) * ctx.sr)).exp();
         for v in self.voices.iter_mut().filter(|v| v.env.active()) {
             let (pl, pr) = pan_gains(v.slot.pan);
-            let mut mb = v.md.block(&self.mods, !v.slot.released, out.len(), ctx.sr);
+            let mut mb = v.md.block(&self.mods, &v.slot, out.len(), ctx.sr);
             let f = note_to_freq(v.slot.note + mb.bend);
             let dc = f / ctx.sr;
             let dm = f * ratio / ctx.sr;

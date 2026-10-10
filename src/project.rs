@@ -1336,6 +1336,11 @@ pub struct Modulation {
     pub cutoff: f32,
     pub resonance: f32,
     pub filter_env: VoiceEnvelope,
+    /// How far the cutoff follows the note, from none to a whole octave an
+    /// octave, around C-4.
+    pub key_track: f32,
+    /// How many octaves the cutoff closes for the softest notes.
+    pub velocity: f32,
     pub vibrato: VoiceLfo,
     pub tremolo: VoiceLfo,
 }
@@ -1349,6 +1354,8 @@ impl Default for Modulation {
             cutoff: 2000.0,
             resonance: 0.3,
             filter_env: VoiceEnvelope { points: vec![(0.0, 1.0), (0.4, 0.3)], ..VoiceEnvelope::flat(0.0, 3.0) },
+            key_track: 0.0,
+            velocity: 0.0,
             vibrato: VoiceLfo::new(0.3),
             tremolo: VoiceLfo::new(0.5),
         }
@@ -1377,6 +1384,8 @@ impl Modulation {
         self.filter_mode = self.filter_mode.min(FILTER_MODES.len() as u8 - 1);
         self.cutoff = self.cutoff.clamp(20.0, 20000.0);
         self.resonance = self.resonance.clamp(0.0, 0.97);
+        self.key_track = self.key_track.clamp(0.0, 1.0);
+        self.velocity = self.velocity.clamp(0.0, 4.0);
         for lfo in [&mut self.vibrato, &mut self.tremolo] {
             lfo.shape = lfo.shape.min(LFO_SHAPES.len() as u8 - 1);
             lfo.rate = lfo.rate.clamp(0.05, 20.0);
@@ -1591,6 +1600,8 @@ pub static PITCH_AMOUNT: ParamSpec = i("Range", 0.0, 48.0, 12.0).unit(Unit::Semi
 pub static FILTER_CUTOFF: ParamSpec = p("Cutoff", 20.0, 20000.0, 2000.0).unit(Unit::Hz);
 pub static FILTER_RESONANCE: ParamSpec = p("Resonance", 0.0, 0.97, 0.3).unit(Unit::Percent);
 pub static FILTER_ENV_AMOUNT: ParamSpec = p("Env amount", -8.0, 8.0, 3.0).unit(Unit::Octaves);
+pub static FILTER_KEY_TRACK: ParamSpec = p("Key track", 0.0, 1.0, 0.0).unit(Unit::Percent);
+pub static FILTER_VELOCITY: ParamSpec = p("Velocity", 0.0, 4.0, 0.0).unit(Unit::Octaves);
 pub static LFO_RATE: ParamSpec = p("Rate", 0.05, 20.0, 5.0).unit(Unit::Hz);
 pub static LFO_DELAY: ParamSpec = p("Delay", 0.0, 10.0, 0.0).unit(Unit::Seconds);
 pub static VIBRATO_DEPTH: ParamSpec = p("Depth", 0.0, 12.0, 0.3).unit(Unit::Semitones);

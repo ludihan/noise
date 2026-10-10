@@ -14,6 +14,7 @@ pub(super) fn copy_modulation(to: &mut Modulation, m: &Modulation) {
     copy_envelope(&mut to.pitch, &m.pitch);
     copy_envelope(&mut to.filter_env, &m.filter_env);
     (to.filter, to.filter_mode, to.cutoff, to.resonance) = (m.filter, m.filter_mode, m.cutoff, m.resonance);
+    (to.key_track, to.velocity) = (m.key_track, m.velocity);
     to.vibrato = m.vibrato.clone();
     to.tremolo = m.tremolo.clone();
 }
@@ -49,8 +50,10 @@ pub(super) struct ModBlock {
 }
 
 impl VoiceMod {
-    /// Works out modulation for the next `frames` frames and moves on.
-    pub(super) fn block(&mut self, m: &Modulation, held: bool, frames: usize, sr: f32) -> ModBlock {
+    /// Works out modulation for the next `frames` frames of the voice
+    /// playing `slot` and moves on.
+    pub(super) fn block(&mut self, m: &Modulation, slot: &VoiceSlot, frames: usize, sr: f32) -> ModBlock {
+        let held = !slot.released;
         let block = frames as f32 / sr;
         let mut bend = 0.0;
         if m.pitch.on {
@@ -77,7 +80,10 @@ impl VoiceMod {
         let filter = m.filter.then(|| {
             let env = if m.filter_env.on { m.filter_env.value(self.filter_t) * m.filter_env.amount } else { 0.0 };
             self.filter_t = m.filter_env.advance(self.filter_t, block, held);
-            let cutoff = (m.cutoff * 2f32.powf(env)).clamp(20.0, sr * 0.45);
+            // Higher notes open it as far as key tracking says, from C-4, and
+            // softer ones close it by up to the velocity amount.
+            let octaves = env + m.key_track * (slot.note - 48.0) / 12.0 - m.velocity * (1.0 - slot.vel.clamp(0.0, 1.0));
+            let cutoff = (m.cutoff * 2f32.powf(octaves)).clamp(20.0, sr * 0.45);
             ((PI * cutoff / sr).tan(), 2.0 - 2.0 * m.resonance, m.filter_mode)
         });
         self.age += block;
