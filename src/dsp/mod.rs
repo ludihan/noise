@@ -246,6 +246,13 @@ pub fn create(kind: ModuleKind, sr: f32) -> Box<dyn Dsp> {
     }
 }
 
+/// What a one-pole follower (an envelope, a smoothed level) moves by each
+/// frame towards where it is going, to get most of the way, 1 - 1/e, in
+/// `t` seconds.
+fn follow_coef(t: f32, sr: f32) -> f32 {
+    1.0 - (-1.0 / (t.max(1e-5) * sr)).exp()
+}
+
 fn note_to_freq(note: f32) -> f32 {
     440.0 * 2f32.powf((note - 69.0) / 12.0)
 }

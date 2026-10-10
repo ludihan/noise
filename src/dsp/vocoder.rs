@@ -39,8 +39,7 @@ impl Dsp for Vocoder {
         let n = (p[0].round() as usize).clamp(1, MAX_BANDS);
         let (low, high) = (p[1], p[2].max(p[1] * 1.01).min(ctx.sr * 0.45));
         let k = 1.0 / p[3].max(0.5);
-        let coef = |t: f32| 1.0 - (-1.0 / (t.max(1e-5) * ctx.sr)).exp();
-        let (att, rel) = (coef(p[4]), coef(p[5]));
+        let (att, rel) = (follow_coef(p[4], ctx.sr), follow_coef(p[5], ctx.sr));
         let (noise, gain, mix) = (p[6], p[7], p[8]);
         // The bands spread evenly in octaves from Low to High.
         let mut g = [0.0; MAX_BANDS];

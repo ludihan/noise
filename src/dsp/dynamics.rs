@@ -27,8 +27,7 @@ impl Dsp for Gate {
 
     fn process_keyed(&mut self, ctx: &Ctx, p: &[f32], input: &[Frame], key: &[Frame], out: &mut [Frame]) {
         let (threshold, floor) = (p[0], p[4]);
-        let coef = |t: f32| 1.0 - (-1.0 / (t.max(1e-5) * ctx.sr)).exp();
-        let (att, rel) = (coef(p[1]), coef(p[3]));
+        let (att, rel) = (follow_coef(p[1], ctx.sr), follow_coef(p[3], ctx.sr));
         for ((o, i), k) in out.iter_mut().zip(input).zip(key) {
             if k[0].abs().max(k[1].abs()) > threshold {
                 self.hold = p[2] * ctx.sr;
@@ -78,7 +77,7 @@ impl Dsp for Maximizer {
 
     fn process(&mut self, ctx: &Ctx, p: &[f32], input: &[Frame], out: &mut [Frame]) {
         let (boost, ceiling) = (p[0], p[1]);
-        let rel = 1.0 - (-1.0 / (p[2] * ctx.sr)).exp();
+        let rel = follow_coef(p[2], ctx.sr);
         for (o, i) in out.iter_mut().zip(input) {
             let x = [i[0] * boost, i[1] * boost];
             let peak = x[0].abs().max(x[1].abs());
@@ -114,8 +113,7 @@ impl Dsp for Compressor {
 
     fn process_keyed(&mut self, ctx: &Ctx, p: &[f32], input: &[Frame], key: &[Frame], out: &mut [Frame]) {
         let (threshold, ratio, makeup, mix) = (p[0], p[1], p[4], p[5]);
-        let coef = |t: f32| 1.0 - (-1.0 / (t.max(1e-5) * ctx.sr)).exp();
-        let (att, rel) = (coef(p[2]), coef(p[3]));
+        let (att, rel) = (follow_coef(p[2], ctx.sr), follow_coef(p[3], ctx.sr));
         for ((o, i), k) in out.iter_mut().zip(input).zip(key) {
             let level = k[0].abs().max(k[1].abs());
             let c = if level > self.env { att } else { rel };
