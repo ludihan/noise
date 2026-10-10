@@ -60,12 +60,8 @@ impl Dsp for Drums {
         }
         self.clock += 1;
         let i = alloc_voice(&mut self.voices, |v| (&v.slot, v.active));
-        self.voices[i] = DrumVoice {
-            slot: VoiceSlot { key, note, vel, pan: 0.0, age: self.clock, released: false },
-            kind,
-            active: true,
-            ..Default::default()
-        };
+        self.voices[i] =
+            DrumVoice { slot: VoiceSlot::new(key, note, vel, self.clock), kind, active: true, ..Default::default() };
     }
 
     fn set_pan(&mut self, key: u32, pan: f32) {
@@ -175,11 +171,8 @@ impl Dsp for Kicker {
     fn note_on(&mut self, key: u32, note: f32, vel: f32) {
         self.clock += 1;
         let i = alloc_voice(&mut self.voices, |v| (&v.slot, v.active));
-        self.voices[i] = KickVoice {
-            slot: VoiceSlot { key, note, vel, pan: 0.0, age: self.clock, released: false },
-            active: true,
-            ..Default::default()
-        };
+        self.voices[i] =
+            KickVoice { slot: VoiceSlot::new(key, note, vel, self.clock), active: true, ..Default::default() };
     }
 
     fn set_pitch(&mut self, key: u32, note: f32) {

@@ -77,7 +77,7 @@ impl Dsp for Generator {
         self.clock += 1;
         let i = alloc_voice(&mut self.voices, |v| (&v.slot, v.env.active()));
         let v = &mut self.voices[i];
-        v.slot = VoiceSlot { key, note, vel, pan: 0.0, age: self.clock, released: false };
+        v.slot = VoiceSlot::new(key, note, vel, self.clock);
         v.md = VoiceMod::default();
         v.env.trigger();
     }

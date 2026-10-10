@@ -90,7 +90,7 @@ impl Sampler {
         }
         let i = alloc_voice(&mut self.voices, |v| (&v.slot, v.env.active()));
         self.voices[i] = SamplerVoice {
-            slot: VoiceSlot { key, note, vel, pan: 0.0, age: self.clock, released: false },
+            slot: VoiceSlot::new(key, note, vel, self.clock),
             zone: zi,
             data,
             pos: z.start,

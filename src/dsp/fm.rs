@@ -39,7 +39,7 @@ impl Dsp for Fm {
         self.clock += 1;
         let i = alloc_voice(&mut self.voices, |v| (&v.slot, v.env.active()));
         let v = &mut self.voices[i];
-        v.slot = VoiceSlot { key, note, vel, pan: 0.0, age: self.clock, released: false };
+        v.slot = VoiceSlot::new(key, note, vel, self.clock);
         v.env.trigger();
         v.mod_env = 1.0;
         v.md = VoiceMod::default();
@@ -152,7 +152,7 @@ impl Dsp for Fmx {
         let i = alloc_voice(&mut self.voices, |v| (&v.slot, v.env.0.iter().any(Adsr::active)));
         let v = &mut self.voices[i];
         *v = FmxVoice::default();
-        v.slot = VoiceSlot { key, note, vel, pan: 0.0, age: self.clock, released: false };
+        v.slot = VoiceSlot::new(key, note, vel, self.clock);
         v.env.0.iter_mut().for_each(Adsr::trigger);
     }
 

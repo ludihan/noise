@@ -364,6 +364,13 @@ struct VoiceSlot {
     released: bool,
 }
 
+impl VoiceSlot {
+    /// A note just played on `key`, the `age`th note played.
+    fn new(key: u32, note: f32, vel: f32, age: u64) -> Self {
+        VoiceSlot { key, note, vel, pan: 0.0, age, released: false }
+    }
+}
+
 fn alloc_voice<V>(voices: &mut [V], slot: impl Fn(&V) -> (&VoiceSlot, bool)) -> usize {
     // Prefer an idle voice, otherwise steal the oldest one.
     let mut best = 0;

@@ -90,7 +90,7 @@ impl Dsp for Analog {
         self.clock += 1;
         let from = if self.glide > 0.0 { self.last.unwrap_or(note) } else { note };
         self.last = Some(note);
-        let slot = VoiceSlot { key, note, vel, pan: 0.0, age: self.clock, released: false };
+        let slot = VoiceSlot::new(key, note, vel, self.clock);
         if self.mode > 0 {
             // One voice: the note takes it over where it is. Legato keeps
             // its envelopes going while a note is held.

@@ -102,12 +102,8 @@ impl Dsp for Granular {
         };
         self.clock += 1;
         let i = alloc_voice(&mut self.voices, |v| (&v.slot, v.env.active()));
-        self.voices[i] = GrainVoice {
-            slot: VoiceSlot { key, note, vel, pan: 0.0, age: self.clock, released: false },
-            source,
-            head: -1.0,
-            ..Default::default()
-        };
+        self.voices[i] =
+            GrainVoice { slot: VoiceSlot::new(key, note, vel, self.clock), source, head: -1.0, ..Default::default() };
         self.voices[i].env.trigger();
     }
 

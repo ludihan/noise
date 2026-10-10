@@ -167,7 +167,7 @@ impl Dsp for Wavetable {
         let i = alloc_voice(&mut self.voices, |v| (&v.slot, v.env.active()));
         let rng = &mut self.rng;
         let v = &mut self.voices[i];
-        v.slot = VoiceSlot { key, note, vel, pan: 0.0, age: self.clock, released: false };
+        v.slot = VoiceSlot::new(key, note, vel, self.clock);
         // Unison voices start apart, so they don't sound as one at first.
         v.phase = std::array::from_fn(|u| if u == 0 { 0.0 } else { 0.5 + 0.5 * rng.next() });
         v.age = 0.0;
