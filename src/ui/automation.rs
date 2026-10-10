@@ -47,8 +47,16 @@ fn groups(app: &App) -> Vec<(String, Vec<u8>)> {
     groups
 }
 
-/// The lengths an envelope can take, as parts of its pattern.
-const LENGTHS: &[(f32, &str)] = &[(1.0, "Pattern"), (0.5, "1/2"), (0.25, "1/4"), (0.125, "1/8"), (0.0625, "1/16")];
+/// Lengths an envelope can be picked to run for, in beats, and their names.
+const BEATS: &[(f32, &str)] = &[
+    (0.25, "1/4 beat"),
+    (0.5, "1/2 beat"),
+    (1.0, "1 beat"),
+    (2.0, "2 beats"),
+    (4.0, "1 bar"),
+    (8.0, "2 bars"),
+    (16.0, "4 bars"),
+];
 
 /// "04 Filter · Cutoff".
 fn describe(app: &App, module: u8, param: usize) -> String {
@@ -227,39 +235,22 @@ fn editor(app: &mut App, ui: &mut egui::Ui) {
         if ui.button("Clear").on_hover_text("Remove every point").clicked() {
             env.points.clear();
         }
-        // How much of the pattern it takes; a shorter one repeats or holds.
-        let label = LENGTHS.iter().find(|l| l.0 == env.length).map_or("Pattern", |l| l.1);
-        let combo =
-            egui::ComboBox::from_id_salt("envelope_length").selected_text(format!("Length {label}")).width(110.0);
-        combo.show_ui(ui, |ui| {
-            for &(length, name) in LENGTHS {
-                if ui.selectable_label(env.length == length, name).clicked() && env.length != length {
-                    // The drawing keeps its shape over the new length.
-                    let scale = length / env.length.max(1e-6);
-                    env.points.iter_mut().for_each(|p| p.0 *= scale);
-                    env.length = length;
-                }
-            }
-        });
-        if env.length < 1.0 {
-            let tip = "Start again each time it ends, through the rest of the pattern; off, it holds its last value";
-            if theme::toggle(ui, env.repeat, "Repeat").on_hover_text(tip).clicked() {
-                env.repeat = !env.repeat;
-            }
-        }
     });
+    // Which lines it takes effect in, on a row of its own.
+    let (pattern_lines, lpb) = (app.pattern().lines, app.project.lpb.max(1));
+    ui.horizontal(|ui| lines_controls(ui, &mut env, pattern_lines, lpb));
 
     let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 2.0, theme::INSET);
     let graph = Rect::from_min_max(rect.min + Vec2::new(58.0, 8.0), rect.max - Vec2::new(8.0, 16.0));
-    // The graph is the envelope's own length, the pattern or less of it.
+    // The graph is the envelope's own lines, the pattern or less of it.
     let pattern_lines = app.pattern().lines;
     let lines = env.span(pattern_lines);
     let x_of = |pos: f32| graph.left() + pos / lines * graph.width();
     let y_of = |t: f32| graph.bottom() - t * graph.height();
 
-    grid(app, &painter, graph, spec, lines);
+    grid(app, &painter, graph, spec, env.start, lines);
     // Where the song is playing in this pattern, and the edit cursor.
     let (play_slot, play_line) = app.play_position();
     let playing_here =
@@ -267,9 +258,11 @@ fn editor(app: &mut App, ui: &mut egui::Ui) {
     let mark = |pos: f32, color: Color32| {
         painter.line_segment([Pos2::new(x_of(pos), graph.top()), Pos2::new(x_of(pos), graph.bottom())], (1.0, color));
     };
-    mark(env.local(app.cursor.line as f32, pattern_lines).min(lines), theme::SELECTED.gamma_multiply(0.35));
-    if playing_here {
-        mark(env.local(play_line as f32, pattern_lines).min(lines), theme::SCOPE);
+    if let Some(at) = env.local(app.cursor.line as f32, pattern_lines) {
+        mark(at, theme::SELECTED.gamma_multiply(0.35));
+    }
+    if let Some(at) = env.local(play_line as f32, pattern_lines).filter(|_| playing_here) {
+        mark(at, theme::SCOPE);
     }
 
     // Without points, the parameter's own value, faintly, and how to start.
@@ -381,7 +374,7 @@ fn editor(app: &mut App, ui: &mut egui::Ui) {
 
 /// Beat and bar lines with their line numbers, and the parameter's value
 /// at five heights.
-fn grid(app: &App, painter: &egui::Painter, graph: Rect, spec: &ParamSpec, lines: f32) {
+fn grid(app: &App, painter: &egui::Painter, graph: Rect, spec: &ParamSpec, start: f32, lines: f32) {
     let lpb = app.project.lpb.max(1) as usize;
     let font = FontId::monospace(9.5);
     for l in (0..=lines as usize).step_by(lpb) {
@@ -393,7 +386,7 @@ fn grid(app: &App, painter: &egui::Painter, graph: Rect, spec: &ParamSpec, lines
             painter.text(
                 Pos2::new(x, graph.bottom() + 2.0),
                 Align2::CENTER_TOP,
-                format!("{l:03}"),
+                format!("{:03}", l + start as usize),
                 font.clone(),
                 theme::TEXT_WEAK,
             );
@@ -410,5 +403,44 @@ fn grid(app: &App, painter: &egui::Painter, graph: Rect, spec: &ParamSpec, lines
             _ => Align2::RIGHT_CENTER,
         };
         painter.text(at, align, spec.format(spec.value_at(t)), font.clone(), theme::TEXT_WEAK);
+    }
+}
+
+/// Which lines of a pattern of `pattern_lines` envelope `env` takes effect
+/// in: the line it starts on, how many it runs for (a number, a length in
+/// beats at `lpb` lines a beat, or the rest of the pattern), and whether
+/// it starts again each time it ends.
+fn lines_controls(ui: &mut egui::Ui, env: &mut Envelope, pattern_lines: usize, lpb: u32) {
+    let max = pattern_lines as f32;
+    ui.label("From");
+    let from = egui::DragValue::new(&mut env.start).range(0.0..=max - 1.0).speed(0.25).fixed_decimals(0);
+    ui.add(from).on_hover_text("The line it starts on");
+    ui.label("Lines");
+    let rest = max - env.start;
+    let mut lines = if env.lines > 0.0 { env.lines } else { rest };
+    let field = egui::DragValue::new(&mut lines)
+        .range(0.25..=rest.max(0.25))
+        .speed(0.25)
+        .custom_formatter(|v, _| if v.fract() == 0.0 { format!("{v:.0}") } else { format!("{v:.2}") });
+    if ui.add(field).on_hover_text("How many lines it runs for").changed() {
+        env.lines = if lines >= rest { 0.0 } else { lines };
+    }
+    ui.menu_button("Length", |ui| {
+        let mut pick = |ui: &mut egui::Ui, name: &str, to: f32| {
+            if ui.selectable_label(env.lines == to, name).clicked() {
+                env.lines = to;
+                ui.close();
+            }
+        };
+        pick(ui, "To the end of the pattern", 0.0);
+        for &(beats, name) in BEATS.iter().filter(|b| b.0 * (lpb as f32) < rest) {
+            pick(ui, name, beats * lpb as f32);
+        }
+    })
+    .response
+    .on_hover_text("Run for a number of beats or bars at the song's lines per beat");
+    let tip = "Start again each time it ends, through the rest of the pattern; off, outside its lines the parameter keeps the song's value";
+    if theme::toggle(ui, env.repeat, "Repeat").on_hover_text(tip).clicked() {
+        env.repeat = !env.repeat;
     }
 }

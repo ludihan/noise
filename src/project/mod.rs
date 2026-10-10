@@ -39,10 +39,6 @@ fn unity() -> f32 {
     1.0
 }
 
-fn is_unity(v: &f32) -> bool {
-    *v == 1.0
-}
-
 fn all_default(s: &[SliceSettings]) -> bool {
     s.iter().all(|s| *s == SliceSettings::default())
 }
@@ -1061,6 +1057,7 @@ impl Project {
         for pat in &mut p.patterns {
             pat.automation.retain(|e| kinds.iter().any(|&(id, k)| id == e.module && e.param < k.num_automatable()));
             for e in &mut pat.automation {
+                upgrade_length(e, pat.lines);
                 for pt in &mut e.points {
                     *pt = (pt.0.clamp(0.0, MAX_LINES as f32), pt.1.clamp(0.0, 1.0));
                 }
@@ -1192,3 +1189,22 @@ fn resolve(dir: &Path, path: &str) -> PathBuf {
 
 #[cfg(test)]
 mod tests;
+
+/// Turns the length of an envelope from before they had lines of their
+/// own, a share of its pattern of `lines`, into lines. One that repeated
+/// already did so over its lines; one that held its last value after
+/// them is drawn on to the end, as it sounded.
+fn upgrade_length(e: &mut Envelope, lines: usize) {
+    if e.old_length >= 1.0 || e.old_length <= 0.0 {
+        e.old_length = 1.0;
+        return;
+    }
+    e.lines = (lines as f32 * e.old_length).max(0.25);
+    if !e.repeat
+        && let Some(&(_, last)) = e.points.last()
+    {
+        e.points.push((lines as f32, last));
+        e.lines = 0.0;
+    }
+    e.old_length = 1.0;
+}

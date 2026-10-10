@@ -35,7 +35,9 @@ fn off() -> Cell {
 fn envelope(m: u8, kind: ModuleKind, param: usize, points: &[(f32, f32)], steps: bool, curve: bool) -> Envelope {
     let spec = kind.automatable(param).expect("an automatable parameter");
     let points = points.iter().map(|&(l, v)| (l, spec.position(v))).collect();
-    Envelope { steps, curve, ..Envelope::new(m, param, points) }
+    let mut e = Envelope::new(m, param, points);
+    (e.steps, e.curve) = (steps, curve);
+    e
 }
 
 // ---------------------------------------------------------------- shared by the demo songs

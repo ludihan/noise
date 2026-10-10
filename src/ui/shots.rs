@@ -26,6 +26,14 @@ fn shot(name: &str, setup: impl FnOnce(&mut App)) {
 fn shots() {
     shot("pattern", |_| {});
     shot("mixer", |app| app.view = View::Mixer);
+    shot("automation", |app| {
+        // An envelope from line 8 for a bar, repeating.
+        // The first envelope, which the panel shows first.
+        let env = app.pattern_mut().automation.first_mut().expect("an envelope in the demo's first pattern");
+        (env.start, env.lines, env.repeat) = (8.0, 16.0, true);
+        env.points = vec![(0.0, 0.2), (8.0, 0.9), (16.0, 0.2)];
+        (app.lower, app.show_lower) = (super::Lower::Automation, true);
+    });
     shot("busy", |app| {
         // A job that waits, part way through, until the picture is taken.
         super::jobs::spawn(app, "Rendering song.wav", |progress| {

@@ -41,8 +41,9 @@ noise --demo-wav [out.wav]         # render the demo song
   another module's sound as its key input.
 - **Pattern sequencer and matrix** with per-slot mutes, block copying and
   sections, drag and drop and a right-click menu for slots; a **mixer**
-  strip for every module; **automation** envelopes of a pattern or part of
-  one, picked from a filtered parameter browser; eight **macros** an
+  strip for every module; **automation** envelopes over the lines you pick
+  of a pattern, repeating if you like, picked from a filtered parameter
+  browser; eight **macros** an
   instrument, each moving any parameters of it and its effects at once.
 - **Modules**: Generator, Analog Synth (two oscillators, sub and noise into a ladder filter per voice, with filter and amp envelopes, an LFO, unison, and mono and legato voices with glide), Plucked String (a modelled string, up to three a voice), Wavetable (morphing, band-limited tables with unison), FM, Drums, Kicker, SpectraVoice, FMX, Sampler, Granular (a sample as a cloud of grains), Input (the sound card's input, live), MultiSynth, Glide (portamento between notes) and Modulator (LFO with
   drawn shapes synced to beats, follower, key and velocity tracker,

@@ -60,13 +60,20 @@ pub struct Envelope {
     /// lines. `steps` wins.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub curve: bool,
-    /// How much of the pattern the envelope takes, up to all of it (1).
-    #[serde(default = "unity", skip_serializing_if = "is_unity")]
-    pub length: f32,
-    /// A shorter envelope starts again when it ends, through the rest of
-    /// the pattern, rather than holding its last value.
+    /// The line it starts on; its points are in lines from there.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub start: f32,
+    /// How many lines it runs for; 0 for the rest of the pattern.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub lines: f32,
+    /// Start again each time it ends, through the rest of the pattern.
+    /// Otherwise, outside its lines the parameter keeps the song's value.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub repeat: bool,
+    /// How much of the pattern envelopes of earlier versions took, which
+    /// `Project::load` turns into `lines`.
+    #[serde(default = "unity", rename = "length", skip_serializing)]
+    pub(super) old_length: f32,
 }
 
 /// The value of the envelope through `points` at `pos`, or `None` without
@@ -130,25 +137,43 @@ impl Envelope {
 
     /// An envelope of `points` over the whole pattern, in lines.
     pub fn new(module: u8, param: usize, points: Vec<(f32, f32)>) -> Self {
-        Self { module, param, points, steps: false, curve: false, length: 1.0, repeat: false }
+        Self {
+            module,
+            param,
+            points,
+            steps: false,
+            curve: false,
+            start: 0.0,
+            lines: 0.0,
+            repeat: false,
+            old_length: 1.0,
+        }
     }
 
-    /// The lines it runs for in a pattern of `lines`, before it holds or
-    /// starts again.
+    /// The lines it runs for in a pattern of `lines`, from its start, before
+    /// it ends or starts again.
     pub fn span(&self, lines: usize) -> f32 {
-        (lines as f32 * self.length.clamp(0.0, 1.0)).max(0.25)
+        let rest = (lines as f32 - self.start).max(0.25);
+        if self.lines > 0.0 { self.lines.min(rest).max(0.25) } else { rest }
     }
 
-    /// Where `pos` lines into the pattern falls in the envelope: past its
-    /// end it starts again if it repeats.
-    pub fn local(&self, pos: f32, lines: usize) -> f32 {
-        let span = self.span(lines);
-        if self.repeat && pos >= span { pos.rem_euclid(span) } else { pos }
+    /// Where `pos` lines into a pattern of `lines` falls in the envelope,
+    /// from its start; `None` before it starts, and after it ends unless it
+    /// repeats.
+    pub fn local(&self, pos: f32, lines: usize) -> Option<f32> {
+        let (at, span) = (pos - self.start, self.span(lines));
+        match at {
+            at if at < 0.0 => None,
+            at if at < span => Some(at),
+            at if self.repeat => Some(at.rem_euclid(span)),
+            _ => None,
+        }
     }
 
-    /// Its value `pos` lines into a pattern of `lines`.
+    /// Its value `pos` lines into a pattern of `lines`, or `None` where it
+    /// doesn't take effect.
     pub fn value_in(&self, pos: f32, lines: usize) -> Option<f32> {
-        self.value_at(self.local(pos, lines))
+        self.value_at(self.local(pos, lines)?)
     }
 
     /// Sets the value at `pos`, replacing a point there or adding one.

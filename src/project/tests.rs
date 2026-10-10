@@ -538,21 +538,53 @@ fn grouped_tracks_go_on_through_the_group_s_effects() {
 }
 
 #[test]
-fn shorter_envelopes_repeat_or_hold() {
-    // A ramp over a quarter of a 64-line pattern: 16 lines.
+fn envelopes_take_effect_in_their_lines_or_repeat() {
+    // A ramp over 16 lines from line 8 of a 64-line pattern.
     let mut env = Envelope::new(1, 0, vec![(0.0, 0.0), (16.0, 1.0)]);
-    env.length = 0.25;
+    (env.start, env.lines) = (8.0, 16.0);
     assert_eq!(env.span(64), 16.0);
-    assert_eq!(env.value_in(8.0, 64), Some(0.5));
-    assert_eq!(env.value_in(40.0, 64), Some(1.0), "past its end it holds");
+    assert_eq!(env.value_in(4.0, 64), None, "not before it starts");
+    assert_eq!(env.value_in(16.0, 64), Some(0.5));
+    assert_eq!(env.value_in(30.0, 64), None, "nor after it ends");
     env.repeat = true;
-    assert_eq!(env.value_in(40.0, 64), Some(0.5), "or starts again");
-    assert_eq!(env.value_in(56.0, 64), Some(0.5));
-    // A whole-pattern one is as it was, and saves as it did.
+    assert_eq!(env.value_in(32.0, 64), Some(0.5), "unless it starts again");
+    assert_eq!(env.value_in(4.0, 64), None, "but only from its start");
+    // No lines given, it runs to the end of the pattern.
     let whole = Envelope::new(1, 0, vec![(0.0, 0.0), (64.0, 1.0)]);
+    assert_eq!(whole.span(64), 64.0);
     assert_eq!(whole.value_in(32.0, 64), Some(0.5));
     let json = serde_json::to_string(&whole).unwrap();
-    assert!(!json.contains("length") && !json.contains("repeat"), "{json}");
+    assert!(!["length", "lines", "start", "repeat"].iter().any(|k| json.contains(k)), "{json}");
+}
+
+#[test]
+fn envelopes_of_a_share_of_the_pattern_open_as_they_sounded() {
+    let dir = temp_dir("old-envelopes");
+    let mut p = Project::empty();
+    let id = p.add_module(ModuleKind::Generator, [0.0; 2]).unwrap();
+    let quarter = |repeat| {
+        let mut e = Envelope::new(id, 0, vec![(0.0, 0.0), (16.0, 1.0)]);
+        (e.repeat, e.old_length) = (repeat, 0.25);
+        e
+    };
+    p.patterns[0].automation = vec![quarter(true)];
+    let mut json = serde_json::to_value(&p).unwrap();
+    // Saved as earlier versions did: a length, no lines.
+    json["patterns"][0]["automation"][0]["length"] = 0.25.into();
+    let held = {
+        let mut e = serde_json::to_value(quarter(false)).unwrap();
+        e["length"] = 0.25.into();
+        e
+    };
+    json["patterns"][0]["automation"].as_array_mut().unwrap().push(held);
+    let path = dir.join("old.json");
+    std::fs::write(&path, json.to_string()).unwrap();
+    let (back, _) = Project::load(path.to_str().unwrap()).unwrap();
+    let (repeats, holds) = (&back.patterns[0].automation[0], &back.patterns[0].automation[1]);
+    assert_eq!((repeats.lines, repeats.repeat), (16.0, true));
+    assert_eq!(repeats.value_in(40.0, 64), Some(0.5), "it still repeats every 16 lines");
+    assert_eq!(holds.value_in(40.0, 64), Some(1.0), "it still holds its last value");
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
