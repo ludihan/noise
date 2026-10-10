@@ -6,7 +6,8 @@ straight to synth modules, and each instrument's sound goes through a chain
 of effect modules.
 
 Press `F1` for the manual, which covers every part of the program, the keys
-and the effect commands.
+and the effect commands. `Ctrl+K` opens a command palette that finds any action by
+name.
 
 ![The main window: the menu bar and transport along the top, the track scopes below them, the pattern sequencer with its buttons down its left, the pattern editor in the middle with the Automation and Track FX tabs under it, and the instrument list and disk browser on the right](docs/main.png)
 

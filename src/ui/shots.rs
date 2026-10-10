@@ -138,4 +138,8 @@ fn shots() {
         app.selected_module = None;
         app.mark();
     });
+    shot("palette", |app| {
+        app.palette.open = true;
+        app.palette.preset = Some("rev".into());
+    });
 }

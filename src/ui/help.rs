@@ -26,6 +26,7 @@ struct Topic {
 }
 
 const KEYS: &[(&str, &str)] = &[
+    ("Ctrl+K", "The command palette: type a few letters of anything to do, Enter does it"),
     ("Space", "Play / stop"),
     ("Shift+Space", "Play from the cursor's line"),
     ("Esc", "Toggle edit mode"),
@@ -212,6 +213,9 @@ const TOPICS: &[Topic] = &[
     Topic {
         title: "Getting started",
         blocks: &[
+            P(
+                "Ctrl+K, or View > Command Palette…, finds any command by a few letters of its name: playing, files, views, the instruments to edit or add, effects to add to the instrument being edited, tracks' and send tracks' effects, the demo songs and this manual's topics. Up and Down pick one, Enter runs it.",
+            ),
             P(
                 "A song without instruments shows START A SONG over the pattern: Add an Instrument picks a synth, a sampler or a ready-made instrument, and Open a Demo Song opens one of the demos.",
             ),
@@ -577,6 +581,11 @@ fn matches(topic: &Topic, find: &str) -> bool {
     find.is_empty()
         || topic.title.to_lowercase().contains(find)
         || topic.blocks.iter().any(|b| words(b).to_lowercase().contains(find))
+}
+
+/// The manual's topics, by title.
+pub fn titles() -> impl Iterator<Item = &'static str> {
+    TOPICS.iter().map(|t| t.title)
 }
 
 pub fn window(ctx: &egui::Context, open: &mut bool, view: &mut HelpView) {

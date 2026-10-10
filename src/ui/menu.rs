@@ -103,6 +103,10 @@ impl App {
                 }
             });
             ui.menu_button("View", |ui| {
+                if menu_item(ui, "Command Palette…", "Ctrl+K") {
+                    self.palette.open = true;
+                }
+                ui.separator();
                 for (view, label, key) in View::ALL {
                     if ui.add(egui::Button::selectable(self.view == view, label).shortcut_text(key)).clicked() {
                         self.view = view;

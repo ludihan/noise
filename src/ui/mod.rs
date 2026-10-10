@@ -16,6 +16,7 @@ mod menu;
 mod mixer;
 mod modulation;
 mod modules;
+mod palette;
 mod pattern;
 mod phrase;
 mod presets;
@@ -265,6 +266,7 @@ pub struct App {
     pub sequencer: sequencer::State,
     pub modulation: modulation::ModulationView,
     pub chain_view: chain::ChainView,
+    pub palette: palette::Palette,
     pub phrase: phrase::PhraseView,
     pub view: View,
     pub sampler: sampler::SamplerView,
@@ -421,6 +423,7 @@ impl App {
             sequencer: Default::default(),
             modulation: Default::default(),
             chain_view: Default::default(),
+            palette: Default::default(),
             phrase: Default::default(),
             view: View::Pattern,
             sampler: Default::default(),
@@ -664,6 +667,9 @@ impl App {
             if ctrl(key) {
                 *on = !*on;
             }
+        }
+        if ctrl(Key::K) || ctrl_shift(Key::P) {
+            self.palette.open = true;
         }
         if ctrl(Key::S) {
             self.save_or_ask();
@@ -937,6 +943,7 @@ impl eframe::App for App {
         self.render_dialog(&ctx);
         self.confirm_dialog(&ctx);
         help::window(&ctx, &mut self.show_help, &mut self.help);
+        palette::window(self, &ctx);
         self.midi_window(&ctx);
         comments::window(self, &ctx);
         soundfonts::window(self, &ctx);
