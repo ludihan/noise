@@ -313,6 +313,7 @@ impl Engine {
                     let mut n = old.swap_remove(i);
                     n.module = mi;
                     n.inputs.clear();
+                    n.dry.clear();
                     n.key.clear();
                     n.targets.clear();
                     n.controls.clear();
@@ -331,6 +332,7 @@ impl Engine {
                     inputs: Vec::new(),
                     key: Vec::new(),
                     buf: vec![[0.0; 2]; BLOCK],
+                    dry: Vec::new(),
                     audible: true,
                     peak: [0.0; 2],
                     params: Vec::with_capacity(m.params.len()),
@@ -400,6 +402,11 @@ impl Engine {
             let Some(b) = base[src as usize] else { continue };
             self.nodes[j].key.push(b);
             self.nodes[j].key.extend(self.copies[b].into_iter().flatten());
+            // Which keep their sound before the mixer for it.
+            for k in 0..self.nodes[j].key.len() {
+                let s = self.nodes[j].key[k];
+                self.nodes[s].dry.resize(BLOCK, [0.0; 2]);
+            }
         }
         // What each instrument's macros move: the node of the module named,
         // its copy for the same track when there is one.

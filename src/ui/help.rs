@@ -195,7 +195,7 @@ const MODULES: &[(&str, &str)] = &[
     ("EQ 5", "A parametric EQ: a low shelf, three peaks and a high shelf, each with its frequency, gain and width"),
     (
         "Compressor",
-        "Threshold, ratio, attack, release, makeup gain and mix. Its Key can be another module, whose sound then turns it down (a sidechain): a kick ducking a pad or bass",
+        "Threshold, ratio, attack, release, makeup gain and mix. Its Key can be another module, whose sound then turns it down (a sidechain): a kick ducking a pad or bass. The key is heard before that module's fader and mute, so a muted kick still ducks",
     ),
     ("EQ", "A low shelf, a mid peak and a high shelf, each with its frequency"),
     ("Output", "The final mix"),

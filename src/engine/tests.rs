@@ -202,6 +202,10 @@ fn a_key_input_lets_another_sound_work_the_compressor() {
     let ducked = level(&p, &[a, b]);
     assert!(quiet_key > 3.0 * own, "{quiet_key} {own}");
     assert!(ducked < 0.5 * quiet_key, "{ducked} {quiet_key}");
+    // It hears b before b's mixer strip: muted, b still ducks a.
+    p.module_mut(b).unwrap().mute = true;
+    let ghost = level(&p, &[a, b]);
+    assert!(ghost < 0.5 * quiet_key, "a muted key still keys: {ghost} {quiet_key}");
     // What the compressor feeds can't key it: that would loop.
     let after = p.add_module(ModuleKind::Filter, [0.0, 0.0]).unwrap();
     p.disconnect(comp, OUTPUT_ID);

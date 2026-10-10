@@ -143,9 +143,9 @@ impl Engine {
         for oi in 0..self.order.len() {
             let i = self.order[oi];
             let scratch = &mut self.scratch[..n];
-            mix(scratch, &self.nodes, &self.nodes[i].inputs);
+            mix(scratch, &self.nodes, &self.nodes[i].inputs, |n| &n.buf);
             if !self.nodes[i].key.is_empty() {
-                mix(&mut self.key_scratch[..n], &self.nodes, &self.nodes[i].key);
+                mix(&mut self.key_scratch[..n], &self.nodes, &self.nodes[i].key, |n| &n.dry);
             }
             // An instrument's macros set what they move before it plays.
             for k in 0..self.nodes[i].macro_targets.len() {
@@ -174,6 +174,9 @@ impl Engine {
                 node.dsp.process(&ctx, params, scratch, &mut node.buf[..n]);
             } else {
                 node.dsp.process_keyed(&ctx, params, scratch, &self.key_scratch[..n], &mut node.buf[..n]);
+            }
+            if !node.dry.is_empty() {
+                node.dry[..n].copy_from_slice(&node.buf[..n]);
             }
             let silent = module.mute || !node.audible;
             if let Some(tap) = node.dsp.track_tap() {

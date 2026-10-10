@@ -16,6 +16,9 @@ pub(super) struct Node {
     /// the module keying it and its copies for tracks.
     pub(super) key: Vec<usize>,
     pub(super) buf: Vec<Frame>,
+    /// For a module an effect listens to as its key input: its sound
+    /// before its mixer strip, so a muted or faded-down kick still keys.
+    pub(super) dry: Vec<Frame>,
     /// Off while another module is soloed and this one neither feeds it
     /// nor is fed by it.
     pub(super) audible: bool,
@@ -51,11 +54,12 @@ pub(super) struct Node {
     pub(super) last_note: (f32, f32, u64),
 }
 
-/// `into`, cleared, with the sound of nodes `from` added up in it.
-pub(super) fn mix(into: &mut [Frame], nodes: &[Node], from: &[usize]) {
+/// `into`, cleared, with the sound of nodes `from` added up in it: what
+/// `sound` picks of each, its output or its dry sound.
+pub(super) fn mix(into: &mut [Frame], nodes: &[Node], from: &[usize], sound: fn(&Node) -> &[Frame]) {
     into.fill([0.0; 2]);
     for &j in from {
-        for (s, x) in into.iter_mut().zip(&nodes[j].buf) {
+        for (s, x) in into.iter_mut().zip(sound(&nodes[j])) {
             s[0] += x[0];
             s[1] += x[1];
         }
