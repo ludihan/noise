@@ -60,16 +60,22 @@ pub struct Envelope {
     /// lines. `steps` wins.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub curve: bool,
-    /// The line it starts on; its points are in lines from there.
+    /// For an envelope from one line to another: the line it starts on
+    /// (its points are in lines from there) and how many lines it runs for,
+    /// 0 for the rest of the pattern. Outside them the parameter keeps the
+    /// song's value.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub start: f32,
-    /// How many lines it runs for; 0 for the rest of the pattern.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub lines: f32,
-    /// Start again each time it ends, through the rest of the pattern.
-    /// Otherwise, outside its lines the parameter keeps the song's value.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub repeat: bool,
+    /// For one that repeats instead: how often, in beats, through the whole
+    /// pattern; 0 when it runs from line to line.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub every: f32,
+    /// Whether an envelope saved before `every` started again after its
+    /// lines, which `Project::load` turns into `every`.
+    #[serde(default, rename = "repeat", skip_serializing)]
+    pub(super) old_repeat: bool,
     /// How much of the pattern envelopes of earlier versions took, which
     /// `Project::load` turns into `lines`.
     #[serde(default = "unity", rename = "length", skip_serializing)]
@@ -145,35 +151,37 @@ impl Envelope {
             curve: false,
             start: 0.0,
             lines: 0.0,
-            repeat: false,
+            every: 0.0,
+            old_repeat: false,
             old_length: 1.0,
         }
     }
 
-    /// The lines it runs for in a pattern of `lines`, from its start, before
-    /// it ends or starts again.
-    pub fn span(&self, lines: usize) -> f32 {
+    /// The lines it runs for in a pattern of `lines` at `lpb` lines a beat,
+    /// from its start, before it ends or starts again.
+    pub fn span(&self, lines: usize, lpb: u32) -> f32 {
+        if self.every > 0.0 {
+            return (self.every * lpb.max(1) as f32).max(0.25);
+        }
         let rest = (lines as f32 - self.start).max(0.25);
         if self.lines > 0.0 { self.lines.min(rest).max(0.25) } else { rest }
     }
 
-    /// Where `pos` lines into a pattern of `lines` falls in the envelope,
-    /// from its start; `None` before it starts, and after it ends unless it
-    /// repeats.
-    pub fn local(&self, pos: f32, lines: usize) -> Option<f32> {
-        let (at, span) = (pos - self.start, self.span(lines));
-        match at {
-            at if at < 0.0 => None,
-            at if at < span => Some(at),
-            at if self.repeat => Some(at.rem_euclid(span)),
-            _ => None,
+    /// Where `pos` lines into a pattern of `lines` at `lpb` lines a beat
+    /// falls in the envelope: in its cycle when it repeats, otherwise from
+    /// its start, and `None` outside its lines.
+    pub fn local(&self, pos: f32, lines: usize, lpb: u32) -> Option<f32> {
+        let span = self.span(lines, lpb);
+        if self.every > 0.0 {
+            return Some(pos.rem_euclid(span));
         }
+        Some(pos - self.start).filter(|at| (0.0..span).contains(at))
     }
 
-    /// Its value `pos` lines into a pattern of `lines`, or `None` where it
-    /// doesn't take effect.
-    pub fn value_in(&self, pos: f32, lines: usize) -> Option<f32> {
-        self.value_at(self.local(pos, lines)?)
+    /// Its value `pos` lines into a pattern of `lines` at `lpb` lines a
+    /// beat, or `None` where it doesn't take effect.
+    pub fn value_in(&self, pos: f32, lines: usize, lpb: u32) -> Option<f32> {
+        self.value_at(self.local(pos, lines, lpb)?)
     }
 
     /// Sets the value at `pos`, replacing a point there or adding one.

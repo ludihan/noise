@@ -24,7 +24,9 @@ impl Engine {
         let pos = self.pattern_line() as f32;
         for env in &pattern.automation {
             let Some(module) = project.module(env.module) else { continue };
-            let (Some(spec), Some(t)) = (module.kind.automatable(env.param), env.value_in(pos, pattern.lines)) else {
+            let lpb = project.lpb;
+            let (Some(spec), Some(t)) = (module.kind.automatable(env.param), env.value_in(pos, pattern.lines, lpb))
+            else {
                 continue;
             };
             let value = spec.value_at(t);

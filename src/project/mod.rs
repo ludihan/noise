@@ -1054,10 +1054,11 @@ impl Project {
             p.modules.push(Module::new(OUTPUT_ID, ModuleKind::Output, [580.0, 90.0]));
         }
         let kinds: Vec<(u8, ModuleKind)> = p.modules.iter().map(|m| (m.id, m.kind)).collect();
+        let lpb = p.lpb;
         for pat in &mut p.patterns {
             pat.automation.retain(|e| kinds.iter().any(|&(id, k)| id == e.module && e.param < k.num_automatable()));
             for e in &mut pat.automation {
-                upgrade_length(e, pat.lines);
+                upgrade_envelope(e, pat.lines, lpb);
                 for pt in &mut e.points {
                     *pt = (pt.0.clamp(0.0, MAX_LINES as f32), pt.1.clamp(0.0, 1.0));
                 }
@@ -1190,21 +1191,28 @@ fn resolve(dir: &Path, path: &str) -> PathBuf {
 #[cfg(test)]
 mod tests;
 
-/// Turns the length of an envelope from before they had lines of their
-/// own, a share of its pattern of `lines`, into lines. One that repeated
-/// already did so over its lines; one that held its last value after
-/// them is drawn on to the end, as it sounded.
-fn upgrade_length(e: &mut Envelope, lines: usize) {
-    if e.old_length >= 1.0 || e.old_length <= 0.0 {
-        e.old_length = 1.0;
-        return;
+/// Turns an envelope saved by earlier versions, which ran for a share of
+/// its pattern of `lines` (or a number of lines) and then repeated or
+/// held its last value, into one that repeats every so many beats at `lpb`
+/// lines a beat, or runs to the end of the pattern holding that value, so
+/// it sounds as it did.
+fn upgrade_envelope(e: &mut Envelope, lines: usize, lpb: u32) {
+    // A share of the pattern, before envelopes had lines of their own.
+    let share = e.old_length > 0.0 && e.old_length < 1.0;
+    if share {
+        e.lines = (lines as f32 * e.old_length).max(0.25);
     }
-    e.lines = (lines as f32 * e.old_length).max(0.25);
-    if !e.repeat
+    e.old_length = 1.0;
+    if e.old_repeat && e.lines > 0.0 {
+        e.every = e.lines / lpb.max(1) as f32;
+        (e.start, e.lines) = (0.0, 0.0);
+    } else if share
+        && !e.old_repeat
         && let Some(&(_, last)) = e.points.last()
     {
+        // It held its last value to the end of the pattern.
         e.points.push((lines as f32, last));
         e.lines = 0.0;
     }
-    e.old_length = 1.0;
+    e.old_repeat = false;
 }

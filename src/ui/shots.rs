@@ -31,10 +31,10 @@ fn shots() {
         (app.slot, app.cursor.line) = (2, 3);
     });
     shot("automation", |app| {
-        // An envelope from line 8 for a bar, repeating.
+        // An envelope repeating every beat.
         // The first envelope, which the panel shows first.
         let env = app.pattern_mut().automation.first_mut().expect("an envelope in the demo's first pattern");
-        (env.start, env.lines, env.repeat) = (8.0, 16.0, true);
+        env.every = 1.0;
         env.points = vec![(0.0, 0.2), (8.0, 0.9), (16.0, 0.2)];
         (app.lower, app.show_lower) = (super::Lower::Automation, true);
     });

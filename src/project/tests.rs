@@ -538,52 +538,57 @@ fn grouped_tracks_go_on_through_the_group_s_effects() {
 }
 
 #[test]
-fn envelopes_take_effect_in_their_lines_or_repeat() {
-    // A ramp over 16 lines from line 8 of a 64-line pattern.
+fn envelopes_run_from_line_to_line_or_repeat_every_so_many_beats() {
+    // A ramp over 16 lines from line 8 of a 64-line pattern, 4 lines a beat.
     let mut env = Envelope::new(1, 0, vec![(0.0, 0.0), (16.0, 1.0)]);
     (env.start, env.lines) = (8.0, 16.0);
-    assert_eq!(env.span(64), 16.0);
-    assert_eq!(env.value_in(4.0, 64), None, "not before it starts");
-    assert_eq!(env.value_in(16.0, 64), Some(0.5));
-    assert_eq!(env.value_in(30.0, 64), None, "nor after it ends");
-    env.repeat = true;
-    assert_eq!(env.value_in(32.0, 64), Some(0.5), "unless it starts again");
-    assert_eq!(env.value_in(4.0, 64), None, "but only from its start");
-    // No lines given, it runs to the end of the pattern.
+    assert_eq!(env.span(64, 4), 16.0);
+    assert_eq!(env.value_in(4.0, 64, 4), None, "not before its first line");
+    assert_eq!(env.value_in(16.0, 64, 4), Some(0.5));
+    assert_eq!(env.value_in(30.0, 64, 4), None, "nor after its last");
+    // Every 2 beats, 8 lines, from the top of the pattern to its end.
+    let mut every = Envelope::new(1, 0, vec![(0.0, 0.0), (8.0, 1.0)]);
+    every.every = 2.0;
+    assert_eq!(every.span(64, 4), 8.0);
+    assert_eq!(every.value_in(4.0, 64, 4), Some(0.5));
+    assert_eq!(every.value_in(52.0, 64, 4), Some(0.5), "over and over");
+    assert_eq!(every.span(64, 8), 16.0, "it keeps to beats when the lines per beat change");
+    // No lines given, it runs to the end of the pattern and saves as before.
     let whole = Envelope::new(1, 0, vec![(0.0, 0.0), (64.0, 1.0)]);
-    assert_eq!(whole.span(64), 64.0);
-    assert_eq!(whole.value_in(32.0, 64), Some(0.5));
+    assert_eq!(whole.value_in(32.0, 64, 4), Some(0.5));
     let json = serde_json::to_string(&whole).unwrap();
-    assert!(!["length", "lines", "start", "repeat"].iter().any(|k| json.contains(k)), "{json}");
+    assert!(!["length", "lines", "start", "repeat", "every"].iter().any(|k| json.contains(k)), "{json}");
 }
 
 #[test]
-fn envelopes_of_a_share_of_the_pattern_open_as_they_sounded() {
+fn envelopes_saved_by_earlier_versions_open_as_they_sounded() {
     let dir = temp_dir("old-envelopes");
     let mut p = Project::empty();
     let id = p.add_module(ModuleKind::Generator, [0.0; 2]).unwrap();
-    let quarter = |repeat| {
-        let mut e = Envelope::new(id, 0, vec![(0.0, 0.0), (16.0, 1.0)]);
-        (e.repeat, e.old_length) = (repeat, 0.25);
-        e
-    };
-    p.patterns[0].automation = vec![quarter(true)];
+    p.patterns[0].automation = vec![Envelope::new(id, 0, vec![(0.0, 0.0), (16.0, 1.0)])];
     let mut json = serde_json::to_value(&p).unwrap();
-    // Saved as earlier versions did: a length, no lines.
-    json["patterns"][0]["automation"][0]["length"] = 0.25.into();
-    let held = {
-        let mut e = serde_json::to_value(quarter(false)).unwrap();
-        e["length"] = 0.25.into();
+    // A quarter of the pattern repeating, one holding its last value, and
+    // 8 lines repeating as the version before this one saved them.
+    let env = json["patterns"][0]["automation"][0].clone();
+    let old = |fields: serde_json::Value| {
+        let mut e = env.clone();
+        e.as_object_mut().unwrap().extend(fields.as_object().unwrap().clone());
         e
     };
-    json["patterns"][0]["automation"].as_array_mut().unwrap().push(held);
+    json["patterns"][0]["automation"] = serde_json::json!([
+        old(serde_json::json!({"length": 0.25, "repeat": true})),
+        old(serde_json::json!({"length": 0.25})),
+        old(serde_json::json!({"lines": 8.0, "repeat": true})),
+    ]);
     let path = dir.join("old.json");
     std::fs::write(&path, json.to_string()).unwrap();
     let (back, _) = Project::load(path.to_str().unwrap()).unwrap();
-    let (repeats, holds) = (&back.patterns[0].automation[0], &back.patterns[0].automation[1]);
-    assert_eq!((repeats.lines, repeats.repeat), (16.0, true));
-    assert_eq!(repeats.value_in(40.0, 64), Some(0.5), "it still repeats every 16 lines");
-    assert_eq!(holds.value_in(40.0, 64), Some(1.0), "it still holds its last value");
+    let a = &back.patterns[0].automation;
+    let lpb = back.lpb;
+    assert_eq!(a[0].every, 16.0 / lpb as f32, "a repeating quarter repeats every 16 lines");
+    assert_eq!(a[0].value_in(40.0, 64, lpb), Some(0.5));
+    assert_eq!(a[1].value_in(40.0, 64, lpb), Some(1.0), "one that held still holds its last value");
+    assert_eq!(a[2].every, 8.0 / lpb as f32);
     std::fs::remove_dir_all(dir).unwrap();
 }
 
