@@ -160,18 +160,41 @@ keep sounding while you edit during playback.
   the demo song's modules (`ui/library.rs`), never written out.
 - Icons are drawn in `ui/icons.rs`; the UI uses no emoji, and the default
   font has no arrows, so text uses words ("to 03 Drum Bus") instead.
-- The screenshots were made headless with a temporary module that was
-  never committed, `src/ui/shots.rs` (declared in `ui/mod.rs` under
-  `#[cfg(test)]`, so it can set the app's private state): `egui_kittest`
-  (features `eframe`, `wgpu`, `snapshot`) as a dev-dependency,
-  `Harness::builder().with_size([1400, 900]).wgpu().build_eframe(|cc|
-  App::new(cc, None))`, the view, slot and selected module set through
-  `state_mut()`, real time let pass with `step` and short sleeps so the
-  song plays (after stopping, wait until `is_playing()` turns false before
-  playing again), and `render()` saved as PNG. It needs no window, so it
-  works with the screen locked. Meanwhile mute the sound in `audio.rs`,
-  and keep a copy of `~/.config/noise/settings.json`: the app saves its
-  settings, including the disk browser's folders, when it closes.
+- The interface is looked at without a window: `cargo test --release
+  shots -- --ignored` (`src/ui/shots.rs`) opens the app on the demo song
+  with `App::start(cc, None, false)`, which has no sound card, draws views
+  with `egui_kittest` on the GPU or its software stand-in, and writes them
+  to `target/shots` (or `NOISE_SHOTS`). Add a `shot` there for a new view.
+  For `docs/*.png` with the song playing, let real time pass with `step`
+  and short sleeps, and keep a copy of `~/.config/noise/settings.json`,
+  which the app writes when it closes.
+
+## TODO
+
+What noise still lacks, roughly most needed first.
+
+- **Plugins**: hosting CLAP (then VST3 and LV2) instruments and effects,
+  with their windows, saved state and latency compensation.
+- **MIDI**: control changes, pitch bend, the mod wheel and aftertouch
+  from MIDI input (only notes are read now); MIDI learn, mapping a
+  hardware knob to a macro or any parameter; MIDI out to hardware synths
+  on per-track channels; sending and following MIDI clock.
+- **More than one core**: tracks and groups that don't feed each other
+  rendered in parallel; the engine runs on one audio thread.
+- **Analog Synth mod matrix**: any of its sources (envelopes, LFO,
+  velocity, key) to any destination, instead of its fixed routes.
+- **Per-voice Modulators**: a Modulator's Envelope, Key and Velocity
+  modes move the whole module; moving each note's voice needs the DSP to
+  take parameters per voice.
+- **Oversampling** in Distortion, WaveShaper, Scream Filter and the other
+  nonlinear effects, which alias at high drive now.
+- **Audio device settings**: picking the output (and input) device and
+  the buffer size, and JACK; noise uses the default device of cpal's
+  default host.
+- **Recording into the song**: the Sample Recorder makes a sample; it
+  could also place it in the pattern at the line recording started.
+- **Time signatures**: patterns can be any length, but the metronome
+  accents every four beats (`BEATS_PER_BAR` in `engine/mod.rs`).
 
 ## License
 
