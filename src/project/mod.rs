@@ -1191,9 +1191,6 @@ impl Project {
         }
     }
 
-    /// Reads a song file and loads the samples it uses. Problems that don't
-    /// prevent opening the song (such as a missing sample) are returned as
-    /// warnings.
     /// Puts an `F00` on the last line the song plays, so it stops there
     /// rather than starting over: in the first track whose cell there has
     /// no effect. Returns false when none is free.
@@ -1211,6 +1208,9 @@ impl Project {
         false
     }
 
+    /// Reads a song file and loads the samples it uses. Problems that don't
+    /// prevent opening the song (such as a missing sample) are returned as
+    /// warnings.
     pub fn load(path: &str) -> Result<(Project, Vec<String>), String> {
         let s = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
         let mut p: Project = serde_json::from_str(&s).map_err(|e| e.to_string())?;
