@@ -143,3 +143,55 @@ fn shots() {
         app.palette.preset = Some("rev".into());
     });
 }
+
+/// The README's pictures, `docs/*.png`, drawn once the song has played
+/// to `until`, an order position and line: this needs a sound card, so
+/// point it at a silent one.
+fn doc_shot(name: &str, until: Option<(usize, usize)>, setup: impl FnOnce(&mut App)) {
+    let mut harness =
+        Harness::builder().with_size([1400.0, 900.0]).wgpu().build_eframe(|cc| App::start(cc, None, true));
+    let app = harness.state_mut();
+    app.scope_view = super::ScopeView::Tracks;
+    setup(app);
+    app.status = "Ready".into();
+    let start = std::time::Instant::now();
+    while until.is_some_and(|u| harness.state().play_position() < u) {
+        assert!(start.elapsed().as_secs() < 60, "the song never got there");
+        harness.step();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    harness.run_steps(2);
+    let image = harness.render().expect("render");
+    let dir = std::env::var_os("NOISE_SHOTS")
+        .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/shots/docs"), PathBuf::from);
+    std::fs::create_dir_all(&dir).unwrap();
+    image.save(dir.join(format!("{name}.png"))).unwrap();
+}
+
+#[test]
+#[ignore = "plays the demo songs on the sound card; run with --ignored"]
+fn docs() {
+    doc_shot("main", None, |_| {});
+    doc_shot("mixer", Some((2, 40)), |app| {
+        app.view = View::Mixer;
+        app.slot = 2;
+        app.toggle_play();
+    });
+    doc_shot("sampler", Some((6, 56)), |app| {
+        // The felt piano in Last Light's bridge.
+        app.open_demo(0);
+        let piano = app.project.modules.iter().find(|m| m.name == "Felt Piano").expect("the felt piano").id;
+        app.select(Some(piano));
+        app.view = View::Sampler;
+        app.slot = 6;
+        app.toggle_play();
+    });
+    doc_shot("automation", Some((5, 48)), |app| {
+        // The choir's vowel moving through Last Light's chorus.
+        app.open_demo(0);
+        app.slot = 5;
+        (app.lower, app.show_lower, app.lower_height) = (super::Lower::Automation, true, 270.0);
+        super::automation::pick(app, &[]);
+        app.toggle_play();
+    });
+}

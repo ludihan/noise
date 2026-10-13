@@ -176,9 +176,11 @@ keep sounding while you edit during playback.
   with `App::start(cc, None, false)`, which has no sound card, draws views
   with `egui_kittest` on the GPU or its software stand-in, and writes them
   to `target/shots` (or `NOISE_SHOTS`). Add a `shot` there for a new view.
-  For `docs/*.png` with the song playing, let real time pass with `step`
-  and short sleeps, and keep a copy of `~/.config/noise/settings.json`,
-  which the app writes when it closes.
+  `cargo test --release docs -- --ignored` draws `docs/*.png` with the
+  songs playing, so it opens the sound card: run it with `HOME` and the
+  XDG folders in a spare folder whose `.asoundrc` has
+  `pcm.!default { type null }`, which keeps it silent and your settings
+  untouched (keep `RUSTUP_HOME` and `CARGO_HOME` pointing at yours).
 
 ## TODO
 
