@@ -314,6 +314,9 @@ const TOPICS: &[Topic] = &[
                 "Each track header shows the name on its color, the mute button on its left and S on its right. Click the mute button to mute the track and right-click it to solo it; wherever a track shows (its header, the matrix's track headers, the track scopes), click mutes and right-click solos. Soloing plays that track alone until it is soloed again. Click a track's name to move to it, double-click to rename it, right-click it to pick a color, insert, delete or clear tracks.",
             ),
             P(
+                "Render Track to Sample, in the track's menu, plays what the track plays in this pattern through its instruments and their effects into a new Sampler, at full volume, and puts one note of it at the top of the track in place of its notes; the commands that steer the song (Bxx, Fxx, Jxx and Wxx) stay. The track's own effects, its group's and the master's are left out of the render and go on working on the sample, so the song sounds as it did while its instruments rest: to free the CPU, or to cut up and play with what was rendered. Undo puts the notes back.",
+            ),
+            P(
                 "A track has up to eight note columns for chords and overlapping notes, and up to eight effect columns: the − and + under the track's name (left for note columns, right for effect columns), COLUMNS and FX above the pattern, or the track's menu add and remove them. An effect column holds a command that acts on every note column of the track, on top of each note column's own, so a line can have several. It can also show a panning column (00 left, 40 middle, 80 right) and a delay column (xx/256 of a line, in place of Dxx), with PAN and DLY.",
             ),
             H("Blocks"),

@@ -33,6 +33,12 @@ pub const FX_TREMOR: u8 = 29;
 /// lines more, while the line's effects go on.
 pub const FX_WAIT: u8 = 32;
 
+/// Whether effect command `fx` steers the song rather than a note: the
+/// tempo or ticks (Fxx), a jump (Bxx), a break (Jxx) or a wait (Wxx).
+pub fn steers_song(fx: (u8, u8)) -> bool {
+    [0xB, 0xF, FX_BREAK, FX_WAIT].contains(&fx.0)
+}
+
 /// The effect command letters after the hex digits, by key.
 pub fn fx_letter(c: char) -> Option<u8> {
     match c.to_ascii_uppercase() {

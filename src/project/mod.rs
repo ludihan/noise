@@ -1118,6 +1118,35 @@ impl Project {
         }
     }
 
+    /// A song that plays track `track` of the pattern in order position
+    /// `slot`, once, through its instruments' chains, for rendering it to
+    /// a sample to play in its place: the track's own effects, its group's
+    /// and the master's are left out, as they go on working on the sample,
+    /// and the other tracks keep only what steers the song, so it keeps
+    /// its time.
+    pub fn track_excerpt(&self, slot: usize, track: usize) -> Project {
+        let whole = &self.patterns[self.order[slot].pattern];
+        let lanes = (whole.lane_of(track, 0), whole.lane_of(track, whole.width(track) - 1));
+        let mut song = self.excerpt(slot, (0, whole.lines - 1), lanes);
+        let pat = &mut song.patterns[0];
+        for lane in (0..whole.num_lanes()).filter(|l| !(lanes.0..=lanes.1).contains(l)) {
+            for (cell, from) in pat.lane_mut(lane).iter_mut().zip(whole.lane(lane)) {
+                cell.fx = from.fx.filter(|&f| steers_song(f));
+            }
+        }
+        song.order[0].muted = 0;
+        for t in &mut song.tracks {
+            (t.mute, t.solo) = (false, false);
+        }
+        song.tracks[track].effects.clear();
+        song.tracks[track].group = None;
+        song.master.clear();
+        if let Some(out) = song.module_mut(OUTPUT_ID) {
+            out.params[0] = 1.0;
+        }
+        song
+    }
+
     /// A song that plays only lines `lines` and lanes `lanes` (both
     /// inclusive) of the pattern in order position `slot`, once, for
     /// rendering a selection to a sample. Envelopes come along, moved to

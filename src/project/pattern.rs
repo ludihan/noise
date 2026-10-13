@@ -364,6 +364,18 @@ impl Pattern {
     }
 
     /// Removes everything from `track`'s columns, shown or not.
+    /// Replaces what track `track` plays with `note` on `module` at its
+    /// top, keeping the commands that steer the song.
+    pub fn replace_track(&mut self, track: usize, module: u8, note: u8) {
+        for col in 0..self.width(track) {
+            for cell in self.column_mut(track, col) {
+                *cell = Cell { fx: cell.fx.filter(|&f| steers_song(f)), ..Cell::default() };
+            }
+        }
+        let top = self.cell_mut(track, 0, 0);
+        (top.note, top.module) = (Some(Note::On(note)), Some(module));
+    }
+
     pub fn clear_track(&mut self, track: usize) {
         self.tracks[track].fill(Cell::default());
         for cols in [self.extra.get_mut(track), self.effects.get_mut(track)].into_iter().flatten() {

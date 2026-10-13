@@ -456,4 +456,37 @@ mod tests {
         assert!(frames.len() < four_lines + 2 * sr as usize, "the silent tail is trimmed: {}", frames.len());
         assert!(frames[..four_lines].iter().any(|f| f[0].abs() > 0.1), "the kick is there");
     }
+
+    #[test]
+    fn a_track_rendered_in_place_sounds_as_it_did() {
+        use crate::project::{ModuleKind, OUTPUT_ID, SampleSlot, Slot};
+        // The bass of the simple song's Main pattern alone, through its
+        // filter, a track effect of its own, and the master's volume.
+        let mut p = Project::simple();
+        p.order = vec![Slot::new(1)];
+        for t in [0, 1, 3] {
+            p.patterns[1].clear_track(t);
+        }
+        let amp = p.chain_insert(crate::project::Owner::Track(2), 0, ModuleKind::Amplifier).unwrap();
+        p.module_mut(amp).unwrap().params[0] = 0.5;
+        let sr = 8000;
+        let before = render(Arc::new(p.clone()), sr, 1.0, false);
+
+        let frames = render(Arc::new(p.track_excerpt(0, 2)), sr, 4.0, true);
+        let sample = crate::sample::Sample { name: "Bass".into(), sample_rate: sr as f32, channels: 2, frames };
+        let id = p.add_module(ModuleKind::Sampler, [0.0; 2]).unwrap();
+        p.connect(id, OUTPUT_ID);
+        let slot = SampleSlot::new(sample, None);
+        let base = slot.base_note;
+        p.module_mut(id).unwrap().samples.push(slot);
+        // At full volume, as the pattern editor adds a render.
+        p.module_mut(id).unwrap().params[0] = 1.0;
+        p.patterns[1].replace_track(2, id, base);
+        let after = render(Arc::new(p), sr, 1.0, false);
+
+        let energy = |x: &[crate::dsp::Frame]| x.iter().map(|f| f[0] * f[0] + f[1] * f[1]).sum::<f32>();
+        let diff: Vec<crate::dsp::Frame> = before.iter().zip(&after).map(|(a, b)| [a[0] - b[0], a[1] - b[1]]).collect();
+        let ratio = energy(&diff) / energy(&before);
+        assert!(ratio < 0.001, "the difference is {:.1}% of the song", ratio * 100.0);
+    }
 }

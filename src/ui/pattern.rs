@@ -376,35 +376,62 @@ fn render_to_sample(app: &mut App, b: Block) {
     super::jobs::spawn(app, "Rendering the selection", move |progress| {
         let frames = crate::audio::render_with(song, sr, 4.0, true, &mut |f| progress.set(f));
         Box::new(move |app: &mut App| match frames {
-            Some(frames) => rendered(app, name, sr, frames),
+            Some(frames) => {
+                rendered(app, name, sr, frames);
+            }
             None => app.set_status("Render cancelled"),
         })
     });
 }
 
-/// Loads `frames`, rendered at `sr`, into a new Sampler called `name`.
-fn rendered(app: &mut App, name: String, sr: u32, frames: Vec<crate::dsp::Frame>) {
+/// Render Track to Sample: plays track `t` of this pattern offline,
+/// through its instruments' effects, into a new Sampler, and puts that in
+/// its notes' place.
+fn render_track(app: &mut App, t: usize) {
+    let sr = app.audio.as_ref().map_or(44100, |a| a.sample_rate);
+    let song = std::sync::Arc::new(app.project.track_excerpt(app.slot, t));
+    let pattern = app.current_pattern_index();
+    let name = format!("{} {:02}", app.project.track_name(t), pattern);
+    super::jobs::spawn(app, "Rendering the track", move |progress| {
+        let frames = crate::audio::render_with(song, sr, 4.0, true, &mut |f| progress.set(f));
+        Box::new(move |app: &mut App| {
+            let Some(frames) = frames else { return app.set_status("Render cancelled") };
+            let Some(id) = rendered(app, name, sr, frames) else { return };
+            let base = app.project.module(id).and_then(|m| m.samples.first()).map_or(48, |s| s.base_note);
+            let Some(pat) = app.project.patterns.get_mut(pattern).filter(|p| t < p.num_tracks()) else { return };
+            pat.replace_track(t, id, base);
+            app.clamp_cursor();
+            app.mark();
+        })
+    });
+}
+
+/// Loads `frames`, rendered at `sr`, into a new Sampler called `name`,
+/// at full volume so it plays as loud as it was; returns the Sampler.
+fn rendered(app: &mut App, name: String, sr: u32, frames: Vec<crate::dsp::Frame>) -> Option<u8> {
     if frames.iter().all(|f| f[0].abs().max(f[1].abs()) < 1e-4) {
-        app.set_status("Nothing to render: the selection makes no sound");
-        return;
+        app.set_status("Nothing to render: it makes no sound");
+        return None;
     }
     let secs = frames.len() as f32 / sr as f32;
     let sample = crate::sample::Sample { name: name.clone(), sample_rate: sr as f32, channels: 2, frames };
     let before = app.project.modules.len();
     super::instruments::add(app, ModuleKind::Sampler);
     if app.project.modules.len() == before {
-        return;
+        return None;
     }
-    let Some(id) = app.instrument() else { return };
+    let id = app.instrument()?;
     let mut slot = SampleSlot::new(sample, None);
     // Written next to the song when it is saved, like edited samples.
     slot.unsaved = true;
     if let Some(m) = app.project.module_mut(id) {
         m.name = name;
         m.samples.push(slot);
+        m.params[0] = 1.0;
     }
     app.mark();
     app.set_status(format!("Rendered {secs:.2} s into instrument {id:02X}"));
+    Some(id)
 }
 
 /// Pastes at the cursor and selects what was pasted.
@@ -1173,6 +1200,8 @@ enum TrackAction {
     Effects,
     /// Send its sound on through another track's effects, or the master.
     Group(Option<usize>),
+    /// Render it to a sample, in this pattern, to play in its place.
+    Render,
 }
 
 /// How to start a song, for one without instruments: adding one, the
@@ -1384,6 +1413,10 @@ fn track_headers(app: &mut App, ui: &mut egui::Ui, layout: &Layout, h: f32) {
             return;
         }
         TrackAction::Group(g) => app.project.tracks[t].group = g.filter(|&g| app.project.can_group(t, g)),
+        TrackAction::Render => {
+            render_track(app, t);
+            return;
+        }
     }
     if !matches!(action, TrackAction::Rename) {
         app.clamp_cursor();
@@ -1474,6 +1507,11 @@ fn track_menu(
     }
     if ui.button("Clear Track").on_hover_text("In this pattern").clicked() {
         action = Some(TrackAction::Clear);
+    }
+    let tip = "Play this pattern's notes on the track through their instruments' effects into a new Sampler, \
+               and play that instead: to free the CPU, or to cut up what it played";
+    if ui.button("Render Track to Sample").on_hover_text(tip).clicked() {
+        action = Some(TrackAction::Render);
     }
     action
 }
@@ -1719,6 +1757,31 @@ mod tests {
         assert_eq!(song_line(&p, 0, 30), Some((2, 6)), "past a short one in between");
         assert_eq!(song_line(&p, 0, -1), None, "nothing before the song");
         assert_eq!(song_line(&p, 2, 16), None, "nor after it");
+    }
+
+    #[test]
+    fn rendering_a_track_puts_a_sampler_in_its_place() {
+        use egui_kittest::Harness;
+        let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
+        let app = harness.state_mut();
+        app.project = Project::simple();
+        app.project.order = vec![Slot::new(1)];
+        (app.slot, app.cursor) = (0, Cursor::default());
+        render_track(app, 2);
+        let start = std::time::Instant::now();
+        let top = |app: &App| app.project.patterns[1].cell(2, 0, 0);
+        while top(harness.state())
+            .module
+            .is_none_or(|m| harness.state().project.module(m).unwrap().kind != ModuleKind::Sampler)
+        {
+            assert!(start.elapsed().as_secs() < 30, "the render never came");
+            harness.step();
+        }
+        let app = harness.state();
+        let id = top(app).module.unwrap();
+        assert_eq!(app.project.module(id).unwrap().params[0], 1.0, "at full volume");
+        let notes = (1..64).filter(|&l| app.project.patterns[1].cell(2, 0, l).note.is_some()).count();
+        assert_eq!(notes, 0, "its one note plays the whole pattern");
     }
 
     #[test]
