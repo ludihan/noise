@@ -17,25 +17,39 @@ fn main() -> eframe::Result {
     dsp::wavetable::warm_up();
 
     // `noise --export <project folder or song file> out.wav` renders without
-    // opening a window.
-    if let [flag, input, output] = args.as_slice()
-        && flag == "--export"
-    {
-        let (p, warnings) = project_dir::open(std::path::Path::new(input)).expect("read project");
-        for w in warnings {
-            eprintln!("warning: {w}");
+    // opening a window, as `--demo-wav [out.wav]` does the demo song.
+    let demo = || Ok((project::Project::demo(), Vec::new()));
+    let render = match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+        ["--export", input, output] => Some((
+            project_dir::open(std::path::Path::new(input)).map_err(|e| format!("{input}: {e}")),
+            output.to_string(),
+        )),
+        ["--demo-wav"] => Some((demo(), "demo.wav".to_string())),
+        ["--demo-wav", output] => Some((demo(), output.to_string())),
+        [flag, ..] if flag.starts_with("--") => {
+            eprintln!("usage: noise [song]\n       noise --export <song> <out.wav>\n       noise --demo-wav [out.wav]");
+            std::process::exit(2);
         }
-        let ended = audio::export_wav(std::sync::Arc::new(p), output, audio::RenderFormat::CD, &mut |_| true)
-            .expect("write wav");
-        if ended == audio::Rendered::TooLong {
-            eprintln!("warning: the song was cut off after {} hours", audio::MAX_RENDER_SECONDS / 3600);
+        _ => None,
+    };
+    if let Some((song, output)) = render {
+        let rendered = song.and_then(|(p, warnings)| {
+            for w in warnings {
+                eprintln!("warning: {w}");
+            }
+            audio::export_wav(std::sync::Arc::new(p), &output, audio::RenderFormat::CD, &mut |_| true)
+                .map_err(|e| format!("{output}: {e}"))
+        });
+        match rendered {
+            Ok(audio::Rendered::TooLong) => {
+                eprintln!("warning: the song was cut off after {} hours", audio::MAX_RENDER_SECONDS / 3600)
+            }
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("noise: {e}");
+                std::process::exit(1);
+            }
         }
-        return Ok(());
-    }
-    if args.first().map(String::as_str) == Some("--demo-wav") {
-        let out = args.get(1).map_or("demo.wav", String::as_str);
-        audio::export_wav(std::sync::Arc::new(project::Project::demo()), out, audio::RenderFormat::CD, &mut |_| true)
-            .expect("write wav");
         return Ok(());
     }
 
