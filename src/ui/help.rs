@@ -527,7 +527,7 @@ const TOPICS: &[Topic] = &[
             List(&[
                 "Drag to select; the wheel zooms, the bar below scrolls.",
                 "The Edit menu changes the selection, or the whole sample: Reverse, Normalize, Fade In and Out, Silence, Invert, Remove DC Offset, Mix to Mono, Swap Channels, louder or quieter, Crossfade Loop (which blends the loop's end into its start) and Time Stretch. Beside the zoom buttons it says how long the sample, or the selection, is.",
-                "Process > Time Stretch makes the selection, or the whole sample, longer or shorter without changing its pitch: by a ratio, or to fit 1 to 64 lines at the song's tempo, as a loop to the beat. The loop and slice markers move with it.",
+                "Edit > Time Stretch makes the selection, or the whole sample, longer or shorter without changing its pitch: by a ratio, or to fit 1 to 64 lines at the song's tempo, as a loop to the beat. The loop and slice markers move with it.",
                 "Cut, Copy, Delete, Crop and Paste work on the selection; Loop It makes it the loop. The play button plays it. Show All zooms out, Zoom In to the selection.",
                 "Below: volume, panning, base note, transpose, finetune, loop mode and points, and the keyzone. Drag the loop markers to move the loop.",
                 "Beat sync plays the sample in a number of lines at the song's tempo. One-shot ignores note-offs. Autoseek plays the sample from where it would be when the song starts partway through, for long loops and vocals; without it a sample waits for its next note. A mute group cuts the others in it, as a closed hi-hat an open one.",
@@ -542,7 +542,7 @@ const TOPICS: &[Topic] = &[
             ),
             H("Modulation"),
             P(
-                "Changes every voice while it plays: a pitch envelope, a filter with a cutoff envelope, key tracking (higher notes open it, lower ones close it, from C-4) and velocity (softer notes close it by up to so many octaves), and vibrato and tremolo LFOs. Envelopes run in seconds from the note's start: click to add a point, drag it, right-click to delete it, double-click to make it the sustain point. Generators and FM have the same page.",
+                "Changes every voice while it plays: a pitch envelope, a filter with a cutoff envelope, key tracking (higher notes open it, lower ones close it, from C-4) and velocity (softer notes close it by up to so many octaves), and vibrato and tremolo LFOs. Envelopes run in seconds from the note's start: click to add a point, drag it, right-click to delete it, double-click to make it the sustain point. Generators, FM and Wavetables have the same page.",
             ),
             H("Granular"),
             P(

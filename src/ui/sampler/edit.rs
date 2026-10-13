@@ -26,7 +26,7 @@ pub(super) enum Op {
     Stretch(f64),
 }
 
-/// The processes in the Process menu.
+/// The processes in the Edit menu, after the plainer edits.
 pub(super) const PROCESSES: [(&str, &str, Op); 7] = [
     ("Invert", "Turn the waveform upside down", Op::Invert),
     ("Remove DC Offset", "Center the waveform on zero", Op::RemoveDc),
