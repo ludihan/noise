@@ -1145,7 +1145,18 @@ impl Project {
         for t in &mut self.tracks {
             t.group = t.group.map(|g| if g >= track { g + 1 } else { g }).filter(|&g| g < MAX_TRACKS);
         }
+        self.renumber_homes(|t| Some(if t >= track { t + 1 } else { t }).filter(|&t| t < MAX_TRACKS));
         true
+    }
+
+    /// Moves the Modulators added on track chains along with the tracks:
+    /// `to` gives a track's new place, or `None` when it is gone.
+    fn renumber_homes(&mut self, to: impl Fn(usize) -> Option<usize>) {
+        for m in &mut self.modules {
+            if let Some(Owner::Track(t)) = m.home {
+                m.home = to(t).map(Owner::Track);
+            }
+        }
     }
 
     /// Removes `track` from every pattern that has it, keeping at least one
@@ -1167,6 +1178,12 @@ impl Project {
                     g => g,
                 };
             }
+            // Modulators added on it have no place of their own any more.
+            self.renumber_homes(|t| match t {
+                t if t == track => None,
+                t if t > track => Some(t - 1),
+                t => Some(t),
+            });
             // Its effects go with it.
             for e in gone.effects {
                 self.remove_module(e);

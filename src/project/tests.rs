@@ -855,3 +855,20 @@ fn send_tracks_are_saved() {
     assert_eq!(q.chain(synth), Chain { effects: vec![send], outputs: vec![OUTPUT_ID] });
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn modulators_added_on_a_track_move_with_it() {
+    let mut p = Project::empty();
+    let echo = p.chain_insert(Owner::Track(2), 0, ModuleKind::Echo).unwrap();
+    let home = |p: &Project, m: u8| p.module(m).unwrap().home;
+    let lfo = p.add_module(ModuleKind::Modulator, [0.0; 2]).unwrap();
+    p.module_mut(lfo).unwrap().home = Some(Owner::Track(2));
+    p.insert_track(0, 0);
+    assert_eq!(home(&p, lfo), Some(Owner::Track(3)), "it stays with its track");
+    p.remove_track(1);
+    assert_eq!(home(&p, lfo), Some(Owner::Track(2)));
+    // Its track gone, it shows on the master rather than another track.
+    p.remove_track(2);
+    assert!(p.module(echo).is_none());
+    assert_eq!(home(&p, lfo), None);
+}
