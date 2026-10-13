@@ -7,7 +7,6 @@ mod clockwork_rain;
 mod concrete_hymn;
 mod prism_overdrive;
 mod sounds;
-mod steel_turbine;
 
 use crate::project::*;
 use crate::sample::Sample;

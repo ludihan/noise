@@ -55,11 +55,10 @@ pub type DemoSong = fn() -> Project;
 
 /// The demo songs built into the program, by name. Concrete Hymn opens
 /// when noise starts without a song.
-pub const DEMOS: [(&str, DemoSong); 4] = [
+pub const DEMOS: [(&str, DemoSong); 3] = [
     ("Clockwork Rain", Project::clockwork_rain),
     ("Prism Overdrive", Project::prism_overdrive),
     ("Concrete Hymn", Project::concrete_hymn),
-    ("Steel Turbine", Project::steel_turbine),
 ];
 
 /// Opening `path`: a project's `.noise` file is imported, anything else
