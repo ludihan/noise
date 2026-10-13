@@ -23,7 +23,7 @@ pub fn named_bar(ui: &mut Ui, spec: &ParamSpec, name: &str, value: &mut f32, mor
         if resp.double_clicked() {
             *value = spec.default;
         }
-        resp.context_menu(|ui| {
+        field_context_menu(&resp, |ui| {
             ui.label(egui::RichText::new(name).color(theme::SELECTED));
             ui.horizontal(|ui| {
                 let speed = (spec.max - spec.min) / 400.0;
@@ -141,6 +141,30 @@ pub fn boxed<R>(ui: &mut egui::Ui, id: &str, size: Vec2, add: impl FnOnce(&mut e
     add(&mut child)
 }
 
+/// Menus with a field to type in: a click inside one, on the field or its
+/// scroll bar, leaves it open. Whatever picks something closes it itself.
+fn field_menu_config() -> egui::containers::menu::MenuConfig {
+    egui::containers::menu::MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+}
+
+/// A menu button for a menu with a field in it, or in one of its submenus.
+pub fn field_menu<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> Response {
+    egui::containers::menu::MenuButton::new(label).config(field_menu_config()).ui(ui, add).0
+}
+
+/// `resp.context_menu`, for a menu with a field in it, or in one of its
+/// submenus.
+pub fn field_context_menu(resp: &Response, add: impl FnOnce(&mut Ui)) {
+    let config = field_menu_config();
+    egui::Popup::context_menu(resp)
+        .close_behavior(config.close_behavior)
+        .info(
+            egui::UiStackInfo::new(egui::UiKind::Menu)
+                .with_tag_value(egui::containers::menu::MenuConfig::MENU_CONFIG_TAG, config),
+        )
+        .show(add);
+}
+
 /// Content of a menu that may be longer than the window: it scrolls past
 /// most of the window's height rather than running off it.
 pub fn menu_scroll<R>(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug, add: impl FnOnce(&mut Ui) -> R) -> R {
@@ -211,5 +235,21 @@ mod tests {
         });
         harness.run_steps(2);
         assert!(height.get() > 100.0 && height.get() < 600.0, "{}", height.get());
+    }
+
+    #[test]
+    fn clicking_a_menus_field_leaves_it_open() {
+        use egui::accesskit::Role;
+        use egui_kittest::kittest::Queryable;
+        let items: Vec<(String, String)> = (0..20).map(|i| (format!("Preset {i}"), String::new())).collect();
+        let mut harness = Harness::builder().with_size([300.0, 600.0]).build_ui(move |ui| {
+            field_menu(ui, "Open", |ui| menu_list(ui, "test_find", "Find", &items));
+        });
+        harness.get_by_label("Open").click();
+        harness.run();
+        assert!(harness.query_by_label_contains("Preset 3").is_some(), "the menu opens");
+        harness.get_by_role(Role::TextInput).click();
+        harness.run();
+        assert!(harness.query_by_label_contains("Preset 3").is_some(), "the menu is still open");
     }
 }

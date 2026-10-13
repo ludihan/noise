@@ -444,7 +444,7 @@ fn device(app: &mut App, ui: &mut egui::Ui, id: u8, place: Place, h: f32, action
     } else if resp.clicked() {
         *action = Some(Action::Select(id));
     }
-    resp.context_menu(|ui| {
+    widgets::field_context_menu(&resp, |ui| {
         ui.menu_button("Presets", |ui| super::presets::menu(app, ui, id));
         ui.menu_button("Color", |ui| routing::color_menu(app, ui, id));
     });
@@ -644,7 +644,7 @@ const EFFECT_GROUPS: &[(&str, &[ModuleKind])] = &[
 /// A menu of every effect, grouped by what it does, with a field to find
 /// one by name, to add at place `at` of the chain.
 fn add_effect_menu(ui: &mut egui::Ui, label: &str, at: usize, action: &mut Option<Action>) {
-    ui.menu_button(label, |ui| {
+    widgets::field_menu(ui, label, |ui| {
         let key = egui::Id::new("effect_search");
         let mut search: String = ui.data(|d| d.get_temp(key)).unwrap_or_default();
         let field = ui.add(egui::TextEdit::singleline(&mut search).hint_text("Find an effect").desired_width(170.0));
@@ -691,7 +691,6 @@ fn add_effect_menu(ui: &mut egui::Ui, label: &str, at: usize, action: &mut Optio
         }
         ui.data_mut(|d| d.insert_temp(key, search));
     })
-    .response
     .on_hover_text("Add an effect at the end of the chain");
 }
 
@@ -1010,7 +1009,7 @@ fn macros_panel(app: &mut App, ui: &mut egui::Ui, id: u8, h: f32) {
                             .truncate()
                             .sense(Sense::click()),
                     );
-                    label.on_hover_text(tip).context_menu(|ui| {
+                    widgets::field_context_menu(&label.on_hover_text(tip), |ui| {
                         ui.set_width(180.0);
                         for (end, at) in [("From", &mut target.from), ("To", &mut target.to)] {
                             let mut v = tspec.value_at(*at);

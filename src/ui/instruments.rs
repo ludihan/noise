@@ -1,6 +1,6 @@
 //! The instrument list: every module that plays notes, by number.
 
-use super::{App, theme};
+use super::{App, theme, widgets};
 use crate::project::{ModuleKind, OUTPUT_ID};
 use eframe::egui::{self, Key, RichText};
 
@@ -124,7 +124,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
             {
                 duplicate(app, selected.unwrap());
             }
-            ui.menu_button("+", |ui| add_menu(app, ui)).response.on_hover_text("Add an instrument");
+            widgets::field_menu(ui, "+", |ui| add_menu(app, ui)).on_hover_text("Add an instrument");
         });
     });
 
@@ -188,7 +188,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
                         action = Some((id, Action::StartRename));
                     }
                     let muted = m.mute;
-                    resp.context_menu(|ui| {
+                    widgets::field_context_menu(&resp, |ui| {
                         if ui.button("Rename").clicked() {
                             action = Some((id, Action::StartRename));
                             ui.close();

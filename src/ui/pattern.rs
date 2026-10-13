@@ -1175,8 +1175,7 @@ fn getting_started(app: &mut App, ui: &mut egui::Ui, card: Rect) {
             theme::caption(ui, "START A SONG");
             ui.horizontal(|ui| {
                 ui.label("1.");
-                ui.menu_button("Add an Instrument", |ui| super::instruments::add_menu(app, ui))
-                    .response
+                super::widgets::field_menu(ui, "Add an Instrument", |ui| super::instruments::add_menu(app, ui))
                     .on_hover_text("A synth, a sampler, or one of the factory's ready-made instruments");
                 ui.label(egui::RichText::new("or + in the instrument list").color(theme::TEXT_WEAK));
             });
