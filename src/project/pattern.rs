@@ -363,7 +363,6 @@ impl Pattern {
         (0..self.width(track)).any(|c| self.column(track, c)[..self.lines].iter().any(|c| *c != Cell::default()))
     }
 
-    /// Removes everything from `track`'s columns, shown or not.
     /// Replaces what track `track` plays with `note` on `module` at its
     /// top, keeping the commands that steer the song.
     pub fn replace_track(&mut self, track: usize, module: u8, note: u8) {
@@ -376,6 +375,7 @@ impl Pattern {
         (top.note, top.module) = (Some(Note::On(note)), Some(module));
     }
 
+    /// Removes everything from `track`'s columns, shown or not.
     pub fn clear_track(&mut self, track: usize) {
         self.tracks[track].fill(Cell::default());
         for cols in [self.extra.get_mut(track), self.effects.get_mut(track)].into_iter().flatten() {
