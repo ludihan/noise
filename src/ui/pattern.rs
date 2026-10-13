@@ -1676,13 +1676,15 @@ fn header(app: &mut App, ui: &mut egui::Ui) {
             app.mark_layout();
         }
         ui.separator();
-        match app.instrument().and_then(|id| app.project.module(id)) {
+        let label = match app.instrument().and_then(|id| app.project.module(id)) {
             Some(m) => {
                 let text = format!("Instrument {:02X}  {}", m.id, m.name);
-                ui.label(egui::RichText::new(text).color(theme::PAT_INSTRUMENT))
+                egui::RichText::new(text).color(theme::PAT_INSTRUMENT)
             }
-            None => ui.label(egui::RichText::new("No instrument selected").color(theme::TEXT_WEAK)),
+            None => egui::RichText::new("No instrument selected").color(theme::TEXT_WEAK),
         };
+        // Whole, on the next row when it does not fit at the end of this one.
+        ui.add(egui::Label::new(label).extend());
     });
 }
 
