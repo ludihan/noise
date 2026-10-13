@@ -6,6 +6,7 @@ mod clockwork_rain;
 mod concrete_hymn;
 mod last_light;
 mod prism_overdrive;
+mod rivet_storm;
 mod sounds;
 mod static_heart;
 
