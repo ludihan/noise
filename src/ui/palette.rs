@@ -123,8 +123,9 @@ fn commands(app: &App) -> Vec<Command> {
             list.push(command("Effects", label, "", move |a: &mut App| {
                 let at = a.project.chain(inst).effects.len();
                 if let Some(new) = a.project.chain_insert(inst, at, kind) {
+                    a.show_chain(Owner::Module(inst));
                     a.select(Some(new));
-                    a.view = View::Sampler;
+                    a.chain_view.reveal(new);
                     a.mark();
                 }
             }));

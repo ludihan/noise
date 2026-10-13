@@ -117,7 +117,12 @@ impl App {
             Owner::Module(id) => {
                 self.select(Some(id));
                 self.view = View::Sampler;
-                self.sampler.synth_tab = super::sampler::SynthTab::Synth;
+                // A Sampler's chain is on its Effects page, a synth's on Synth.
+                if self.project.module(id).is_some_and(|m| m.kind.holds_samples()) {
+                    self.sampler.tab = super::sampler::Tab::Effects;
+                } else {
+                    self.sampler.synth_tab = super::sampler::SynthTab::Synth;
+                }
             }
         }
     }

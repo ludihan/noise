@@ -1009,4 +1009,14 @@ mod tests {
         app.select(None);
         assert_eq!(app.instrument(), None);
     }
+
+    #[test]
+    fn showing_a_samplers_chain_opens_its_effects_page() {
+        let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
+        let app = harness.state_mut();
+        let kit = app.project.modules.iter().find(|m| m.kind == ModuleKind::Sampler).unwrap().id;
+        app.show_chain(Owner::Module(kit));
+        assert!(app.view == View::Sampler && app.sampler.tab == sampler::Tab::Effects);
+        assert_eq!(app.instrument(), Some(kit));
+    }
 }

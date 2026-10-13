@@ -26,6 +26,12 @@ pub struct ChainView {
 }
 
 impl ChainView {
+    /// Opens device `id` if it is folded, and scrolls to it.
+    pub fn reveal(&mut self, id: u8) {
+        self.folded.remove(&id);
+        self.scroll_to = Some(id);
+    }
+
     /// Folds `ids` to their names.
     #[cfg(test)]
     pub fn fold(&mut self, ids: &[u8]) {
@@ -747,8 +753,7 @@ fn overview(
             let tip =
                 format!("{id:02X} {} · {}{}: click to show it", m.name, m.kind.name(), if off { ", off" } else { "" });
             if widgets::chip(ui, color, &text, app.selected_module == Some(id)).on_hover_text(tip).clicked() {
-                app.chain_view.folded.remove(&id);
-                app.chain_view.scroll_to = Some(id);
+                app.chain_view.reveal(id);
                 app.select(Some(id));
             }
         };
