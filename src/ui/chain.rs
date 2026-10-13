@@ -26,6 +26,13 @@ pub struct ChainView {
 }
 
 impl ChainView {
+    /// Forgets the devices that are `gone`.
+    pub fn forget(&mut self, gone: impl Fn(u8) -> bool) {
+        self.folded.retain(|&id| !gone(id));
+        self.macros.retain(|&id, _| !gone(id));
+        self.scroll_to = self.scroll_to.filter(|&id| !gone(id));
+    }
+
     /// Opens device `id` if it is folded, and scrolls to it.
     pub fn reveal(&mut self, id: u8) {
         self.folded.remove(&id);
@@ -36,6 +43,11 @@ impl ChainView {
     #[cfg(test)]
     pub fn fold(&mut self, ids: &[u8]) {
         self.folded.extend(ids);
+    }
+
+    #[cfg(test)]
+    pub fn is_folded(&self, id: u8) -> bool {
+        self.folded.contains(&id)
     }
 }
 

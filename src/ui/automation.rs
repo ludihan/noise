@@ -47,6 +47,17 @@ impl Default for AutomationView {
     }
 }
 
+impl AutomationView {
+    /// Forgets the parameter shown and the points picked of modules that
+    /// are `gone`.
+    pub fn forget(&mut self, gone: impl Fn(u8) -> bool) {
+        self.selected = self.selected.filter(|&(id, _)| !gone(id));
+        if self.picked_of.is_some_and(|(_, id, _)| gone(id)) {
+            (self.picked_of, self.picked) = (None, Vec::new());
+        }
+    }
+}
+
 /// What dragging in the graph does.
 enum Drag {
     /// Moves the picked points, which were at `from` when it began at

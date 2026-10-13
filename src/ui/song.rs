@@ -48,6 +48,11 @@ impl App {
         self.undo_base = None;
         self.gesture_open = false;
         self.changed = false;
+        // Its modules and patterns are others under the same numbers.
+        self.chain_view = Default::default();
+        self.instrument_list = Default::default();
+        self.automation.forget(|_| true);
+        (self.selection, self.track_rename) = (None, None);
     }
 
     /// Saves the song as its project folder, `path`.

@@ -624,6 +624,18 @@ impl App {
         }
     }
 
+    /// Forgets what the views keep of modules that are gone, so one added
+    /// later with the same number doesn't start out selected or folded.
+    fn forget_gone(&mut self) {
+        let p = &self.project;
+        let gone = |id: u8| p.module(id).is_none();
+        self.selected_module = self.selected_module.filter(|&id| !gone(id));
+        self.edited = self.edited.filter(|&id| !gone(id));
+        self.chain_view.forget(gone);
+        self.automation.forget(gone);
+        self.instrument_list.forget(gone);
+    }
+
     /// The instrument being edited, which new notes are written with.
     pub fn instrument(&self) -> Option<u8> {
         self.edited.filter(|id| self.project.module(*id).is_some_and(|m| m.kind.in_instrument_list()))
@@ -857,6 +869,7 @@ impl App {
 
         if self.audio_dirty {
             self.audio_dirty = false;
+            self.forget_gone();
             self.send(Cmd::Project(Arc::new(self.project.clone())));
         }
     }
@@ -1008,6 +1021,24 @@ mod tests {
         assert_eq!(app.instrument(), Some(inst));
         app.select(None);
         assert_eq!(app.instrument(), None);
+    }
+
+    #[test]
+    fn a_module_added_in_a_deleted_ones_place_starts_afresh() {
+        let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
+        let app = harness.state_mut();
+        let inst = app.instrument().unwrap();
+        let fx = app.project.chain_insert(inst, 0, ModuleKind::Reverb).unwrap();
+        app.chain_view.fold(&[fx]);
+        app.select(Some(fx));
+        app.project.remove_module(fx);
+        app.mark();
+        harness.step();
+        let app = harness.state_mut();
+        let again = app.project.chain_insert(inst, 0, ModuleKind::Delay).unwrap();
+        assert_eq!(again, fx, "the number is reused");
+        assert!(app.selected_module.is_none() && !app.chain_view.is_folded(again));
+        assert_eq!(app.instrument(), Some(inst));
     }
 
     #[test]

@@ -11,6 +11,13 @@ pub struct InstrumentList {
     renaming: Option<(u8, String)>,
 }
 
+impl InstrumentList {
+    /// Stops renaming an instrument that is `gone`.
+    pub fn forget(&mut self, gone: impl Fn(u8) -> bool) {
+        self.renaming = self.renaming.take().filter(|(id, _)| !gone(*id));
+    }
+}
+
 enum Action {
     StartRename,
     FinishRename,
