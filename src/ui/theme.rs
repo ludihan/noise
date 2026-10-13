@@ -114,6 +114,9 @@ pub fn setup(ctx: &egui::Context) {
         s.spacing.item_spacing = Vec2::new(5.0, 4.0);
         s.spacing.button_padding = Vec2::new(6.0, 2.0);
         s.spacing.interact_size.y = 18.0;
+        // A thin handle shows that there is more to scroll to, as in the
+        // mixer or a long chain, before the mouse goes there.
+        s.spacing.scroll.dormant_handle_opacity = 0.5;
     });
 }
 
