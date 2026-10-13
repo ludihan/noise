@@ -416,9 +416,9 @@ fn device(app: &mut App, ui: &mut egui::Ui, id: u8, place: Place, h: f32, action
         theme::SELECTED_TEXT,
     );
     let tip = if own {
-        "Drag to move it along the chain; click to select it in the mixer, module list and automation; right-click for presets and its color"
+        "Drag to move it along the chain; click to select it in the mixer and automation; right-click for presets and its color"
     } else {
-        "Click to select it in the mixer, the module list and automation; right-click for presets and its color"
+        "Click to select it in the mixer and automation; right-click for presets and its color"
     };
     let resp = resp.on_hover_text(format!("{tip}; double-click to fold it to its name"));
     if resp.double_clicked() {

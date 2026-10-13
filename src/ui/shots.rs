@@ -77,8 +77,8 @@ fn shots() {
         app.sampler.synth_tab = sampler::SynthTab::Synth;
     });
     shot_at("modulator", [1400.0, 1300.0], |app| {
-        // A Modulator moving two parameters of an effect, selected in the
-        // module list.
+        // A Modulator moving two parameters of an effect, selected, on the
+        // master chain.
         let p = &mut app.project;
         let fx = p.modules.iter().find(|m| m.kind == ModuleKind::Distortion).expect("a Distortion").id;
         let lfo = p.add_module(ModuleKind::Modulator, [0.0, 0.0]).unwrap();
