@@ -25,7 +25,6 @@ noise                              # start a new song
 noise "My Song"                    # open a project folder (or a song file)
 noise "My Song.noise"              # import an exported project and open it
 noise --export "My Song" out.wav   # render a song to WAV, no window
-noise --demo-wav [out.wav]         # render the demo song Last Light
 noise --help                       # these, briefly
 ```
 
@@ -58,7 +57,7 @@ noise --help                       # these, briefly
   and filter envelopes (with key tracking and velocity) and LFOs, beat sync, autoseek and mute groups. Loads WAV, FLAC
   and Ogg Vorbis, and **SF2, SF3 and SFZ soundfonts**; records the audio input or the song (resampling).
 - **Presets** for instruments (with their samples and effects) and for
-  devices: factory ones from the demo song, and your own, kept where
+  devices: factory ones from the demo songs and the factory banks, and your own, kept where
   XDG says.
 - **Phrases**: short patterns an instrument plays for its notes, picked by
   program, key map or `Zxx`.
@@ -82,7 +81,7 @@ noise --help                       # these, briefly
 
 | File | Contents |
 |---|---|
-| `src/demos/` | The demo songs, a file each: `last_light.rs` (the first, with the piano and swell it renders), `bubblegum_overclock.rs`, `clockwork_rain.rs`, `prism_overdrive.rs`, `concrete_hymn.rs` and `rivet_storm.rs`; `mod.rs` holds what they share (cells, envelopes, device chains, rolls), `sounds.rs` the sounds they render (drum hits, the felt piano, sung syllables) |
+| `src/demos/` | The demo songs, a file each: `clockwork_rain.rs`, `prism_overdrive.rs` and `concrete_hymn.rs`; `banks/` the factory sound banks, instruments and effects without a song for the factory presets (`orchestral.rs`, `hyperpop.rs`, `hardcore.rs`); `mod.rs` holds what they share (cells, envelopes, device chains, rolls), `sounds.rs` the sounds they render (drum hits, the felt piano, sung syllables) |
 | `src/project/` | Song data, saved as JSON: the song, its tracks, order list and links (`mod.rs`); patterns and their automation (`pattern.rs`), module kinds and their parameters (`kinds.rs`), modules (`module.rs`), voice modulation (`voice.rs`), phrases (`phrase.rs`), effect commands (`commands.rs`) and sample slots (`sample_slot.rs`) |
 | `src/project_dir.rs` | Project folders: saving a song with its samples named by hashes, deleting the unused ones; export and import as `.noise` files (zip archives) |
 | `src/dsp/` | The audio code for every module, a file to each family (`filters.rs`, `delays.rs`, `fm.rs`, `analog.rs`, `sampler.rs`…); `mod.rs` holds the `Dsp` trait, `create`, envelopes and voices, `tests.rs` the tests they share |
@@ -159,9 +158,8 @@ keep sounding while you edit during playback.
   in `dsp::create`, in its family's file or one of its own. The files are
   declared after the `voice_controls!` macro in `dsp/mod.rs`, so they can
   use it; their items are `pub(super)`, for `create` and the tests.
-  `Ctx::samples_per_line` gives the tempo for synced rates. The demo song
-  (`demos/last_light.rs`) must use it, and the manual (`ui/help.rs`) describe it:
-  tests check both.
+  `Ctx::samples_per_line` gives the tempo for synced rates. The manual
+  (`ui/help.rs`) must describe it: a test checks.
 - The audio thread must not block: the UI sends a new `Project` snapshot
   after each edit, and the engine publishes its state through atomics and
   `try_lock` in `Shared`. Slow work on the UI side, such as decoding a
@@ -169,11 +167,12 @@ keep sounding while you edit during playback.
   exports and imports go through `ui/jobs.rs`, which shows their progress.
 - Files go where `paths.rs` (the `directories` crate) says: settings in the
   config folder, the user's presets in the data folder. Factory presets are
-  the demo song's modules (`ui/library.rs`), never written out.
+  the modules of the demo songs and the factory banks (`ui/library.rs`),
+  never written out.
 - Icons are drawn in `ui/icons.rs`; the UI uses no emoji, and the default
   font has no arrows, so text uses words ("to 03 Drum Bus") instead.
 - The interface is looked at without a window: `cargo test --release
-  shots -- --ignored` (`src/ui/shots.rs`) opens the app on the demo song
+  shots -- --ignored` (`src/ui/shots.rs`) opens the app on Clockwork Rain
   with `App::start(cc, None, false)`, which has no sound card, draws views
   with `egui_kittest` on the GPU or its software stand-in, and writes them
   to `target/shots` (or `NOISE_SHOTS`). Add a `shot` there for a new view.

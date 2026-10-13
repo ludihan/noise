@@ -408,21 +408,6 @@ fn soloing_a_track_silences_the_others_until_it_is_soloed_again() {
 }
 
 #[test]
-fn the_demo_saves_and_opens_the_same() {
-    let p = Project::demo();
-    let dir = temp_dir("demo");
-    let song = dir.join("demo.json");
-    std::fs::write(&song, serde_json::to_string(&p).unwrap()).unwrap();
-    let (back, warnings) = Project::load(song.to_str().unwrap()).unwrap();
-    assert!(warnings.is_empty());
-    assert_eq!(serde_json::to_string(&back).unwrap(), serde_json::to_string(&p).unwrap());
-    // Its strings play chords in three note columns, and the arp phrases.
-    assert_eq!(back.patterns[1].columns(3), 3);
-    assert!(back.modules.iter().any(|m| m.phrase_mode == PhraseMode::Program && !m.phrases.is_empty()));
-    std::fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
 fn the_mix_goes_through_the_master_chain() {
     let mut p = Project::empty();
     let synth = p.add_module(ModuleKind::Generator, [0.0; 2]).unwrap();

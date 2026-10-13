@@ -376,7 +376,7 @@ mod tests {
     #[test]
     fn renders_say_how_far_they_are_and_can_be_stopped() {
         let mut seen = Vec::new();
-        let frames = render_with(Arc::new(Project::demo()), 4000, 0.5, false, &mut |f| {
+        let frames = render_with(Arc::new(Project::concrete_hymn()), 4000, 0.5, false, &mut |f| {
             seen.push(f);
             true
         });
@@ -387,19 +387,12 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("noise-cancel-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("song.wav");
-        let done = export_wav(Arc::new(Project::demo()), path.to_str().unwrap(), RenderFormat::CD, &mut |f| f < 0.2);
+        let done =
+            export_wav(Arc::new(Project::concrete_hymn()), path.to_str().unwrap(), RenderFormat::CD, &mut |f| f < 0.2);
         assert_eq!(done, Ok(Rendered::Cancelled));
         assert!(!path.exists());
         assert!(!dir.join("song.wav.part").exists(), "nor a part");
         std::fs::remove_dir_all(dir).unwrap();
-    }
-
-    #[test]
-    fn the_demo_plays_without_clipping() {
-        let frames = render(Arc::new(Project::demo()), 8000, 1.0, false);
-        let peak = frames.iter().fold(0f32, |a, f| a.max(f[0].abs()).max(f[1].abs()));
-        assert!(peak > 0.3 && peak < 0.95, "{peak}");
-        assert!(frames.len() > 8000 * 40, "the whole song: {}", frames.len());
     }
 
     #[test]
@@ -453,9 +446,9 @@ mod tests {
 
     #[test]
     fn selections_render_with_their_tail_trimmed() {
-        let demo = Project::demo();
-        // The first four lines of the kick track: one kick.
-        let song = Arc::new(demo.excerpt(1, (0, 3), (0, 0)));
+        let demo = Project::concrete_hymn();
+        // The first four lines of the first drop's kick track: one kick.
+        let song = Arc::new(demo.excerpt(2, (0, 3), (0, 0)));
         let sr = 8000;
         let frames = render(song, sr, 4.0, true);
         let four_lines = (sr as f32 * 60.0 / (demo.bpm * demo.lpb as f32)) as usize;

@@ -23,9 +23,6 @@ struct Args {
     /// Render a song to WAV without opening a window
     #[arg(long, num_args = 2, value_names = ["SONG", "OUT.WAV"], conflicts_with = "song")]
     export: Option<Vec<String>>,
-    /// Render the demo song Last Light to WAV without opening a window
-    #[arg(long, value_name = "OUT.WAV", num_args = 0..=1, default_missing_value = "demo.wav", conflicts_with_all = ["song", "export"])]
-    demo_wav: Option<String>,
 }
 
 fn main() -> eframe::Result {
@@ -33,16 +30,9 @@ fn main() -> eframe::Result {
     // The wavetables take a moment to make: before any sound, not during.
     dsp::wavetable::warm_up();
 
-    let render = match (args.export, args.demo_wav) {
-        (Some(export), _) => {
-            let [input, output] = <[String; 2]>::try_from(export).expect("clap takes two");
-            let song = project_dir::open(std::path::Path::new(&input)).map_err(|e| format!("{input}: {e}"));
-            Some((song, output))
-        }
-        (_, Some(output)) => Some((Ok((project::Project::demo(), Vec::new())), output)),
-        _ => None,
-    };
-    if let Some((song, output)) = render {
+    if let Some(export) = args.export {
+        let [input, output] = <[String; 2]>::try_from(export).expect("clap takes two");
+        let song = project_dir::open(std::path::Path::new(&input)).map_err(|e| format!("{input}: {e}"));
         let rendered = song.and_then(|(p, warnings)| {
             for w in warnings {
                 eprintln!("warning: {w}");

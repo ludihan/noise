@@ -55,13 +55,10 @@ pub type DemoSong = fn() -> Project;
 
 /// The demo songs built into the program, by name. Concrete Hymn opens
 /// when noise starts without a song.
-pub const DEMOS: [(&str, DemoSong); 6] = [
-    ("Last Light", Project::demo),
-    ("Bubblegum Overclock", Project::bubblegum_overclock),
+pub const DEMOS: [(&str, DemoSong); 3] = [
     ("Clockwork Rain", Project::clockwork_rain),
     ("Prism Overdrive", Project::prism_overdrive),
     ("Concrete Hymn", Project::concrete_hymn),
-    ("Rivet Storm", Project::rivet_storm),
 ];
 
 /// Opening `path`: a project's `.noise` file is imported, anything else
@@ -1009,7 +1006,7 @@ mod tests {
     fn selecting_an_effect_keeps_its_instrument_in_the_editor() {
         let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
         let app = harness.state_mut();
-        app.open_demo(4);
+        app.open_demo(DEMOS.iter().position(|d| d.0 == "Concrete Hymn").unwrap());
         let p = &app.project;
         let inst = p.modules.iter().find(|m| m.kind.plays_sound() && !p.chain(m.id).effects.is_empty()).unwrap().id;
         let fx = p.chain(inst).effects[0];
@@ -1029,7 +1026,7 @@ mod tests {
     fn a_module_added_in_a_deleted_ones_place_starts_afresh() {
         let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
         let app = harness.state_mut();
-        app.open_demo(4);
+        app.open_demo(DEMOS.iter().position(|d| d.0 == "Concrete Hymn").unwrap());
         let inst = app.instrument().unwrap();
         let fx = app.project.chain_insert(inst, 0, ModuleKind::Reverb).unwrap();
         app.chain_view.fold(&[fx]);
@@ -1048,7 +1045,7 @@ mod tests {
     fn showing_a_samplers_chain_opens_its_effects_page() {
         let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
         let app = harness.state_mut();
-        app.open_demo(4);
+        app.open_demo(DEMOS.iter().position(|d| d.0 == "Concrete Hymn").unwrap());
         let kit = app.project.modules.iter().find(|m| m.kind == ModuleKind::Sampler).unwrap().id;
         app.show_chain(Owner::Module(kit));
         assert!(app.view == View::Sampler && app.sampler.tab == sampler::Tab::Effects);

@@ -1,6 +1,6 @@
-//! Instrument presets: an instrument with its
-//! samples, voice modulation and phrases, and the effects of its own
-//! chain. Factory ones are the demo song's instruments, built into the
+//! Instrument presets: an instrument with its samples, voice modulation
+//! and phrases, and the effects of its own chain. Factory ones are the
+//! instruments of the demo songs and the factory banks, built into the
 //! program; the user's are kept in `instruments/` in the data folder, each
 //! a JSON file with its samples as WAV files in a folder beside it.
 
@@ -70,26 +70,34 @@ impl InstrumentPreset {
     }
 }
 
-/// The factory presets: the demo songs' instruments, made once.
+/// The factory banks: instruments and effects made for their presets.
+const BANKS: [fn() -> Project; 3] = [Project::orchestral_bank, Project::hyperpop_bank, Project::hardcore_bank];
+
+/// What the factory presets come from: the demo songs and the banks, made
+/// once.
+fn sources() -> &'static [Project] {
+    static SOURCES: OnceLock<Vec<Project>> = OnceLock::new();
+    SOURCES.get_or_init(|| super::DEMOS.iter().map(|d| d.1).chain(BANKS).map(|make| make()).collect())
+}
+
+/// The factory presets: the instruments of the demo songs and the banks,
+/// made once.
 pub fn factory() -> &'static [InstrumentPreset] {
     static FACTORY: OnceLock<Vec<InstrumentPreset>> = OnceLock::new();
     FACTORY.get_or_init(|| {
         let mut list: Vec<InstrumentPreset> = Vec::new();
-        for (_, make) in super::DEMOS {
-            let demo = make();
-            list.extend(demo.modules.iter().filter_map(|m| InstrumentPreset::of(&demo, m.id)));
+        for demo in sources() {
+            list.extend(demo.modules.iter().filter_map(|m| InstrumentPreset::of(demo, m.id)));
         }
         list.sort_by(|a, b| a.name.cmp(&b.name));
         list
     })
 }
 
-/// The factory device presets of `kind`: the settings of the demo song's
-/// modules of that kind, by their names.
+/// The factory device presets of `kind`: the settings of the modules of
+/// that kind in the demo songs and the banks, by their names.
 pub fn factory_devices(kind: crate::project::ModuleKind) -> Vec<(String, super::presets::Preset)> {
-    static DEMOS: OnceLock<Vec<Project>> = OnceLock::new();
-    let demos = DEMOS.get_or_init(|| super::DEMOS.iter().map(|(_, make)| make()).collect());
-    let mut list: Vec<(String, super::presets::Preset)> = demos
+    let mut list: Vec<(String, super::presets::Preset)> = sources()
         .iter()
         .flat_map(|demo| demo.modules.iter())
         .filter(|m| m.kind == kind)

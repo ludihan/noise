@@ -34,7 +34,7 @@ fn previews_play_at_their_volume_and_loop_until_stopped() {
 #[test]
 fn the_output_goes_onto_the_resample_tape_while_it_is_on() {
     let shared = Arc::new(Shared::default());
-    let mut e = Engine::new(SR, Arc::new(Project::demo()), None, None, shared.clone());
+    let mut e = Engine::new(SR, Arc::new(Project::concrete_hymn()), None, None, shared.clone());
     e.play_song();
     let mut out = vec![[0.0; 2]; 256];
     e.render(&mut out);

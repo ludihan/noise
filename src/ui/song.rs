@@ -535,7 +535,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("noise-save-{}", std::process::id()));
         let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
         let app = harness.state_mut();
-        app.open_demo(4);
+        app.open_demo(DEMOS.iter().position(|d| d.0 == "Concrete Hymn").unwrap());
         (app.path, app.untitled) = (dir.to_string_lossy().into_owned(), false);
         app.save();
         assert!(!app.jobs.is_empty(), "it saves on a thread");

@@ -456,7 +456,7 @@ fn instruments(p: &mut Project) -> Ids {
     let [pluck_end] = effects(p, pluck, [(K::Delay, "Pluck Echo", &[(0, 3.0), (1, 0.35), (2, 0.25), (3, 1.0)])]);
     send(p, pluck, room);
 
-    // The piano: Last Light's felt piano, both layers, brightened.
+    // The piano: the rendered felt piano, both layers, brightened.
     let piano = add(p, K::Sampler, "Bright Piano", &[(0, 0.6), (6, 0.4)]);
     let mut soft = rendered(felt_piano(sr, false));
     soft.velocities = [0, 84];

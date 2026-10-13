@@ -102,7 +102,7 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui, id: u8) {
         return;
     };
     let dir = folder(&base, m.kind);
-    // The factory's, from the demo song, then the user's.
+    // The factory's, from the demo songs and banks, then the user's.
     let factory = super::library::factory_devices(m.kind);
     if !factory.is_empty() {
         ui.menu_button("Factory", |ui| {

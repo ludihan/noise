@@ -10,7 +10,7 @@ use egui_kittest::kittest::Queryable;
 use std::path::PathBuf;
 
 /// The demo song the pictures show, Clockwork Rain, of `DEMOS`.
-const DEMO: usize = 2;
+const DEMO: &str = "Clockwork Rain";
 
 /// The slot playing pattern `name` of the song open.
 fn slot_of(app: &App, name: &str) -> usize {
@@ -21,7 +21,7 @@ fn slot_of(app: &App, name: &str) -> usize {
 /// Opens the demo song on its busiest pattern, Storm 2, the cursor where
 /// its lines are fullest.
 fn open(app: &mut App) {
-    app.open_demo(DEMO);
+    app.open_demo(super::DEMOS.iter().position(|d| d.0 == DEMO).expect("the demo"));
     (app.slot, app.cursor.line) = (slot_of(app, "Storm 2"), 32);
     app.status = "Ready".into();
 }
