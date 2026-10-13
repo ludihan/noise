@@ -348,9 +348,9 @@ impl App {
             }
             Some(Err(e)) => {
                 status = format!("Could not open {}: {e}", path.as_deref().unwrap_or_default());
-                Project::concrete_hymn()
+                Project::blank()
             }
-            None => Project::concrete_hymn(),
+            None => Project::blank(),
         };
         let (tx, rx) = mpsc::channel();
         let (gtx, garbage) = mpsc::channel();
@@ -1009,6 +1009,7 @@ mod tests {
     fn selecting_an_effect_keeps_its_instrument_in_the_editor() {
         let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
         let app = harness.state_mut();
+        app.open_demo(4);
         let p = &app.project;
         let inst = p.modules.iter().find(|m| m.kind.plays_sound() && !p.chain(m.id).effects.is_empty()).unwrap().id;
         let fx = p.chain(inst).effects[0];
@@ -1028,6 +1029,7 @@ mod tests {
     fn a_module_added_in_a_deleted_ones_place_starts_afresh() {
         let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
         let app = harness.state_mut();
+        app.open_demo(4);
         let inst = app.instrument().unwrap();
         let fx = app.project.chain_insert(inst, 0, ModuleKind::Reverb).unwrap();
         app.chain_view.fold(&[fx]);
@@ -1046,6 +1048,7 @@ mod tests {
     fn showing_a_samplers_chain_opens_its_effects_page() {
         let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
         let app = harness.state_mut();
+        app.open_demo(4);
         let kit = app.project.modules.iter().find(|m| m.kind == ModuleKind::Sampler).unwrap().id;
         app.show_chain(Owner::Module(kit));
         assert!(app.view == View::Sampler && app.sampler.tab == sampler::Tab::Effects);

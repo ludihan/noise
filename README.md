@@ -21,7 +21,7 @@ On Linux, building needs the ALSA development headers (`alsa-lib-devel` or
 `libasound2-dev`).
 
 ```sh
-noise                              # open the demo song Concrete Hymn
+noise                              # start a new song
 noise "My Song"                    # open a project folder (or a song file)
 noise "My Song.noise"              # import an exported project and open it
 noise --export "My Song" out.wav   # render a song to WAV, no window

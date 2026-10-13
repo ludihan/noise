@@ -22,10 +22,8 @@ impl App {
 
     pub(super) fn new_project(&mut self) {
         self.send(Cmd::Stop);
-        self.project = Project::empty();
-        let id = self.project.add_module(ModuleKind::Generator, [100.0, 100.0]).unwrap();
-        self.project.connect(id, crate::project::OUTPUT_ID);
-        self.select(Some(id));
+        self.project = Project::blank();
+        self.select(self.project.modules.iter().find(|m| m.kind.is_instrument()).map(|m| m.id));
         self.slot = 0;
         self.cursor = Cursor::default();
         self.song_replaced();
@@ -537,6 +535,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("noise-save-{}", std::process::id()));
         let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
         let app = harness.state_mut();
+        app.open_demo(4);
         (app.path, app.untitled) = (dir.to_string_lossy().into_owned(), false);
         app.save();
         assert!(!app.jobs.is_empty(), "it saves on a thread");

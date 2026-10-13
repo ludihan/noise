@@ -261,6 +261,15 @@ impl Project {
         }
     }
 
+    /// A new song: empty but for a Generator wired to the output, to play
+    /// right away.
+    pub fn blank() -> Self {
+        let mut p = Self::empty();
+        let id = p.add_module(ModuleKind::Generator, [100.0, 100.0]).unwrap();
+        p.connect(id, OUTPUT_ID);
+        p
+    }
+
     pub fn module(&self, id: u8) -> Option<&Module> {
         self.modules.iter().find(|m| m.id == id)
     }
