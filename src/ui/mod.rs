@@ -218,6 +218,8 @@ pub struct App {
     /// The volume written with entered notes; 80 (full) writes none, as
     /// when the keyboard velocity is off.
     pub entry_vol: u8,
+    /// The chord, of `CHORDS`, a key writes and plays; 0 for a note alone.
+    pub chord: usize,
     pub edit_mode: bool,
     pub follow: bool,
     pub loop_pattern: bool,
@@ -234,7 +236,8 @@ pub struct App {
     /// other module leaves it be.
     edited: Option<u8>,
 
-    /// Keys currently held for live preview: (key, module, note).
+    /// Keys currently held for live preview: (key, module, note), a row
+    /// for each note of a chord.
     held: Vec<(Held, u8, u8)>,
     /// Notes written while recording with the song playing, by the key
     /// that plays them, with where they went: pattern, track and column.
@@ -398,6 +401,7 @@ impl App {
             octave: 4,
             step: 1,
             entry_vol: 0x80,
+            chord: 0,
             edit_mode: false,
             follow: true,
             loop_pattern: false,
@@ -591,18 +595,20 @@ impl App {
         }
     }
 
-    /// Plays `note` on `module` while `key` is held, at `vel` (0..1).
-    pub fn preview_on(&mut self, key: Held, module: u8, note: u8, vel: f32) {
+    /// Plays `notes` on `module` while `key` is held, at `vel` (0..1).
+    pub fn preview_on(&mut self, key: Held, module: u8, notes: &[u8], vel: f32) {
         if self.held.iter().any(|h| h.0 == key) {
             return;
         }
-        self.held.push((key, module, note));
-        self.send(Cmd::NoteOn { module, key: LIVE_KEY + note as u32, note, vel });
+        for &note in notes {
+            self.held.push((key, module, note));
+            self.send(Cmd::NoteOn { module, key: LIVE_KEY + note as u32, note, vel });
+        }
     }
 
     pub fn preview_off(&mut self, key: Held) {
         pattern::record_release(self, key);
-        if let Some(i) = self.held.iter().position(|h| h.0 == key) {
+        while let Some(i) = self.held.iter().position(|h| h.0 == key) {
             let (_, module, note) = self.held.remove(i);
             self.send(Cmd::NoteOff { module, key: LIVE_KEY + note as u32 });
         }

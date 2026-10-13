@@ -1,7 +1,7 @@
 //! Song data: patterns, the order list and the module graph. The song
 //! itself, its tracks and slots and how sound finds its way through the
 //! modules are here; patterns, module kinds, modules, voice modulation,
-//! phrases, effect commands and sample slots have files of their own.
+//! phrases, effect commands, sample slots and scales have files of their own.
 //!
 //! The UI owns a `Project` and sends immutable snapshots of it to the audio
 //! thread whenever it changes. Nothing in here touches DSP state.
@@ -17,6 +17,7 @@ mod module;
 mod pattern;
 mod phrase;
 mod sample_slot;
+mod scale;
 mod voice;
 
 pub use commands::*;
@@ -25,6 +26,7 @@ pub use module::*;
 pub use pattern::*;
 pub use phrase::*;
 pub use sample_slot::*;
+pub use scale::*;
 pub use voice::*;
 
 pub const MAX_TRACKS: usize = 32;
@@ -225,6 +227,9 @@ pub struct Project {
     /// metronome's accent and the bar lines.
     #[serde(default = "default_beats_per_bar", skip_serializing_if = "is_four")]
     pub beats_per_bar: u32,
+    /// The key and scale notes typed snap to.
+    #[serde(default, skip_serializing_if = "Scale::is_chromatic")]
+    pub scale: Scale,
     /// Swing, the groove: every odd line starts this much of half
     /// a line late, 0..1.
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -269,6 +274,7 @@ impl Project {
             lpb: 4,
             tpl: default_tpl(),
             beats_per_bar: default_beats_per_bar(),
+            scale: Scale::default(),
             groove: 0.0,
             loop_song: true,
             patterns: vec![Pattern::new("", 4, 64)],
@@ -1260,6 +1266,7 @@ impl Project {
         p.bpm = p.bpm.clamp(20.0, 999.0);
         p.lpb = p.lpb.clamp(1, 32);
         p.beats_per_bar = p.beats_per_bar.clamp(1, 16);
+        p.scale = Scale { key: p.scale.key % 12, kind: p.scale.kind.min(SCALES.len() - 1) };
         p.tpl = p.tpl.clamp(1, 16);
         p.groove = p.groove.clamp(0.0, 1.0);
         p.tracks.resize(MAX_TRACKS, Track::default());

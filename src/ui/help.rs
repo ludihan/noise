@@ -252,10 +252,10 @@ const TOPICS: &[Topic] = &[
             ),
             H("Transport"),
             List(&[
-                "BPM, LPB (lines per beat), BEATS (beats per bar, the time signature: the bar lines in the pattern and the metronome's high click follow it) and TPL (ticks per line: the steps effects take within a line).",
+                "BPM, LPB (lines per beat), BEATS (beats per bar, the time signature: the bar lines in the pattern and the metronome's high click follow it) and TPL (ticks per line: the steps effects take within a line), SWING, and SCALE, the song's key and scale: notes typed on the computer keyboard or a MIDI keyboard snap to the nearest note in it, and the pattern shows notes outside it in a dull red.",
                 "SWING, the groove: every odd line starts up to half a line late, while the even lines stay on time. Double-click it for none.",
                 "The song starts again after its last slot. An F00 effect ends it instead: playing stops after that line and lets the last notes ring out, and the next play starts from the top; the demo songs end that way. Renders stop at the end of the song either way.",
-                "OCT, STEP (lines the cursor moves after a note) and VOL, the volume written with the notes you enter (-- writes none).",
+                "OCT, STEP (lines the cursor moves after a note), VOL, the volume written with the notes you enter (-- writes none), and CHORD: a key plays a chord and writes it, a note column each from the cursor's on, adding the columns it needs. Major, minor and the rest are always those chords; Triad and Seventh in Key stack the scale's own notes, so they change with the note played.",
                 "Metronome clicks every beat while playing; Panic silences everything.",
                 "MASTER, on the right, is the volume of everything: drag it (Shift for fine steps), double-click it for its default.",
             ]),

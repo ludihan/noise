@@ -2,6 +2,7 @@
 //! master volume, the CPU meter and the scopes.
 
 use super::*;
+use crate::project::{CHORDS, NOTE_NAMES, SCALES};
 
 impl App {
     /// The transport bar: playback, song and edit settings, the position and
@@ -170,6 +171,35 @@ impl App {
                     self.project.groove = swing / 100.0;
                     self.mark();
                 }
+                transport_label(ui, "SCALE");
+                let tip = "The song's key and scale: notes you type snap to it, and the pattern dims notes outside it";
+                let mut scale = self.project.scale;
+                widgets::field_menu(ui, &scale.name(), |ui| {
+                    // The key stays open to pick; a scale closes the menu.
+                    ui.add_enabled_ui(!scale.is_chromatic(), |ui| {
+                        ui.label(RichText::new("Key").small().color(theme::TEXT_WEAK));
+                        ui.horizontal_wrapped(|ui| {
+                            ui.set_max_width(200.0);
+                            for (k, name) in (0u8..).zip(NOTE_NAMES) {
+                                if ui.add(egui::Button::selectable(scale.key == k, name)).clicked() {
+                                    scale.key = k;
+                                }
+                            }
+                        });
+                    });
+                    ui.separator();
+                    for (kind, (name, _)) in SCALES.iter().enumerate() {
+                        if ui.add(egui::Button::selectable(scale.kind == kind, *name)).clicked() {
+                            scale.kind = kind;
+                            ui.close();
+                        }
+                    }
+                })
+                .on_hover_text(tip);
+                if scale != self.project.scale {
+                    self.project.scale = scale;
+                    self.mark();
+                }
             });
         }
         if self.panels.entry_settings {
@@ -193,6 +223,19 @@ impl App {
                     });
                 field(ui, 30.0, vol)
                     .on_hover_text("Volume written with the notes you enter, in hex; -- writes none (full volume)");
+                transport_label(ui, "CHORD");
+                egui::ComboBox::from_id_salt("entry_chord")
+                    .width(110.0)
+                    .selected_text(CHORDS[self.chord].0)
+                    .show_ui(ui, |ui| {
+                        for (k, (name, _)) in CHORDS.iter().enumerate() {
+                            ui.selectable_value(&mut self.chord, k, *name);
+                        }
+                    })
+                    .response
+                    .on_hover_text(
+                        "The chord a key writes, a note column each, and plays; in key, it stacks the scale's notes",
+                    );
             });
         }
     }

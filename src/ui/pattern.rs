@@ -3,7 +3,8 @@
 use super::block::{self, Block};
 use super::{App, View, theme};
 use crate::project::{
-    MAX_COLUMNS, MAX_FX_COLUMNS, MAX_LINES, MAX_TRACKS, ModuleKind, Note, Pattern, Project, SampleSlot,
+    MAX_COLUMNS, MAX_FX_COLUMNS, MAX_LINES, MAX_TRACKS, ModuleKind, Note, Pattern, Project, SampleSlot, Scale,
+    chord_notes,
 };
 use eframe::egui::{self, Align2, Color32, FontId, Key, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
 
@@ -690,42 +691,51 @@ pub fn midi_note(app: &mut App, note: u8, velocity: u8) {
     play_note(app, super::Held::Midi(note), note, velocity as f32 / 127.0, vol, write);
 }
 
-/// Plays `note` while `held`, and with `write` enters it at the cursor
-/// with volume `vol`.
+/// Plays `note`, snapped to the song's scale, and the rest of the entry
+/// chord on it while `held`, and with `write` enters them at the cursor
+/// with volume `vol`, a column each.
 fn play_note(app: &mut App, held: super::Held, note: u8, vel: f32, vol: Option<u8>, write: bool) {
     let cur = app.cursor;
+    let scale = app.project.scale;
+    let notes = chord_notes(app.chord, scale.snap(note), scale);
     // Without a selected instrument, preview with the module already in the cell.
     let module = app.instrument().or_else(|| app.pattern().cell(cur.track, cur.column, cur.line).module);
     if let Some(m) = module {
-        app.preview_on(held, m, note, vel);
+        app.preview_on(held, m, &notes, vel);
     }
-    // Recording with the song playing: at the play position, a note held
-    // with others in the next free column, as a chord.
-    if write && let Some((line, delay)) = live_position(app) {
-        let col = free_column(app, cur.track, cur.column);
-        let pattern = app.current_pattern_index();
-        let cell = app.pattern_mut().cell_mut(cur.track, col, line);
+    let fill = |cell: &mut crate::project::Cell, note: u8| {
         cell.note = Some(Note::On(note));
-        cell.delay = delay;
         if vol.is_some() {
             cell.vol = vol;
         }
         if module.is_some() {
             cell.module = module;
         }
+    };
+    // Recording with the song playing: at the play position, a note held
+    // with others in the next free column, as a chord.
+    if write && let Some((line, delay)) = live_position(app) {
+        let pattern = app.current_pattern_index();
         app.recorded.retain(|r| r.0 != held);
-        app.recorded.push((held, pattern, cur.track, col));
+        for &note in &notes {
+            let col = free_column(app, cur.track, cur.column);
+            let cell = app.pattern_mut().cell_mut(cur.track, col, line);
+            fill(cell, note);
+            cell.delay = delay;
+            app.recorded.push((held, pattern, cur.track, col));
+        }
         app.mark();
         return;
     }
     if write {
-        let cell = app.pattern_mut().cell_mut(cur.track, cur.column, cur.line);
-        cell.note = Some(Note::On(note));
-        if vol.is_some() {
-            cell.vol = vol;
+        // A chord takes the columns from the cursor's on, as many more as
+        // it needs.
+        let needed = (cur.column + notes.len()).min(MAX_COLUMNS);
+        if needed > app.pattern().columns(cur.track) {
+            app.project.set_columns(cur.track, needed);
         }
-        if module.is_some() {
-            cell.module = module;
+        for (col, &note) in (cur.column..needed).zip(&notes) {
+            fill(app.pattern_mut().cell_mut(cur.track, col, cur.line), note);
         }
         app.mark();
         advance(app);
@@ -771,21 +781,22 @@ fn free_column(app: &mut App, track: usize, from: usize) -> usize {
 }
 
 /// A key recorded with the song playing was let go: a note-off where
-/// playback is, in the note's column, unless a note is there.
+/// playback is, in each of its notes' columns, unless a note is there.
 pub fn record_release(app: &mut App, held: super::Held) {
-    let Some(i) = app.recorded.iter().position(|r| r.0 == held) else { return };
-    let (_, pattern, track, col) = app.recorded.remove(i);
-    if !app.record_note_offs || !app.edit_mode || pattern != app.current_pattern_index() {
-        return;
+    while let Some(i) = app.recorded.iter().position(|r| r.0 == held) {
+        let (_, pattern, track, col) = app.recorded.remove(i);
+        if !app.record_note_offs || !app.edit_mode || pattern != app.current_pattern_index() {
+            continue;
+        }
+        let Some((line, delay)) = live_position(app) else { continue };
+        let cell = app.pattern_mut().cell_mut(track, col, line);
+        if cell.note.is_some() {
+            continue;
+        }
+        cell.note = Some(Note::Off);
+        cell.delay = delay;
+        app.mark();
     }
-    let Some((line, delay)) = live_position(app) else { return };
-    let cell = app.pattern_mut().cell_mut(track, col, line);
-    if cell.note.is_some() {
-        return;
-    }
-    cell.note = Some(Note::Off);
-    cell.delay = delay;
-    app.mark();
 }
 
 fn advance(app: &mut App) {
@@ -794,13 +805,15 @@ fn advance(app: &mut App) {
 }
 
 /// A cell's fields that `subs` shows, each in its column's color, or grey
-/// when empty.
-fn cell_text(cell: &crate::project::Cell, subs: SubColumns) -> Vec<(String, Color32)> {
-    use theme::{PAT_DELAY, PAT_EFFECT, PAT_EMPTY, PAT_INSTRUMENT, PAT_NOTE, PAT_PAN};
+/// when empty; a note outside `scale` in a color of its own.
+fn cell_text(cell: &crate::project::Cell, subs: SubColumns, scale: Scale) -> Vec<(String, Color32)> {
+    use theme::{PAT_DELAY, PAT_EFFECT, PAT_EMPTY, PAT_INSTRUMENT, PAT_NOTE, PAT_NOTE_OFF_SCALE, PAT_PAN};
     let [note, module, vol, fx] = block::fields(cell);
     let [pan, delay] = block::mixer_fields(cell);
+    let off_scale = matches!(cell.note, Some(Note::On(n)) if !scale.contains(n));
+    let note_color = if off_scale { PAT_NOTE_OFF_SCALE } else { PAT_NOTE };
     let all = [
-        (0, note, cell.note.is_some(), PAT_NOTE),
+        (0, note, cell.note.is_some(), note_color),
         (1, module, cell.module.is_some(), PAT_INSTRUMENT),
         (3, vol, cell.vol.is_some(), vol_color(cell.vol)),
         (PAN_COL, pan, cell.pan.is_some(), PAT_PAN),
@@ -1060,7 +1073,7 @@ pub fn editor(app: &mut App, ui: &mut egui::Ui) {
             );
             for &(lx, t, c, subs, _) in &layout.lanes {
                 let x0 = rect.left() + lx + char_w * 0.5;
-                let parts = cell_text(&pattern.cell(t, c, line), subs);
+                let parts = cell_text(&pattern.cell(t, c, line), subs, app.project.scale);
                 let mut x = x0;
                 for (text, color) in &parts {
                     let color = if audible[t] { *color } else { color.gamma_multiply(0.4) };
@@ -1116,7 +1129,7 @@ pub fn editor(app: &mut App, ui: &mut egui::Ui) {
                 layout.lanes.iter().filter(|l| l.1 < other.num_tracks() && l.2 < other.width(l.1))
             {
                 let mut x = rect.left() + lx + char_w * 0.5;
-                for (text, color) in cell_text(&other.cell(t, c, line), subs) {
+                for (text, color) in cell_text(&other.cell(t, c, line), subs, app.project.scale) {
                     painter.text(Pos2::new(x, y + row_h / 2.0), Align2::LEFT_CENTER, &text, font.clone(), dim(color));
                     x += (text.len() + 1) as f32 * char_w;
                 }
@@ -1706,5 +1719,22 @@ mod tests {
         assert_eq!(song_line(&p, 0, 30), Some((2, 6)), "past a short one in between");
         assert_eq!(song_line(&p, 0, -1), None, "nothing before the song");
         assert_eq!(song_line(&p, 2, 16), None, "nor after it");
+    }
+
+    #[test]
+    fn a_key_writes_its_note_in_the_scale_and_the_chord_on_it() {
+        use egui_kittest::Harness;
+        let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
+        let app = harness.state_mut();
+        app.project = Project::empty();
+        app.project.scale = Scale { key: 0, kind: 1 };
+        app.chord = crate::project::CHORDS.iter().position(|c| c.0 == "Triad in Key").unwrap();
+        (app.edit_mode, app.octave, app.cursor) = (true, 5, Cursor::default());
+        // S is C#, which C major snaps down to C: C, E and G, a column each.
+        note_key(app, Key::S, false, true);
+        let notes: Vec<_> = (0..3).map(|c| app.pattern().cell(0, c, 0).note).collect();
+        assert_eq!(notes, [60, 64, 67].map(|n| Some(Note::On(n))));
+        assert_eq!(app.pattern().columns(0), 3, "the columns it needs");
+        assert_eq!(app.cursor.line, app.step, "and the cursor steps on");
     }
 }

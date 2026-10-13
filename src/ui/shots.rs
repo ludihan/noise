@@ -182,6 +182,11 @@ fn shots() {
         app.palette.open = true;
         app.palette.preset = Some("rev".into());
     });
+    shot("scale", |app| {
+        // C major over a song that isn't in it: its other notes show dull.
+        app.project.scale = crate::project::Scale { key: 0, kind: 1 };
+        app.chord = 1;
+    });
 }
 
 /// The README's pictures, `docs/*.png`, drawn while the song plays

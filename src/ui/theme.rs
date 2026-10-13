@@ -31,6 +31,8 @@ pub const PAT_SELECTION: Color32 = Color32::from_rgb(38, 58, 94);
 pub const PAT_CURSOR: Color32 = Color32::from_rgb(222, 166, 72);
 pub const PAT_EMPTY: Color32 = Color32::from_rgb(70, 70, 70);
 pub const PAT_NOTE: Color32 = Color32::from_rgb(232, 232, 232);
+/// A note outside the song's scale.
+pub const PAT_NOTE_OFF_SCALE: Color32 = Color32::from_rgb(170, 120, 112);
 pub const PAT_INSTRUMENT: Color32 = Color32::from_rgb(232, 190, 110);
 pub const PAT_VOLUME: Color32 = Color32::from_rgb(130, 210, 120);
 pub const PAT_EFFECT: Color32 = Color32::from_rgb(120, 180, 250);

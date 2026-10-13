@@ -13,10 +13,7 @@ impl Note {
     pub fn label(self) -> String {
         match self {
             Note::Off => "OFF".into(),
-            Note::On(n) => {
-                const NAMES: [&str; 12] = ["C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-"];
-                format!("{}{}", NAMES[(n % 12) as usize], n / 12)
-            }
+            Note::On(n) => format!("{:-<2}{}", super::NOTE_NAMES[(n % 12) as usize], n / 12),
         }
     }
 }
