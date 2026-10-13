@@ -11,25 +11,35 @@ mod sample;
 mod soundfont;
 mod ui;
 
+use clap::Parser;
+
+/// A music tracker with modular synths.
+#[derive(Parser)]
+#[command(version, about)]
+struct Args {
+    /// A project folder, song file or exported .noise project to open
+    #[arg(value_name = "SONG")]
+    song: Option<String>,
+    /// Render a song to WAV without opening a window
+    #[arg(long, num_args = 2, value_names = ["SONG", "OUT.WAV"], conflicts_with = "song")]
+    export: Option<Vec<String>>,
+    /// Render the demo song Last Light to WAV without opening a window
+    #[arg(long, value_name = "OUT.WAV", num_args = 0..=1, default_missing_value = "demo.wav", conflicts_with_all = ["song", "export"])]
+    demo_wav: Option<String>,
+}
+
 fn main() -> eframe::Result {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args = Args::parse();
     // The wavetables take a moment to make: before any sound, not during.
     dsp::wavetable::warm_up();
 
-    // `noise --export <project folder or song file> out.wav` renders without
-    // opening a window, as `--demo-wav [out.wav]` does the demo song.
-    let demo = || Ok((project::Project::demo(), Vec::new()));
-    let render = match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
-        ["--export", input, output] => Some((
-            project_dir::open(std::path::Path::new(input)).map_err(|e| format!("{input}: {e}")),
-            output.to_string(),
-        )),
-        ["--demo-wav"] => Some((demo(), "demo.wav".to_string())),
-        ["--demo-wav", output] => Some((demo(), output.to_string())),
-        [flag, ..] if flag.starts_with("--") => {
-            eprintln!("usage: noise [song]\n       noise --export <song> <out.wav>\n       noise --demo-wav [out.wav]");
-            std::process::exit(2);
+    let render = match (args.export, args.demo_wav) {
+        (Some(export), _) => {
+            let [input, output] = <[String; 2]>::try_from(export).expect("clap takes two");
+            let song = project_dir::open(std::path::Path::new(&input)).map_err(|e| format!("{input}: {e}"));
+            Some((song, output))
         }
+        (_, Some(output)) => Some((Ok((project::Project::demo(), Vec::new())), output)),
         _ => None,
     };
     if let Some((song, output)) = render {
@@ -53,10 +63,9 @@ fn main() -> eframe::Result {
         return Ok(());
     }
 
-    let path = args.into_iter().next();
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default().with_inner_size([1400.0, 900.0]).with_title("noise"),
         ..Default::default()
     };
-    eframe::run_native("noise", options, Box::new(|cc| Ok(Box::new(ui::App::new(cc, path)))))
+    eframe::run_native("noise", options, Box::new(|cc| Ok(Box::new(ui::App::new(cc, args.song)))))
 }

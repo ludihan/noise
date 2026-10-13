@@ -26,6 +26,7 @@ noise "My Song"                    # open a project folder (or a song file)
 noise "My Song.noise"              # import an exported project and open it
 noise --export "My Song" out.wav   # render a song to WAV, no window
 noise --demo-wav [out.wav]         # render the demo song Last Light
+noise --help                       # these, briefly
 ```
 
 ## Features
