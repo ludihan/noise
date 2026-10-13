@@ -82,7 +82,7 @@ noise --help                       # these, briefly
 
 | File | Contents |
 |---|---|
-| `src/demos/` | The demo songs, a file each: `last_light.rs` (the first, with the piano and swell it renders), `static_heart.rs`, `clockwork_rain.rs`, `prism_overdrive.rs`, `concrete_hymn.rs` and `rivet_storm.rs`; `mod.rs` holds what they share (cells, envelopes, device chains, rolls), `sounds.rs` the sounds they render (drum hits, the felt piano) |
+| `src/demos/` | The demo songs, a file each: `last_light.rs` (the first, with the piano and swell it renders), `bubblegum_overclock.rs`, `clockwork_rain.rs`, `prism_overdrive.rs`, `concrete_hymn.rs` and `rivet_storm.rs`; `mod.rs` holds what they share (cells, envelopes, device chains, rolls), `sounds.rs` the sounds they render (drum hits, the felt piano, sung syllables) |
 | `src/project/` | Song data, saved as JSON: the song, its tracks, order list and links (`mod.rs`); patterns and their automation (`pattern.rs`), module kinds and their parameters (`kinds.rs`), modules (`module.rs`), voice modulation (`voice.rs`), phrases (`phrase.rs`), effect commands (`commands.rs`) and sample slots (`sample_slot.rs`) |
 | `src/project_dir.rs` | Project folders: saving a song with its samples named by hashes, deleting the unused ones; export and import as `.noise` files (zip archives) |
 | `src/dsp/` | The audio code for every module, a file to each family (`filters.rs`, `delays.rs`, `fm.rs`, `analog.rs`, `sampler.rs`…); `mod.rs` holds the `Dsp` trait, `create`, envelopes and voices, `tests.rs` the tests they share |

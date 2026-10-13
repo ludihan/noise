@@ -1,6 +1,6 @@
 //! Sounds the demo songs render for themselves, so their Samplers have
-//! samples without audio files: drum hits, a felt piano, and the noise and
-//! levels they are made with.
+//! samples without audio files: drum hits, a felt piano, sung syllables, and the noise
+//! and levels they are made with.
 
 use crate::dsp::Frame;
 use crate::sample::Sample;
@@ -160,4 +160,48 @@ pub(super) fn hit(sr: f32, kind: Hit, seed: u32, room: f32) -> Vec<f32> {
             }
         })
         .collect()
+}
+
+/// Four sung syllables, "ah", "oh", "ee" and "ay", on E (MIDI 64): a
+/// buzzing source whose harmonics are shaped by each vowel's formants,
+/// with a little vibrato and breath. Returns the sample and where each
+/// syllable starts.
+pub(super) fn syllables(sr: f32) -> (Sample, Vec<usize>) {
+    const VOWELS: [[(f32, f32, f32); 3]; 4] = [
+        [(800.0, 80.0, 1.0), (1150.0, 90.0, 0.5), (2900.0, 120.0, 0.25)],
+        [(450.0, 70.0, 1.0), (800.0, 80.0, 0.45), (2830.0, 120.0, 0.2)],
+        [(270.0, 60.0, 1.0), (2300.0, 100.0, 0.4), (3000.0, 120.0, 0.3)],
+        [(530.0, 70.0, 1.0), (1840.0, 90.0, 0.5), (2480.0, 120.0, 0.3)],
+    ];
+    let f0 = 440.0 * 2f32.powf((64.0 - 69.0) / 12.0);
+    let syllable = (sr * 0.26) as usize;
+    let mut frames = vec![[0.0f32; 2]; syllable * VOWELS.len()];
+    let mut starts = Vec::new();
+    let mut rng = Rng(0x1234_5678);
+    for (v, formants) in VOWELS.iter().enumerate() {
+        let at = v * syllable;
+        starts.push(at);
+        let weight = |f: f32| formants.iter().map(|&(c, b, g)| g / (1.0 + ((f - c) / b).powi(2))).sum::<f32>();
+        let mut phases = [0.0f32; 24];
+        let mut breath = 0.0f32;
+        for k in 0..syllable - (sr * 0.03) as usize {
+            let t = k as f32 / sr;
+            let wobble = 1.0 + 0.004 * (std::f32::consts::TAU * 5.5 * t).sin();
+            let env = (t / 0.015).min(1.0) * ((0.23 - t) / 0.05).clamp(0.0, 1.0);
+            let mut x = 0.0;
+            for (h, ph) in phases.iter_mut().enumerate() {
+                let f = f0 * (h + 1) as f32 * wobble;
+                if f > sr * 0.45 {
+                    break;
+                }
+                *ph = (*ph + f / sr).fract();
+                x += (std::f32::consts::TAU * *ph).sin() * weight(f) / (h + 1) as f32;
+            }
+            breath += 0.3 * (rng.next() - breath);
+            let y = (x + breath * 0.04 * weight(2500.0)) * env;
+            frames[at + k] = [y * 0.95, y];
+        }
+    }
+    normalize(&mut frames, 0.8);
+    (Sample { name: "Vox (ah oh ee ay)".into(), sample_rate: sr, channels: 2, frames }, starts)
 }

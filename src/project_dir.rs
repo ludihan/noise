@@ -305,9 +305,10 @@ mod tests {
     #[test]
     fn the_demo_songs_save_as_project_folders_and_open_the_same() {
         let dir = temp_dir("demos");
-        for (k, make) in [Project::demo, Project::static_heart, Project::clockwork_rain, Project::prism_overdrive]
-            .into_iter()
-            .enumerate()
+        for (k, make) in
+            [Project::demo, Project::bubblegum_overclock, Project::clockwork_rain, Project::prism_overdrive]
+                .into_iter()
+                .enumerate()
         {
             let folder = dir.join(k.to_string());
             let mut p = make();

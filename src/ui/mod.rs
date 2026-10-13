@@ -57,7 +57,7 @@ pub type DemoSong = fn() -> Project;
 /// when noise starts without a song.
 pub const DEMOS: [(&str, DemoSong); 6] = [
     ("Last Light", Project::demo),
-    ("Static Heart", Project::static_heart),
+    ("Bubblegum Overclock", Project::bubblegum_overclock),
     ("Clockwork Rain", Project::clockwork_rain),
     ("Prism Overdrive", Project::prism_overdrive),
     ("Concrete Hymn", Project::concrete_hymn),

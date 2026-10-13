@@ -16,7 +16,6 @@
 //! its Samplers have audio without files; they are written next to the song
 //! when it is saved.
 
-use super::static_heart::syllables;
 use super::*;
 use crate::dsp::Frame;
 use crate::project::*;
@@ -504,7 +503,7 @@ fn instruments(p: &mut Project) -> Ids {
     );
     send(p, hoover, room);
 
-    // The voice: Static Heart's four sung syllables, one sample, a quarter
+    // The voice: the four sung syllables the demos render, one sample, a quarter
     // each; 9xx picks one, and the notes pitch them up high.
     let vox = add(p, K::Sampler, "Sky Vox", &[(0, 0.5), (6, 0.03)]);
     let mut slot = rendered(syllables(sr).0);
@@ -1221,7 +1220,7 @@ const COMMENTS: &str = "Prism Overdrive — the fourth demo song: rhythm-game ha
     with 4xy. The last chorus doubles it an octave down in its second column.\n\
     • Prism Pluck: its phrases arpeggiate major (Z01) and minor (Z02) chords and trill in 32nds (Z03); in Roll it \
     plays a rhythm game's stairs and jacks, the jacks spinning chords with 0xy.\n\
-    • Sky Vox: Static Heart's four syllables in one sample; 9xx picks one (00, 40, 80 or C0) and Cxx cuts it.\n\
+    • Sky Vox: four sung syllables in one sample; 9xx picks one (00, 40, 80 or C0) and Cxx cuts it.\n\
     • Growl: Wub and Talk, Modulators running an envelope on each note, open its ladder and move its Vocal \
     Filter, so every note growls.\n\
     • Hoover: a pitch envelope scoops every note up from six semitones under.\n\

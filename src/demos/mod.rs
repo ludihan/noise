@@ -2,13 +2,13 @@
 //! they share: notes and effects in cells, envelopes, device chains,
 //! rolls and held notes, and the sounds in `sounds`.
 
+mod bubblegum_overclock;
 mod clockwork_rain;
 mod concrete_hymn;
 mod last_light;
 mod prism_overdrive;
 mod rivet_storm;
 mod sounds;
-mod static_heart;
 
 use crate::project::*;
 use crate::sample::Sample;
