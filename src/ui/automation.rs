@@ -744,7 +744,7 @@ fn shape_menu(
     lpb: u32,
     around: f32,
 ) {
-    ui.menu_button("Shape", |ui| {
+    super::widgets::field_menu(ui, "Shape", |ui| {
         ui.horizontal(|ui| {
             ui.label("Swing");
             let field = egui::DragValue::new(&mut view.shape_swing)
@@ -780,7 +780,6 @@ fn shape_menu(
             ui.close();
         }
     })
-    .response
     .on_hover_text("Draw cycles of a shape, as an LFO would play it; on Repeat it plays every interval");
 }
 
