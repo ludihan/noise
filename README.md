@@ -35,6 +35,9 @@ noise --help                       # these, briefly
   for arpeggio, slides, vibrato, tremolo, tremor, auto-pan, cuts, delays, retriggers, tempo,
   pattern breaks, line waits, reversed and sliced samples, `Yxx` (maybe play) and `Zxx`
   (pick a phrase), and fades, slides, glides, cuts and retriggers in the volume column.
+  A **song scale** that typed notes snap to (notes outside it shown dull red),
+  **chords** a key plays and writes across note columns, and a time
+  signature (beats per bar) for the bar lines and the metronome.
 - **Track effects**, on top of each instrument's
   own, **send tracks** that Sends in any chain send to, at their own
   amounts, for shared reverbs and delays, **groups** that send tracks on
@@ -63,7 +66,9 @@ noise --help                       # these, briefly
   program, key map or `Zxx`.
 - A **disk browser** with a preview strip: play and stop,
   autoplay on click (in the Sampler's sample list too), loop and volume.
-- Rendering the song, a block or **stems** (a file per instrument) to WAV.
+- Rendering the song, a block or **stems** (a file per instrument) to WAV;
+  **Render Track to Sample**, which plays a track's part into a new Sampler
+  and plays that in the track's place, to free the CPU or cut it up.
 - Scopes, track scopes (after a track's effects), a spectrum and a wave
   view; frames shown and hidden with arrows beside them.
 - Songs that loop, or end on an `F00`; playing from the
@@ -199,15 +204,13 @@ What noise still lacks, roughly most needed first.
 - **Per-voice Modulators**: a Modulator's Envelope, Key and Velocity
   modes move the whole module; moving each note's voice needs the DSP to
   take parameters per voice.
-- **Oversampling** in Distortion, WaveShaper, Scream Filter and the other
-  nonlinear effects, which alias at high drive now.
+- **Oversampling** in Scream Filter and the other nonlinear effects,
+  which alias at high drive now (Distortion and WaveShaper have it).
 - **Audio device settings**: picking the output (and input) device and
   the buffer size, and JACK; noise uses the default device of cpal's
   default host.
 - **Recording into the song**: the Sample Recorder makes a sample; it
   could also place it in the pattern at the line recording started.
-- **Time signatures**: patterns can be any length, but the metronome
-  accents every four beats (`BEATS_PER_BAR` in `engine/mod.rs`).
 
 ## License
 
