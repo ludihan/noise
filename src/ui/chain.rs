@@ -232,7 +232,7 @@ pub fn page(app: &mut App, ui: &mut egui::Ui, owner: impl Into<Owner>) {
                 _ => app.set_status("Too many modules"),
             }
         }
-        Some(Action::Select(m)) => app.selected_module = Some(m),
+        Some(Action::Select(m)) => app.select(Some(m)),
         Some(Action::Fold(m, on)) => {
             if on {
                 app.chain_view.folded.insert(m);
@@ -749,7 +749,7 @@ fn overview(
             if widgets::chip(ui, color, &text, app.selected_module == Some(id)).on_hover_text(tip).clicked() {
                 app.chain_view.folded.remove(&id);
                 app.chain_view.scroll_to = Some(id);
-                app.selected_module = Some(id);
+                app.select(Some(id));
             }
         };
         for (k, &id) in path.iter().enumerate() {

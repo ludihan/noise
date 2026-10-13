@@ -115,7 +115,7 @@ impl App {
             }
             Owner::Module(id) if self.project.send_track(id).is_some() => self.show_send(id),
             Owner::Module(id) => {
-                self.selected_module = Some(id);
+                self.select(Some(id));
                 self.view = View::Sampler;
                 self.sampler.synth_tab = super::sampler::SynthTab::Synth;
             }

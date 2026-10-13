@@ -228,7 +228,13 @@ pub struct App {
     pub block_loop: Option<(usize, usize, usize)>,
     pub block_size: usize,
     metronome: bool,
+    /// The module last clicked anywhere: highlighted in the mixer, the
+    /// chains and automation.
     pub selected_module: Option<u8>,
+    /// The instrument being edited, which new notes are written with: the
+    /// last one selected, or the one whose own effect was. Selecting any
+    /// other module leaves it be.
+    edited: Option<u8>,
 
     /// Keys currently held for live preview: (key, module, note).
     held: Vec<(Held, u8, u8)>,
@@ -401,6 +407,7 @@ impl App {
             block_size: 4,
             metronome: false,
             selected_module,
+            edited: selected_module,
             held: Vec::new(),
             recorded: Vec::new(),
             record_quantize: 0,
@@ -603,9 +610,23 @@ impl App {
         }
     }
 
-    /// The module new notes are written to.
+    /// Selects module `id`, and edits it if it is an instrument, or the
+    /// instrument whose chain it is in.
+    pub fn select(&mut self, id: Option<u8>) {
+        self.selected_module = id;
+        let owner = |id| match self.project.owner_of(id) {
+            Some(crate::project::Owner::Module(o)) => o,
+            _ => id,
+        };
+        match id.map(owner) {
+            Some(i) if !self.project.module(i).is_some_and(|m| m.kind.in_instrument_list()) => {}
+            i => self.edited = i,
+        }
+    }
+
+    /// The instrument being edited, which new notes are written with.
     pub fn instrument(&self) -> Option<u8> {
-        self.selected_module.filter(|id| self.project.module(*id).is_some_and(|m| m.kind.in_instrument_list()))
+        self.edited.filter(|id| self.project.module(*id).is_some_and(|m| m.kind.in_instrument_list()))
     }
 
     fn undo(&mut self) {
@@ -962,4 +983,30 @@ fn setup_style(ctx: &egui::Context) {
 /// The last part of `path`, for messages.
 fn file_name(path: &str) -> String {
     std::path::Path::new(path).file_name().map_or_else(|| path.to_string(), |n| n.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::project::Owner;
+    use egui_kittest::Harness;
+
+    #[test]
+    fn selecting_an_effect_keeps_its_instrument_in_the_editor() {
+        let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
+        let app = harness.state_mut();
+        let p = &app.project;
+        let inst = p.modules.iter().find(|m| m.kind.plays_sound() && !p.chain(m.id).effects.is_empty()).unwrap().id;
+        let fx = p.chain(inst).effects[0];
+        app.select(Some(inst));
+        app.select(Some(fx));
+        assert_eq!(app.selected_module, Some(fx));
+        assert_eq!(app.instrument(), Some(inst), "its own effect keeps it");
+        // A master effect, picked in the mixer, leaves it be.
+        let master = app.project.chain(Owner::Module(OUTPUT_ID)).effects.first().copied().unwrap_or(OUTPUT_ID);
+        app.select(Some(master));
+        assert_eq!(app.instrument(), Some(inst));
+        app.select(None);
+        assert_eq!(app.instrument(), None);
+    }
 }

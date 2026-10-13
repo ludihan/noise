@@ -121,12 +121,12 @@ fn strip(app: &mut App, ui: &mut egui::Ui, id: u8) {
     );
     let resp = resp.on_hover_text(format!("{id:02X} {}: click to select it, double-click to show its chain", m.name));
     if resp.double_clicked() {
-        app.selected_module = Some(id);
+        app.select(Some(id));
         if let Some(owner) = app.project.owner_of(id) {
             app.show_chain(owner);
         }
     } else if resp.clicked() {
-        app.selected_module = Some(id);
+        app.select(Some(id));
     }
 
     let kind = match m.kind {

@@ -218,7 +218,7 @@ fn list(app: &mut App, ui: &mut egui::Ui) {
     });
     if let Some(p) = pick {
         app.automation.selected = Some(p);
-        app.selected_module = Some(p.0);
+        app.select(Some(p.0));
     }
     let selected = app.automation.selected.filter(|s| envelopes.contains(s));
     let tip = "Remove the selected envelope from this pattern";

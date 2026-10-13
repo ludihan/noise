@@ -37,7 +37,7 @@ pub fn add(app: &mut App, kind: ModuleKind) {
             Some(target) if kind.notes_only() => app.project.connect(id, target),
             _ => app.project.connect(id, OUTPUT_ID),
         };
-        app.selected_module = Some(id);
+        app.select(Some(id));
         app.mark();
     } else {
         app.set_status("Too many modules");
@@ -67,7 +67,7 @@ fn duplicate(app: &mut App, id: u8) {
     for t in targets {
         app.project.connect(new, t);
     }
-    app.selected_module = Some(new);
+    app.select(Some(new));
     app.mark();
 }
 
@@ -80,7 +80,7 @@ fn delete(app: &mut App, id: u8) {
     }
     app.project.remove_module(id);
     let rest = instruments(app);
-    app.selected_module = rest.get(pos.min(rest.len().saturating_sub(1))).copied();
+    app.select(rest.get(pos.min(rest.len().saturating_sub(1))).copied());
     app.mark();
 }
 
@@ -95,7 +95,7 @@ pub fn step(app: &mut App, delta: i32) {
         Some(i) => (i as i32 + delta).clamp(0, list.len() as i32 - 1) as usize,
         None => 0,
     };
-    app.selected_module = Some(list[next]);
+    app.select(Some(list[next]));
 }
 
 pub fn panel(app: &mut App, ui: &mut egui::Ui) {
@@ -144,7 +144,7 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
                         }
                         continue;
                     }
-                    let selected = app.selected_module == Some(id);
+                    let selected = app.instrument() == Some(id);
                     let mut text = RichText::new(format!("{:02X}  {}", id, m.name));
                     if m.mute {
                         text = text.strikethrough();
@@ -216,14 +216,14 @@ pub fn panel(app: &mut App, ui: &mut egui::Ui) {
     });
 
     if let Some(id) = select {
-        app.selected_module = Some(id);
+        app.select(Some(id));
     }
     let Some((id, action)) = action else { return };
     match action {
         Action::StartRename => {
             let name = app.project.module(id).map(|m| m.name.clone()).unwrap_or_default();
             app.instrument_list.renaming = Some((id, name));
-            app.selected_module = Some(id);
+            app.select(Some(id));
         }
         Action::FinishRename => {
             if let Some((_, name)) = app.instrument_list.renaming.take()

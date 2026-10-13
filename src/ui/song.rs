@@ -10,7 +10,7 @@ impl App {
         let Some(&(name, make)) = DEMOS.get(i) else { return };
         self.send(Cmd::Stop);
         self.project = make();
-        self.selected_module = self.project.modules.iter().find(|m| m.kind.is_instrument()).map(|m| m.id);
+        self.select(self.project.modules.iter().find(|m| m.kind.is_instrument()).map(|m| m.id));
         self.slot = 0;
         self.cursor = Cursor::default();
         self.song_replaced();
@@ -25,7 +25,7 @@ impl App {
         self.project = Project::empty();
         let id = self.project.add_module(ModuleKind::Generator, [100.0, 100.0]).unwrap();
         self.project.connect(id, crate::project::OUTPUT_ID);
-        self.selected_module = Some(id);
+        self.select(Some(id));
         self.slot = 0;
         self.cursor = Cursor::default();
         self.song_replaced();
@@ -133,7 +133,7 @@ impl App {
                 self.project = p;
                 self.slot = 0;
                 self.cursor = Cursor::default();
-                self.selected_module = self.project.modules.iter().find(|m| m.kind.is_instrument()).map(|m| m.id);
+                self.select(self.project.modules.iter().find(|m| m.kind.is_instrument()).map(|m| m.id));
                 self.song_replaced();
                 (self.path, self.untitled) = song_location(std::path::Path::new(&path));
                 self.status = if warnings.is_empty() {

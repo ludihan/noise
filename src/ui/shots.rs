@@ -72,7 +72,7 @@ fn shots() {
         p.add_control(lfo, fx, 1);
         p.add_control(lfo, fx, 2);
         p.module_mut(lfo).unwrap().controls[1].depth = -0.6;
-        app.selected_module = Some(inst);
+        app.select(Some(inst));
         app.view = View::Sampler;
         app.sampler.synth_tab = sampler::SynthTab::Synth;
     });
@@ -85,7 +85,7 @@ fn shots() {
         p.add_control(lfo, fx, 1);
         p.add_control(lfo, fx, 2);
         p.module_mut(lfo).unwrap().controls[1].depth = -0.6;
-        app.selected_module = Some(lfo);
+        app.select(Some(lfo));
         app.show_chain(crate::project::Owner::Module(OUTPUT_ID));
         app.lower_height = 640.0;
     });
@@ -101,7 +101,7 @@ fn shots() {
         let p = &app.project;
         let sends = |id: u8| p.chain(id).effects.iter().any(|&e| p.module(e).unwrap().kind == ModuleKind::Send);
         let inst = p.modules.iter().find(|m| m.kind.plays_sound() && sends(m.id)).expect("one that sends").id;
-        app.selected_module = Some(inst);
+        app.select(Some(inst));
         app.view = View::Sampler;
         app.sampler.synth_tab = sampler::SynthTab::Synth;
     });
@@ -113,19 +113,19 @@ fn shots() {
         // The instrument's effects folded to their names.
         let fx = app.project.chain(5).effects.clone();
         app.chain_view.fold(&fx);
-        app.selected_module = Some(5);
+        app.select(Some(5));
         app.view = View::Sampler;
         app.sampler.synth_tab = sampler::SynthTab::Synth;
     });
     shot("sampler", |app| {
         // A Sampler's waveform.
         let kit = app.project.modules.iter().find(|m| m.kind == ModuleKind::Sampler).expect("a Sampler").id;
-        app.selected_module = Some(kit);
+        app.select(Some(kit));
         app.view = View::Sampler;
     });
     shot("keyzones", |app| {
         let kit = app.project.modules.iter().find(|m| m.kind == ModuleKind::Sampler).expect("a Sampler").id;
-        app.selected_module = Some(kit);
+        app.select(Some(kit));
         app.view = View::Sampler;
         app.sampler.tab = sampler::Tab::Keyzones;
     });
@@ -135,7 +135,7 @@ fn shots() {
     });
     shot("new_song", |app| {
         app.project = crate::project::Project::empty();
-        app.selected_module = None;
+        app.select(None);
         app.mark();
     });
     shot("palette", |app| {

@@ -105,7 +105,7 @@ fn commands(app: &App) -> Vec<Command> {
     for id in ids {
         let name = p.module(id).map(|m| m.name.clone()).unwrap_or_default();
         list.push(command("Instruments", format!("Edit {id:02X} {name}"), "", move |a: &mut App| {
-            a.selected_module = Some(id);
+            a.select(Some(id));
             a.view = View::Sampler;
         }));
     }
@@ -123,7 +123,7 @@ fn commands(app: &App) -> Vec<Command> {
             list.push(command("Effects", label, "", move |a: &mut App| {
                 let at = a.project.chain(inst).effects.len();
                 if let Some(new) = a.project.chain_insert(inst, at, kind) {
-                    a.selected_module = Some(new);
+                    a.select(Some(new));
                     a.view = View::Sampler;
                     a.mark();
                 }

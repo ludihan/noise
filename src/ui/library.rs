@@ -148,7 +148,7 @@ fn add(app: &mut App, preset: &InstrumentPreset) {
     let y = app.project.modules.iter().filter(|m| m.kind.is_instrument()).map(|m| m.pos[1] + 70.0).fold(20.0, f32::max);
     match preset.add_to(&mut app.project, [40.0, y]) {
         Some(id) => {
-            app.selected_module = Some(id);
+            app.select(Some(id));
             app.set_status(format!("Added the instrument {}", preset.name));
             app.mark();
         }
