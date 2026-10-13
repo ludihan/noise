@@ -880,6 +880,7 @@ pub fn editor(app: &mut App, ui: &mut egui::Ui) {
 
     let lines = app.pattern().lines;
     let lpb = app.project.lpb.max(1) as usize;
+    let bar = app.project.bar_lines();
     let layout = Layout::new(&app.project, app.pattern(), char_w);
     // A field that was hidden takes the cursor to the first one shown.
     let subs = SubColumns::of_column(&app.project, app.pattern(), app.cursor.track, app.cursor.column);
@@ -1020,7 +1021,7 @@ pub fn editor(app: &mut App, ui: &mut egui::Ui) {
                 theme::PAT_PLAY_ROW
             } else if line == cur.line {
                 if app.edit_mode { theme::PAT_CURSOR_ROW_EDIT } else { theme::PAT_CURSOR_ROW }
-            } else if line % (lpb * 4) == 0 {
+            } else if line % bar == 0 {
                 theme::PAT_BAR
             } else if line % lpb == 0 {
                 theme::PAT_BEAT
@@ -1091,7 +1092,7 @@ pub fn editor(app: &mut App, ui: &mut egui::Ui) {
             let other = &app.project.patterns[app.project.order[s].pattern];
             let y = center_top + (l as f32 - cur.line as f32) * row_h;
             let row = Rect::from_min_size(Pos2::new(rect.left(), y), Vec2::new(width, row_h));
-            let bg = if line % (lpb * 4) == 0 {
+            let bg = if line % bar == 0 {
                 theme::PAT_BAR
             } else if line % lpb == 0 {
                 theme::PAT_BEAT

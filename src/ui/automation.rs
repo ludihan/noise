@@ -513,10 +513,11 @@ fn editor(app: &mut App, ui: &mut egui::Ui) {
 /// at five heights.
 fn grid(app: &App, painter: &egui::Painter, graph: Rect, spec: &ParamSpec, start: f32, lines: f32) {
     let lpb = app.project.lpb.max(1) as usize;
+    let bar_lines = app.project.bar_lines();
     let font = FontId::monospace(9.5);
     for l in (0..=lines as usize).step_by(lpb) {
         let x = graph.left() + l as f32 / lines * graph.width();
-        let bar = l % (lpb * 4) == 0;
+        let bar = l % bar_lines == 0;
         let color = Color32::from_gray(if bar { 52 } else { 32 });
         painter.line_segment([Pos2::new(x, graph.top()), Pos2::new(x, graph.bottom())], (1.0, color));
         if bar {

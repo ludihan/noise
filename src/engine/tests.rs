@@ -154,6 +154,21 @@ fn metronome_clicks_on_beats() {
     assert!(loudness(&out[beat / 2..beat]) < 0.001, "silent between beats");
     assert!(loudness(&out[beat..beat + 200]) > 0.2, "click on the second beat");
 
+    // In 3/4 the first beat of every three is the high one.
+    let mut p = Project::empty();
+    p.bpm = 120.0;
+    p.beats_per_bar = 3;
+    let mut e = engine(p);
+    e.handle(Cmd::Metronome(true));
+    e.play_song();
+    let mut pitches = Vec::new();
+    for _ in 0..7 {
+        render(&mut e, 64);
+        pitches.push(e.click.map_or(0.0, |c| c.1));
+        render(&mut e, beat - 64);
+    }
+    assert_eq!(pitches, [1760.0, 880.0, 880.0, 1760.0, 880.0, 880.0, 1760.0]);
+
     // Off, an empty song is silent.
     let mut e = engine(Project::empty());
     e.play_song();

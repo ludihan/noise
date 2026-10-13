@@ -143,6 +143,13 @@ impl App {
                     self.project.lpb = lpb;
                     self.mark();
                 }
+                transport_label(ui, "BEATS");
+                let mut beats = self.project.beats_per_bar;
+                let tip = "Beats per bar: 4 for 4/4, 3 for 3/4, 7 for 7/8; the metronome accents each bar's first";
+                if field(ui, 30.0, egui::DragValue::new(&mut beats).range(1..=16)).on_hover_text(tip).changed() {
+                    self.project.beats_per_bar = beats;
+                    self.mark();
+                }
                 transport_label(ui, "TPL");
                 let mut tpl = self.project.tpl;
                 let tip = "Ticks per line: the steps effects take within a line";

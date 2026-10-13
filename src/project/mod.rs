@@ -55,6 +55,14 @@ fn yes() -> bool {
     true
 }
 
+fn default_beats_per_bar() -> u32 {
+    4
+}
+
+fn is_four(v: &u32) -> bool {
+    *v == 4
+}
+
 fn default_tpl() -> u32 {
     6
 }
@@ -213,6 +221,10 @@ pub struct Project {
     /// Ticks per line: the steps effects take within a line.
     #[serde(default = "default_tpl")]
     pub tpl: u32,
+    /// Beats in a bar: the time signature's upper figure, for the
+    /// metronome's accent and the bar lines.
+    #[serde(default = "default_beats_per_bar", skip_serializing_if = "is_four")]
+    pub beats_per_bar: u32,
     /// Swing, the groove: every odd line starts this much of half
     /// a line late, 0..1.
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -256,6 +268,7 @@ impl Project {
             bpm: 125.0,
             lpb: 4,
             tpl: default_tpl(),
+            beats_per_bar: default_beats_per_bar(),
             groove: 0.0,
             loop_song: true,
             patterns: vec![Pattern::new("", 4, 64)],
@@ -1137,6 +1150,11 @@ impl Project {
         song
     }
 
+    /// Lines in a bar.
+    pub fn bar_lines(&self) -> usize {
+        (self.lpb.max(1) * self.beats_per_bar.max(1)) as usize
+    }
+
     pub fn track_name(&self, track: usize) -> String {
         match self.tracks.get(track) {
             Some(t) if !t.name.is_empty() => t.name.clone(),
@@ -1241,6 +1259,7 @@ impl Project {
         // Normalize anything a hand-edited file might get wrong.
         p.bpm = p.bpm.clamp(20.0, 999.0);
         p.lpb = p.lpb.clamp(1, 32);
+        p.beats_per_bar = p.beats_per_bar.clamp(1, 16);
         p.tpl = p.tpl.clamp(1, 16);
         p.groove = p.groove.clamp(0.0, 1.0);
         p.tracks.resize(MAX_TRACKS, Track::default());

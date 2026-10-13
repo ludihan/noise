@@ -49,7 +49,7 @@ impl Engine {
             self.wait = 0;
             let lpb = self.project.lpb.max(1) as usize;
             if self.metronome && self.pos_line.is_multiple_of(lpb) {
-                let accent = self.pos_line.is_multiple_of(lpb * BEATS_PER_BAR);
+                let accent = self.pos_line.is_multiple_of(self.project.bar_lines());
                 self.click = Some((0.0, if accent { 1760.0 } else { 880.0 }));
             }
         }

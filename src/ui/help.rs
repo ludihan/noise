@@ -252,7 +252,7 @@ const TOPICS: &[Topic] = &[
             ),
             H("Transport"),
             List(&[
-                "BPM, LPB (lines per beat) and TPL (ticks per line: the steps effects take within a line).",
+                "BPM, LPB (lines per beat), BEATS (beats per bar, the time signature: the bar lines in the pattern and the metronome's high click follow it) and TPL (ticks per line: the steps effects take within a line).",
                 "SWING, the groove: every odd line starts up to half a line late, while the even lines stay on time. Double-click it for none.",
                 "The song starts again after its last slot. An F00 effect ends it instead: playing stops after that line and lets the last notes ring out, and the next play starts from the top; the demo songs end that way. Renders stop at the end of the song either way.",
                 "OCT, STEP (lines the cursor moves after a note) and VOL, the volume written with the notes you enter (-- writes none).",

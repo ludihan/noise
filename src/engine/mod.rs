@@ -32,8 +32,6 @@ use track::*;
 const BLOCK: usize = dsp::MAX_BLOCK;
 /// Frames of each track's scope.
 pub const TRACK_SCOPE_LEN: usize = 512;
-/// Beats in a bar, for the metronome's accent.
-const BEATS_PER_BAR: usize = 4;
 /// Frames of output kept for the scope and the spectrum analyzer.
 pub const SCOPE_LEN: usize = 4096;
 /// Playheads published at most, so the audio thread never allocates for them.
