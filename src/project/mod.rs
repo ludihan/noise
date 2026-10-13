@@ -85,6 +85,15 @@ impl Slot {
             self.muted ^= 1 << track;
         }
     }
+
+    /// Moves the mutes of tracks from `track` on one place along, `by` 1 when
+    /// a track is put in there or -1 when it is taken out.
+    fn shift_mutes(&mut self, track: usize, by: i32) {
+        let muted = self.muted as u64;
+        let before = muted & ((1u64 << track) - 1);
+        let after = if by > 0 { (muted >> track) << (track + 1) } else { (muted >> (track + 1)) << track };
+        self.muted = ((before | after) & ((1u64 << MAX_TRACKS) - 1)) as u32;
+    }
 }
 
 /// A slot in a song file: just the pattern number when nothing is muted,
@@ -1154,6 +1163,9 @@ impl Project {
         for t in &mut self.tracks {
             t.group = t.group.map(|g| if g >= track { g + 1 } else { g }).filter(|&g| g < MAX_TRACKS);
         }
+        for slot in &mut self.order {
+            slot.shift_mutes(track, 1);
+        }
         self.renumber_homes(|t| Some(if t >= track { t + 1 } else { t }).filter(|&t| t < MAX_TRACKS));
         true
     }
@@ -1186,6 +1198,9 @@ impl Project {
                     Some(g) if g > track => Some(g - 1),
                     g => g,
                 };
+            }
+            for slot in &mut self.order {
+                slot.shift_mutes(track, -1);
             }
             // Modulators added on it have no place of their own any more.
             self.renumber_homes(|t| match t {

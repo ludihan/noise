@@ -53,10 +53,12 @@ fn tracks_move_with_their_settings() {
     let mut p = Project::simple();
     p.tracks[1].name = "Hats".into();
     p.tracks[2].mute = true;
+    p.order[0].muted = 1 << 2;
     let hats = p.patterns[1].tracks[1].clone();
     assert!(p.insert_track(1, 0));
     assert_eq!(p.tracks[2].name, "Hats");
     assert!(p.tracks[3].mute);
+    assert_eq!(p.order[0].muted, 1 << 3, "the matrix's mutes move too");
     assert_eq!(p.patterns[1].tracks[2], hats);
     assert_eq!(p.patterns[1].num_tracks(), 5);
     // After the last track, only the pattern being edited grows.
@@ -65,6 +67,7 @@ fn tracks_move_with_their_settings() {
     p.remove_track(5);
     p.remove_track(1);
     assert_eq!(p.track_name(1), "Hats");
+    assert_eq!(p.order[0].muted, 1 << 2);
     assert_eq!(p.track_name(MAX_TRACKS - 1), format!("Track {MAX_TRACKS}"), "a fresh track at the end");
     assert_eq!(p.patterns[1].tracks[1], hats);
     assert_eq!(p.tracks.len(), MAX_TRACKS);
