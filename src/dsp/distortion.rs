@@ -12,13 +12,33 @@ const BUTTERWORTH_8: [f32; 4] = [0.5098, 0.6013, 0.9000, 2.5629];
 /// past the top of hearing are filtered off there, rather than folding
 /// back down as aliasing. The sound is stuffed with zeros up to the
 /// higher rate and smoothed by a lowpass, bent, and lowpassed again
-/// before every so many samples are kept.
+/// before every so many samples are kept. The sound left unbent goes
+/// through filters of its own, so that it is as late as the bent sound
+/// it is mixed with, rather than cancelling it in the highs.
 #[derive(Default)]
 pub(super) struct Oversampler {
-    up: [Biquad; 4],
-    down: [Biquad; 4],
+    /// The lowpass up, then the one down, of the bent sound and of the
+    /// sound as it was.
+    wet: [Biquad; 8],
+    dry: [Biquad; 8],
     /// The factor and sample rate the filters are made for.
     made: (usize, f32),
+}
+
+/// `x` stuffed with zeros up to `factor` times the rate, through the
+/// first half of `filters`, `curve` and the second half, every `factor`th
+/// sample kept.
+fn oversample(filters: &mut [Biquad; 8], factor: usize, ch: usize, x: f32, curve: impl Fn(f32) -> f32) -> f32 {
+    if factor <= 1 {
+        return curve(x);
+    }
+    let (up, down) = filters.split_at_mut(4);
+    let mut y = 0.0;
+    for k in 0..factor {
+        let stuffed = if k == 0 { x * factor as f32 } else { 0.0 };
+        y = through(down, ch, curve(through(up, ch, stuffed)));
+    }
+    y
 }
 
 impl Oversampler {
@@ -28,7 +48,7 @@ impl Oversampler {
     }
 
     pub(super) fn reset(&mut self) {
-        self.up.iter_mut().chain(&mut self.down).for_each(Biquad::clear);
+        self.wet.iter_mut().chain(&mut self.dry).for_each(Biquad::clear);
     }
 
     /// Makes the filters for running `factor` times sample rate `sr`.
@@ -37,7 +57,7 @@ impl Oversampler {
             return;
         }
         self.made = (factor, sr);
-        for (b, &q) in self.up.iter_mut().chain(&mut self.down).zip(BUTTERWORTH_8.iter().cycle()) {
+        for (b, &q) in self.wet.iter_mut().chain(&mut self.dry).zip(BUTTERWORTH_8.iter().cycle()) {
             b.rbj(Shape::Lowpass, sr * 0.42, q, 1.0, sr * factor as f32);
         }
         self.reset();
@@ -46,16 +66,13 @@ impl Oversampler {
     /// Channel `ch`'s `x` through `curve`, at the factor `prepare` made
     /// the filters for.
     pub(super) fn run(&mut self, ch: usize, x: f32, curve: impl Fn(f32) -> f32) -> f32 {
-        let factor = self.made.0;
-        if factor <= 1 {
-            return curve(x);
-        }
-        let mut y = 0.0;
-        for k in 0..factor {
-            let stuffed = if k == 0 { x * factor as f32 } else { 0.0 };
-            y = through(&mut self.down, ch, curve(through(&mut self.up, ch, stuffed)));
-        }
-        y
+        oversample(&mut self.wet, self.made.0, ch, x, curve)
+    }
+
+    /// Channel `ch`'s `x` unbent, as late as `run` makes what it bends,
+    /// to mix with it.
+    pub(super) fn dry(&mut self, ch: usize, x: f32) -> f32 {
+        oversample(&mut self.dry, self.made.0, ch, x, |x| x)
     }
 }
 
@@ -108,7 +125,7 @@ impl Dsp for Distortion {
                     wet = (wet * steps).round() / steps;
                 }
                 self.lp[ch] += coef * (wet - self.lp[ch]);
-                o[ch] = i[ch] * (1.0 - mix) + self.lp[ch] * mix * 0.7;
+                o[ch] = self.oversampler.dry(ch, i[ch]) * (1.0 - mix) + self.lp[ch] * mix * 0.7;
             }
         }
     }
@@ -151,7 +168,7 @@ impl Dsp for WaveShaper {
         for (o, i) in out.iter_mut().zip(input) {
             for ch in 0..2 {
                 let wet = self.oversampler.run(ch, i[ch] * gain, |x| shape(points, symmetric, x)) * level;
-                o[ch] = i[ch] * (1.0 - mix) + wet * mix;
+                o[ch] = self.oversampler.dry(ch, i[ch]) * (1.0 - mix) + wet * mix;
             }
         }
     }

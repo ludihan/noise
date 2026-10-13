@@ -1223,3 +1223,30 @@ fn oversampling_keeps_overtones_from_folding_back_as_aliasing() {
         assert!((tone_on / tone_off - 1.0).abs() < 0.1, "{}: the tone stays: {tone_off} {tone_on}", kind.name());
     }
 }
+
+#[test]
+fn oversampling_keeps_the_mix_with_the_sound_as_it_was_in_time() {
+    // Half bent, half as it was, barely driven: the highs come through as
+    // loud as without oversampling, rather than cancelling out.
+    let sr = 48000.0;
+    for kind in [ModuleKind::Distortion, ModuleKind::WaveShaper] {
+        let names: Vec<&str> = kind.params().iter().map(|p| p.name).collect();
+        let at = |name: &str| names.iter().position(|&n| n == name).unwrap();
+        for freq in [1000.0, 5000.0, 10000.0] {
+            let level = |factor: f32| {
+                let ctx = Ctx { sr, samples_per_line: 6000.0, song_line: None };
+                let mut params: Vec<f32> = kind.params().iter().map(|p| p.default).collect();
+                (params[at("Oversample")], params[at("Mix")]) = (factor, 0.5);
+                if kind == ModuleKind::Distortion {
+                    (params[0], params[1]) = (1.0, 1.0);
+                }
+                let input: Vec<Frame> = (0..48000).map(|i| [0.05 * (TAU * freq * i as f32 / sr).sin(); 2]).collect();
+                let mut out = vec![[0.0; 2]; input.len()];
+                create(kind, sr).process(&ctx, &params, &input, &mut out);
+                level_at(&out[4800..], freq, sr)
+            };
+            let (off, on) = (level(0.0), level(1.0));
+            assert!((on / off - 1.0).abs() < 0.1, "{} at {freq} Hz: {off} without, {on} with", kind.name());
+        }
+    }
+}
