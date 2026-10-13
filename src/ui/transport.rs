@@ -175,7 +175,8 @@ impl App {
                 let tip = "The song's key and scale: notes you type snap to it, and the pattern dims notes outside it";
                 let mut scale = self.project.scale;
                 widgets::field_menu(ui, &scale.name(), |ui| {
-                    // The key stays open to pick; a scale closes the menu.
+                    // Stays open to pick the key and the scale in either order;
+                    // Chromatic, which has no key, closes it.
                     ui.add_enabled_ui(!scale.is_chromatic(), |ui| {
                         ui.label(RichText::new("Key").small().color(theme::TEXT_WEAK));
                         ui.horizontal_wrapped(|ui| {
@@ -191,7 +192,9 @@ impl App {
                     for (kind, (name, _)) in SCALES.iter().enumerate() {
                         if ui.add(egui::Button::selectable(scale.kind == kind, *name)).clicked() {
                             scale.kind = kind;
-                            ui.close();
+                            if scale.is_chromatic() {
+                                ui.close();
+                            }
                         }
                     }
                 })
