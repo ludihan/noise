@@ -606,11 +606,15 @@ impl App {
         }
     }
 
+    /// Lets go of what `key` plays; a note another key still holds, as
+    /// two chords or two keys snapped to one note may, plays on.
     pub fn preview_off(&mut self, key: Held) {
         pattern::record_release(self, key);
         while let Some(i) = self.held.iter().position(|h| h.0 == key) {
             let (_, module, note) = self.held.remove(i);
-            self.send(Cmd::NoteOff { module, key: LIVE_KEY + note as u32 });
+            if !self.held.iter().any(|h| (h.1, h.2) == (module, note)) {
+                self.send(Cmd::NoteOff { module, key: LIVE_KEY + note as u32 });
+            }
         }
     }
 
@@ -1007,6 +1011,28 @@ mod tests {
     use super::*;
     use crate::project::Owner;
     use egui_kittest::Harness;
+
+    #[test]
+    fn a_note_two_keys_play_stops_when_both_are_let_go() {
+        let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
+        let app = harness.state_mut();
+        let (tx, rx) = mpsc::channel();
+        app.tx = tx;
+        // Two chords sharing E and G.
+        let (c, e) = (Held::Key(egui::Key::Z), Held::Key(egui::Key::C));
+        app.preview_on(c, 1, &[60, 64, 67], 1.0);
+        app.preview_on(e, 1, &[64, 67, 71], 1.0);
+        let offs = |rx: &Receiver<Cmd>| -> Vec<u32> {
+            rx.try_iter()
+                .filter_map(|cmd| if let Cmd::NoteOff { key, .. } = cmd { Some(key - LIVE_KEY) } else { None })
+                .collect()
+        };
+        offs(&rx);
+        app.preview_off(c);
+        assert_eq!(offs(&rx), [60], "E and G play on");
+        app.preview_off(e);
+        assert_eq!(offs(&rx), [64, 67, 71]);
+    }
 
     #[test]
     fn selecting_an_effect_keeps_its_instrument_in_the_editor() {
