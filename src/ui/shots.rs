@@ -4,7 +4,7 @@
 //! or where `NOISE_SHOTS` says.
 
 use super::{App, View, sampler};
-use crate::project::{ModuleKind, OUTPUT_ID};
+use crate::project::ModuleKind;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
 use std::path::PathBuf;
@@ -134,8 +134,8 @@ fn shots() {
         app.sampler.synth_tab = sampler::SynthTab::Synth;
     });
     shot_at("modulator", [1400.0, 1300.0], |app| {
-        // A Modulator moving two parameters of an effect, selected, on the
-        // master chain.
+        // A Modulator moving two parameters of an effect, selected, in the
+        // chain of that effect.
         let p = &mut app.project;
         let fx = p.modules.iter().find(|m| m.kind == ModuleKind::Distortion).expect("a Distortion").id;
         let lfo = p.add_module(ModuleKind::Modulator, [0.0, 0.0]).unwrap();
@@ -143,7 +143,8 @@ fn shots() {
         p.add_control(lfo, fx, 2);
         p.module_mut(lfo).unwrap().controls[1].depth = -0.6;
         app.select(Some(lfo));
-        app.show_chain(crate::project::Owner::Module(OUTPUT_ID));
+        app.chain_view.reveal(lfo);
+        app.show_chain(app.project.owner_of(fx).expect("the Distortion in a chain"));
         app.lower_height = 640.0;
     });
     shot("send_track", |app| {
