@@ -217,6 +217,9 @@ fn doc_shot(name: &str, at: (&str, usize), setup: impl FnOnce(&mut App)) {
     app.scope_view = super::ScopeView::Tracks;
     (app.slot, app.cursor.line) = (slot_of(app, at.0), 0);
     setup(app);
+    // The song goes to the engine first, or it plays the one it had.
+    harness.step();
+    let app = harness.state_mut();
     app.toggle_play();
     let until = (app.slot, at.1);
     let start = std::time::Instant::now();
