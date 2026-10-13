@@ -270,7 +270,7 @@ pub fn export_wav(
 }
 
 /// Renders each instrument of the song to its own file: the instrument
-/// soloed, with its own effects and its share of the effects it feeds.
+/// soloed, with its own effects and what its Sends send to send tracks.
 /// The files are named after `path`, with the instrument's number and
 /// name, and are all as long as the song, so they line up. Returns the
 /// files written, and whether all of them were (`Done`), `going` stopped

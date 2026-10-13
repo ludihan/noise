@@ -254,7 +254,7 @@ const TOPICS: &[Topic] = &[
             List(&[
                 "BPM, LPB (lines per beat) and TPL (ticks per line: the steps effects take within a line).",
                 "SWING, the groove: every odd line starts up to half a line late, while the even lines stay on time. Double-click it for none.",
-                "The song starts again after its last slot. An F00 effect ends it instead: playing stops after that line and lets the last notes ring out, and the next play starts from the top; the demo song ends that way. Renders stop at the end of the song either way.",
+                "The song starts again after its last slot. An F00 effect ends it instead: playing stops after that line and lets the last notes ring out, and the next play starts from the top; the demo songs end that way. Renders stop at the end of the song either way.",
                 "OCT, STEP (lines the cursor moves after a note) and VOL, the volume written with the notes you enter (-- writes none).",
                 "Metronome clicks every beat while playing; Panic silences everything.",
                 "MASTER, on the right, is the volume of everything: drag it (Shift for fine steps), double-click it for its default.",
@@ -285,10 +285,10 @@ const TOPICS: &[Topic] = &[
                 "File > Export Project… writes the song and every sample it plays to a .noise file, to share or move: a zip archive of its project folder. File > Import Project…, Open, or a double-click in the disk browser's Songs unpacks one into a project folder beside it, named after the project (with a number if that name is taken), and opens it. Only the song and its samples come out of it, and nothing in it can reach outside that folder.",
             ),
             P(
-                "File > Render to WAV… and Render Stems… first ask for the sample rate (the sound device's, or 22.05 to 96 kHz) and the format: 16 or 24 bit, dithered, or 32 bit float, which keeps peaks over 0 dB. The choice is remembered. Render Stems… renders each instrument to a WAV file of its own, soloed with its effects and its share of shared ones, all as long as the song, named after the file picked with the instrument's number and name. Renders, exports, imports, opening and saving songs and backups run in the background: the status bar shows each and how far it has got, with Cancel for renders, and the window keeps working meanwhile; closing the window waits for them to finish. Renders are written to the file as they go, so a long song needs no more memory than a short one; a song that never ends (one that jumps back on itself, say) is cut off after four hours.",
+                "File > Render to WAV… and Render Stems… first ask for the sample rate (the sound device's, or 22.05 to 96 kHz) and the format: 16 or 24 bit, dithered, or 32 bit float, which keeps peaks over 0 dB. The choice is remembered. Render Stems… renders each instrument to a WAV file of its own, soloed with its effects and what its Sends send to send tracks, all as long as the song, named after the file picked with the instrument's number and name. Renders, exports, imports, opening and saving songs and backups run in the background: the status bar shows each and how far it has got, with Cancel for renders, and the window keeps working meanwhile; closing the window waits for them to finish. Renders are written to the file as they go, so a long song needs no more memory than a short one; a song that never ends (one that jumps back on itself, say) is cut off after four hours.",
             ),
             P(
-                "From a terminal: noise song.json opens a song, noise --export song.json out.wav renders one without a window.",
+                "From a terminal: noise \"My Song\" opens a project folder (or a song file, or a .noise file, which it imports first), and noise --export \"My Song\" out.wav renders one to WAV without a window.",
             ),
             H("Preferences"),
             P(
