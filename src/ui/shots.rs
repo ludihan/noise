@@ -71,6 +71,17 @@ fn shots() {
     factory_menu_shot();
     shot("pattern", |_| {});
     shot("mixer", |app| app.view = View::Mixer);
+    shot("mixer_long_chain", |app| {
+        // A chain longer than a strip lists, one of its effects switched off.
+        let inst = app.project.modules.iter().find(|m| m.kind == ModuleKind::Sampler).expect("a Sampler").id;
+        for _ in 0..4 {
+            let at = app.project.chain(inst).effects.len();
+            app.project.chain_insert(inst, at, ModuleKind::Eq);
+        }
+        let fx = app.project.chain(inst).effects[1];
+        app.project.module_mut(fx).unwrap().bypass = true;
+        app.view = View::Mixer;
+    });
     shot("neighbours", |app| {
         // Near the top of Storm 2: Storm's end shows above.
         app.cursor.line = 3;

@@ -3,7 +3,7 @@
 
 use super::theme;
 use crate::project::ParamSpec;
-use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Response, Sense, Shape, Stroke, StrokeKind, Ui, Vec2};
+use eframe::egui::{self, Color32, FontId, Pos2, Rect, Response, Sense, Shape, Stroke, StrokeKind, Ui, Vec2};
 
 const BAR_H: f32 = 18.0;
 
@@ -100,17 +100,15 @@ fn draw(ui: &Ui, rect: Rect, resp: &Response, spec: &ParamSpec, name: &str, valu
     }
     let line = if hot { Color32::from_gray(110) } else { theme::FRAME_LINE };
     painter.rect_stroke(rect, 2.0, Stroke::new(1.0, line), StrokeKind::Inside);
-    let font = FontId::proportional(12.0);
-    painter.text(Pos2::new(rect.left() + 6.0, y), Align2::LEFT_CENTER, name, font, theme::TEXT);
     let right = if spec.choices.is_empty() { 6.0 } else { 18.0 };
-    let value_font = FontId::monospace(11.5);
-    painter.text(
-        Pos2::new(rect.right() - right, y),
-        Align2::RIGHT_CENTER,
-        spec.format(value),
-        value_font,
-        Color32::WHITE,
-    );
+    let value = painter.layout_no_wrap(spec.format(value), FontId::monospace(11.5), Color32::WHITE);
+    let label = painter.layout_no_wrap(name.to_string(), FontId::proportional(12.0), theme::TEXT);
+    // A bar too narrow for both shows only the value.
+    if label.size().x + value.size().x + 2.0 <= rect.width() - 6.0 - right {
+        painter.galley(Pos2::new(rect.left() + 6.0, y - label.size().y / 2.0), label, theme::TEXT);
+    }
+    let at = Pos2::new(rect.right() - right - value.size().x, y - value.size().y / 2.0);
+    painter.galley(at, value, Color32::WHITE);
 }
 
 /// A chip in `color` with `text`: lit when `on`, dim otherwise.

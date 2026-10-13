@@ -43,7 +43,7 @@ noise --help                       # these, briefly
   another module's sound as its key input.
 - **Pattern sequencer and matrix** with per-slot mutes, block copying and
   sections, drag and drop and a right-click menu for slots; a **mixer**
-  strip for every instrument, effect and send track; **automation** envelopes from one line to another
+  strip for every instrument and send track, listing its effects; **automation** envelopes from one line to another
   or repeating every so many beats, picked from a filtered parameter
   browser, with LFO shapes drawn in, points picked and moved together,
   invert, reverse, thin out and copy and paste; eight **macros** an

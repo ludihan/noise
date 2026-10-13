@@ -1,12 +1,19 @@
 //! The mixer. Audio flows through modules here rather than
-//! tracks, so every module gets a channel strip, with the output as the
-//! master strip on the right.
+//! tracks, so every instrument and send track gets a channel strip listing
+//! the effects of its chain, with the output as the master strip on the
+//! right.
 
 use super::{App, modules, theme, widgets};
 use crate::project::{MIXER_PAN, ModuleKind, OUTPUT_ID, Owner};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Vec2};
 
+/// Strip width when they all fit, and the narrowest they get before the
+/// mixer scrolls.
 const STRIP_W: f32 = 96.0;
+const STRIP_MIN_W: f32 = 80.0;
+/// The most effects a strip lists, and the height of each.
+const MAX_DEVICES: usize = 6;
+const DEVICE_H: f32 = 16.0;
 /// The marks on the scale between fader and meters, in dB.
 const MARKS: [f32; 6] = [6.0, 0.0, -6.0, -12.0, -24.0, -48.0];
 
@@ -47,9 +54,20 @@ fn sections(app: &App) -> [(&'static str, &'static str, Vec<u8>); 3] {
     ]
 }
 
+/// The effects strip `id` lists: its chain's, for an instrument, a send
+/// track or the master; none for an effect, which is in one.
+fn devices(app: &App, id: u8) -> Vec<u8> {
+    let p = &app.project;
+    match p.module(id) {
+        Some(m) if m.kind.is_effect() => Vec::new(),
+        Some(_) => p.chain(id).effects,
+        None => Vec::new(),
+    }
+}
+
 pub fn view(app: &mut App, ui: &mut egui::Ui) {
     let effects_id = egui::Id::new("mixer_effects");
-    let mut show_effects = ui.data(|d| d.get_temp(effects_id)).unwrap_or(true);
+    let mut show_effects = ui.data(|d| d.get_temp(effects_id)).unwrap_or(false);
     ui.horizontal(|ui| {
         theme::caption(ui, "MIXER");
         let help = "Click a name to select it, double-click to show its chain; double-click a fader to reset it.";
@@ -62,24 +80,36 @@ pub fn view(app: &mut App, ui: &mut egui::Ui) {
         });
     });
     ui.data_mut(|d| d.insert_temp(effects_id, show_effects));
-    let sections = sections(app);
+    let mut sections = sections(app);
+    if !show_effects {
+        sections[1].2.clear();
+    }
+    let shown: Vec<u8> = sections.iter().flat_map(|s| s.2.iter().copied()).collect();
+    // Every strip lists as many effects as the longest chain, so that the
+    // faders line up, and gives up rows before the faders get short.
+    let longest = shown.iter().chain([&OUTPUT_ID]).map(|&id| devices(app, id).len()).max().unwrap_or(0);
+    let rows = longest.min(MAX_DEVICES).min(((ui.available_height() - 320.0) / DEVICE_H).max(0.0) as usize);
     // The master stays on the right, however far the rest scrolls.
     let master_w = STRIP_W + 14.0;
     ui.horizontal_top(|ui| {
         let h = ui.available_height();
         let w = (ui.available_width() - master_w).max(STRIP_W);
+        // Narrower strips before scrolling, when there are many.
+        let gap = ui.spacing().item_spacing.x;
+        let gaps = shown.len() as f32 * gap + sections.iter().filter(|s| !s.2.is_empty()).count() as f32 * 10.0;
+        let strip_w = ((w - gaps) / shown.len().max(1) as f32).clamp(STRIP_MIN_W, STRIP_W);
         ui.allocate_ui(Vec2::new(w, h), |ui| {
             egui::ScrollArea::horizontal().auto_shrink(false).show(ui, |ui| {
                 ui.horizontal_top(|ui| {
                     for (title, tip, ids) in sections {
-                        if ids.is_empty() || (title == "EFFECTS" && !show_effects) {
+                        if ids.is_empty() {
                             continue;
                         }
                         ui.vertical(|ui| {
                             ui.label(RichText::new(title).small().color(theme::TEXT_WEAK)).on_hover_text(tip);
                             ui.horizontal_top(|ui| {
                                 for id in ids {
-                                    strip(app, ui, id);
+                                    strip(app, ui, id, strip_w, rows);
                                 }
                             });
                         });
@@ -91,14 +121,78 @@ pub fn view(app: &mut App, ui: &mut egui::Ui) {
         ui.separator();
         ui.vertical(|ui| {
             ui.label(RichText::new("MASTER").small().color(theme::TEXT_WEAK));
-            strip(app, ui, OUTPUT_ID);
+            strip(app, ui, OUTPUT_ID, STRIP_W, rows);
         });
     });
 }
 
-fn strip(app: &mut App, ui: &mut egui::Ui, id: u8) {
+/// The effects of a strip's chain, `rows` high: each on its color, dull
+/// when off, with a light that switches it on and off; past `rows` the
+/// last says how many more.
+fn device_list(app: &mut App, ui: &mut egui::Ui, ids: &[u8], rows: usize) {
+    let (area, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), rows as f32 * DEVICE_H), Sense::hover());
+    let row = |k: usize| {
+        Rect::from_min_size(area.min + Vec2::new(0.0, k as f32 * DEVICE_H), Vec2::new(area.width(), DEVICE_H))
+    };
+    let fit = if ids.len() > rows { rows - 1 } else { ids.len() };
+    for (k, &id) in ids[..fit].iter().enumerate() {
+        let Some(m) = app.project.module(id).cloned() else { continue };
+        let row = row(k).shrink2(Vec2::new(0.0, 1.0));
+        let light = Rect::from_center_size(row.left_center() + Vec2::new(7.0, 0.0), Vec2::splat(8.0));
+        let resp = ui.interact(row, ui.id().with(("device", id)), Sense::click());
+        let switch = ui.interact(light.expand(3.0), ui.id().with(("bypass", id)), Sense::click());
+        let off = m.mute || m.bypass;
+        let selected = app.selected_module == Some(id);
+        let color = if off { Color32::from_gray(80) } else { modules::module_color(&m) };
+        let fill = if selected { color } else { color.gamma_multiply(if resp.hovered() { 0.5 } else { 0.3 }) };
+        let painter = ui.painter();
+        painter.rect_filled(row, 2.0, fill);
+        painter.rect_filled(light, 1.0, if m.bypass { theme::INSET } else { theme::SCOPE });
+        let text = if selected { theme::SELECTED_TEXT } else { theme::TEXT };
+        painter.with_clip_rect(row.shrink(1.0)).text(
+            Pos2::new(light.right() + 4.0, row.center().y),
+            Align2::LEFT_CENTER,
+            &m.name,
+            FontId::proportional(11.0),
+            text,
+        );
+        let (state, other) = if m.bypass { ("off", "on") } else { ("on", "off") };
+        let tip = format!("{id:02X} {} · {}, {state}", m.name, m.kind.name());
+        if switch.on_hover_text(format!("{tip}: click to switch it {other}")).clicked() {
+            app.project.module_mut(id).unwrap().bypass = !m.bypass;
+            app.mark();
+            continue;
+        }
+        let resp = resp.on_hover_text(format!("{tip}: click to select it, double-click to show it in its chain"));
+        if resp.double_clicked() {
+            reveal(app, id);
+        } else if resp.clicked() {
+            app.select(Some(id));
+        }
+    }
+    if fit < ids.len() {
+        let row = row(fit);
+        let resp = ui.interact(row, ui.id().with("more"), Sense::click());
+        let more = format!("+{} more", ids.len() - fit);
+        ui.painter().text(row.center(), Align2::CENTER_CENTER, more, FontId::proportional(11.0), theme::TEXT_WEAK);
+        if resp.on_hover_text("Click to show the whole chain").clicked() {
+            reveal(app, ids[fit]);
+        }
+    }
+}
+
+/// Selects module `id` and shows the chain it is in, scrolled to it.
+fn reveal(app: &mut App, id: u8) {
+    app.select(Some(id));
+    app.chain_view.reveal(id);
+    if let Some(owner) = app.project.owner_of(id) {
+        app.show_chain(owner);
+    }
+}
+
+fn strip(app: &mut App, ui: &mut egui::Ui, id: u8, w: f32, rows: usize) {
     let Some(m) = app.project.module(id).cloned() else { return };
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(STRIP_W, ui.available_height()), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, ui.available_height()), Sense::hover());
     let selected = app.selected_module == Some(id);
     let edge = if selected { theme::SELECTED } else { theme::FRAME_LINE };
     ui.painter().rect(rect, 3.0, theme::FRAME_BG, Stroke::new(1.0, edge), StrokeKind::Inside);
@@ -119,7 +213,13 @@ fn strip(app: &mut App, ui: &mut egui::Ui, id: u8) {
         FontId::proportional(12.0),
         theme::SELECTED_TEXT,
     );
-    let resp = resp.on_hover_text(format!("{id:02X} {}: click to select it, double-click to show its chain", m.name));
+    let kind = match m.kind {
+        ModuleKind::Output => "Master",
+        ModuleKind::Return => "Send track",
+        kind => kind.name(),
+    };
+    let tip = format!("{id:02X} {} · {kind}: click to select it, double-click to show its chain", m.name);
+    let resp = resp.on_hover_text(tip);
     if resp.double_clicked() {
         app.select(Some(id));
         if let Some(owner) = app.project.owner_of(id) {
@@ -129,19 +229,15 @@ fn strip(app: &mut App, ui: &mut egui::Ui, id: u8) {
         app.select(Some(id));
     }
 
-    let kind = match m.kind {
-        ModuleKind::Output => "MASTER",
-        ModuleKind::Return => "SEND TRACK",
-        kind => kind.name(),
+    // Its effects are listed below, so an instrument says where the last
+    // of them goes.
+    let outputs = if m.kind.is_effect() {
+        app.project.links.iter().filter(|l| l.0 == id).map(|l| l.1).collect()
+    } else {
+        app.project.chain(id).outputs
     };
-    ui.label(RichText::new(kind).small().color(theme::TEXT_WEAK));
-    let targets: Vec<String> = app
-        .project
-        .links
-        .iter()
-        .filter(|l| l.0 == id)
-        .filter_map(|l| app.project.module(l.1))
-        .map(|t| if t.id == OUTPUT_ID { "Output".to_string() } else { format!("{:02X} {}", t.id, t.name) })
+    let targets: Vec<String> = (outputs.iter().filter_map(|&t| app.project.module(t)))
+        .map(|t| if t.id == OUTPUT_ID { "Master".to_string() } else { format!("{:02X} {}", t.id, t.name) })
         .collect();
     let owner = app.project.owner_of(id);
     let route = match (id, targets.is_empty()) {
@@ -157,6 +253,9 @@ fn strip(app: &mut App, ui: &mut egui::Ui, id: u8) {
         _ => format!("to {}", targets.join(", ")),
     };
     ui.add(egui::Label::new(RichText::new(&route).small()).truncate()).on_hover_text(route);
+    if rows > 0 {
+        device_list(app, ui, &devices(app, id), rows);
+    }
 
     // While an envelope moves them, the controls follow it.
     let n = m.kind.params().len();
@@ -244,11 +343,12 @@ fn fader(app: &mut App, ui: &mut egui::Ui, id: u8, area: Rect, gain: f32) -> f32
 /// The dB scale and the left and right peak meters, right of the fader.
 fn meters(ui: &egui::Ui, area: Rect, level: [f32; 2]) {
     let painter = ui.painter();
-    let scale_x = area.left() + 48.0;
+    // Against the ticks, clear of the fader however narrow the strip.
+    let scale_x = area.right() - 23.0;
     for db in MARKS {
         let y = y_at(area, pos(10f32.powf(db / 20.0)));
         let label = if db > 0.0 { format!("+{db}") } else { format!("{db}") };
-        painter.text(Pos2::new(scale_x, y), Align2::CENTER_CENTER, label, FontId::monospace(9.0), theme::TEXT_WEAK);
+        painter.text(Pos2::new(scale_x, y), Align2::RIGHT_CENTER, label, FontId::monospace(9.0), theme::TEXT_WEAK);
         let tick = [Pos2::new(area.right() - 20.0, y), Pos2::new(area.right() - 17.0, y)];
         painter.line_segment(tick, (1.0, theme::TEXT_WEAK));
     }
