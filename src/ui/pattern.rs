@@ -1403,11 +1403,14 @@ fn track_menu(
         if ui.add(egui::Button::selectable(info.group.is_none(), "None (to the master)")).clicked() {
             action = Some(TrackAction::Group(None));
         }
-        for (g, name) in groups {
-            if ui.add(egui::Button::selectable(info.group == Some(*g), format!("{:02} {name}", g + 1))).clicked() {
-                action = Some(TrackAction::Group(Some(*g)));
+        super::widgets::menu_scroll(ui, "track_groups", |ui| {
+            for (g, name) in groups {
+                let on = info.group == Some(*g);
+                if ui.add(egui::Button::selectable(on, format!("{:02} {name}", g + 1))).clicked() {
+                    action = Some(TrackAction::Group(Some(*g)));
+                }
             }
-        }
+        });
     });
     if ui.button(if info.mute { "Unmute" } else { "Mute" }).clicked() {
         action = Some(TrackAction::Mute);

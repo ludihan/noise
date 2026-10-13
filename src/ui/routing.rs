@@ -111,7 +111,7 @@ pub fn control_targets(app: &mut App, ui: &mut egui::Ui, id: u8) {
                     edited.clear();
                 }
                 ui.menu_button("+", |ui| {
-                    egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+                    super::widgets::menu_scroll(ui, "add_param", |ui| {
                         for i in (0..m.kind.num_automatable()).filter(|i| !controls.iter().any(|c| c.param == *i)) {
                             if ui.button(m.automatable_name(i)).clicked() {
                                 add = Some((to, i));
@@ -172,12 +172,12 @@ pub fn control_targets(app: &mut App, ui: &mut egui::Ui, id: u8) {
         app.mark();
     }
     ui.menu_button("+ Add Target", |ui| {
-        egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
+        super::widgets::menu_scroll(ui, "add_target", |ui| {
             for to in candidates(app, id) {
                 let Some(m) = app.project.module(to) else { continue };
                 let moved = app.project.controls_of(id, to);
                 ui.menu_button(label(app, to), |ui| {
-                    egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
+                    super::widgets::menu_scroll(ui, ("target_params", to), |ui| {
                         for i in (0..m.kind.num_automatable()).filter(|i| !moved.iter().any(|c| c.param == *i)) {
                             if ui.button(m.automatable_name(i)).clicked() {
                                 add = Some((to, i));

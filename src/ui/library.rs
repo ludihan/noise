@@ -160,12 +160,11 @@ fn add(app: &mut App, preset: &InstrumentPreset) {
 /// add as a new instrument.
 pub fn add_menus(app: &mut App, ui: &mut egui::Ui) {
     ui.menu_button("Factory Instruments", |ui| {
-        for preset in factory() {
-            let kind = egui::RichText::new(preset.instrument.kind.name()).small().color(theme::TEXT_WEAK);
-            if ui.add(egui::Button::new(&preset.name).right_text(kind)).clicked() {
-                add(app, preset);
-                ui.close();
-            }
+        let items: Vec<(String, String)> =
+            factory().iter().map(|p| (p.name.clone(), p.instrument.kind.name().to_string())).collect();
+        if let Some(i) = super::widgets::menu_list(ui, "factory_instruments", "Find an instrument", &items) {
+            add(app, &factory()[i]);
+            ui.close();
         }
     });
     ui.menu_button("My Instruments", |ui| {
@@ -177,14 +176,14 @@ pub fn add_menus(app: &mut App, ui: &mut egui::Ui) {
         if names.is_empty() {
             ui.label(egui::RichText::new("None yet: right-click an instrument and save it").color(theme::TEXT_WEAK));
         }
-        for name in names {
-            if ui.button(&name).clicked() {
-                match load(&dir, &name) {
-                    Ok(preset) => add(app, &preset),
-                    Err(e) => app.set_status(format!("Could not load the instrument {name}: {e}")),
-                }
-                ui.close();
+        let items: Vec<(String, String)> = names.iter().map(|n| (n.clone(), String::new())).collect();
+        if let Some(i) = super::widgets::menu_list(ui, "my_instruments", "Find an instrument", &items) {
+            let name = &names[i];
+            match load(&dir, name) {
+                Ok(preset) => add(app, &preset),
+                Err(e) => app.set_status(format!("Could not load the instrument {name}: {e}")),
             }
+            ui.close();
         }
     });
 }

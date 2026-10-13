@@ -140,3 +140,76 @@ pub fn boxed<R>(ui: &mut egui::Ui, id: &str, size: Vec2, add: impl FnOnce(&mut e
     child.shrink_clip_rect(inner);
     add(&mut child)
 }
+
+/// Content of a menu that may be longer than the window: it scrolls past
+/// most of the window's height rather than running off it.
+pub fn menu_scroll<R>(ui: &mut Ui, id: impl std::hash::Hash + std::fmt::Debug, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let max = (ui.ctx().content_rect().height() * 0.6).max(120.0);
+    egui::ScrollArea::vertical().id_salt(id).max_height(max).show(ui, add).inner
+}
+
+/// A list of `items` in a menu, as (name, a note on the right), scrolling
+/// when long, with a field to find one by name once there are more than a
+/// few. Returns the one clicked, or the first one found when Enter is
+/// pressed in the field.
+pub fn menu_list(
+    ui: &mut Ui,
+    id: impl std::hash::Hash + std::fmt::Debug,
+    hint: &str,
+    items: &[(String, String)],
+) -> Option<usize> {
+    let id = egui::Id::new(id);
+    let mut find: String = ui.data(|d| d.get_temp(id)).unwrap_or_default();
+    let mut picked = None;
+    if items.len() > 12 {
+        let field = ui.add(egui::TextEdit::singleline(&mut find).hint_text(hint).desired_width(180.0));
+        if !field.has_focus() && find.is_empty() {
+            field.request_focus();
+        }
+        if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            picked = Some(None);
+        }
+    }
+    let wanted = find.trim().to_lowercase();
+    let found: Vec<usize> = (0..items.len()).filter(|&i| items[i].0.to_lowercase().contains(&wanted)).collect();
+    if picked == Some(None) {
+        picked = Some(found.first().copied());
+    }
+    menu_scroll(ui, id, |ui| {
+        if found.is_empty() {
+            ui.label(egui::RichText::new("Nothing by that name").color(theme::TEXT_WEAK));
+        }
+        for &i in &found {
+            let (name, note) = &items[i];
+            let note = egui::RichText::new(note).small().color(theme::TEXT_WEAK);
+            if ui.add(egui::Button::new(name).right_text(note)).clicked() {
+                picked = Some(Some(i));
+            }
+        }
+    });
+    let picked = picked.flatten();
+    if picked.is_some() {
+        find.clear();
+    }
+    ui.data_mut(|d| d.insert_temp(id, find));
+    picked
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui_kittest::Harness;
+
+    #[test]
+    fn long_menu_lists_stay_inside_the_window() {
+        let items: Vec<(String, String)> = (0..100).map(|i| (format!("Preset {i}"), "Kind".to_string())).collect();
+        let height = std::rc::Rc::new(std::cell::Cell::new(0.0));
+        let seen = height.clone();
+        let mut harness = Harness::builder().with_size([300.0, 600.0]).build_ui(move |ui| {
+            menu_list(ui, "test_list", "Find", &items);
+            seen.set(ui.min_rect().height());
+        });
+        harness.run_steps(2);
+        assert!(height.get() > 100.0 && height.get() < 600.0, "{}", height.get());
+    }
+}

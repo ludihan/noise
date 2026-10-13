@@ -397,11 +397,11 @@ const TOPICS: &[Topic] = &[
             ),
             H("Presets"),
             P(
-                "Right-click a panel's name for its color and presets: the factory's (the demo songs' devices), yours, saving the settings under a name, or going back to the defaults. Yours are kept in presets/<kind>/ in the data folder (usually ~/.local/share/noise).",
+                "Right-click a panel's name for its color and presets: the factory's (the demo songs' devices), yours, each list scrolling, with a field on top to find one by name when it is long, saving the settings under a name, or going back to the defaults. Yours are kept in presets/<kind>/ in the data folder (usually ~/.local/share/noise).",
             ),
             H("Instrument presets"),
             P(
-                "The instrument list's + adds a whole instrument from Factory Instruments, the demo songs' (Felt Piano, Strings, Sub Bass, Bells, 808, Chip Arp, Vox Chops, Rain Break, Acid Line, Music Box, Rave Kit, Prism Lead, Orchestra Hit and the rest), or from My Instruments. An instrument preset holds the instrument with its samples, modulation, macros and phrases, and the effects of its own chain, but not its Sends, which belong to the song. Right-click an instrument and Save as Preset to keep it in instruments/ in the data folder, its samples as WAV files beside it.",
+                "The instrument list's + adds a whole instrument from Factory Instruments, which you can type a few letters of a name to find, the demo songs' (Felt Piano, Strings, Sub Bass, Bells, 808, Chip Arp, Vox Chops, Rain Break, Acid Line, Music Box, Rave Kit, Prism Lead, Orchestra Hit and the rest), or from My Instruments. An instrument preset holds the instrument with its samples, modulation, macros and phrases, and the effects of its own chain, but not its Sends, which belong to the song. Right-click an instrument and Save as Preset to keep it in instruments/ in the data folder, its samples as WAV files beside it.",
             ),
         ],
     },

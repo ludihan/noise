@@ -2,7 +2,7 @@
 //! in `presets/<kind>/<name>.json` in the data folder, to load into any
 //! module of the same kind.
 
-use super::{App, theme};
+use super::{App, theme, widgets};
 use crate::project::{Modulation, Module, ModuleKind};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
@@ -106,13 +106,13 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui, id: u8) {
     let factory = super::library::factory_devices(m.kind);
     if !factory.is_empty() {
         ui.menu_button("Factory", |ui| {
-            for (name, preset) in &factory {
-                if ui.button(name).clicked() {
-                    preset.apply(app.project.module_mut(id).unwrap());
-                    app.set_status(format!("Loaded the factory preset {name}"));
-                    app.mark();
-                    ui.close();
-                }
+            let items: Vec<(String, String)> = factory.iter().map(|(name, _)| (name.clone(), String::new())).collect();
+            if let Some(i) = widgets::menu_list(ui, ("factory_presets", id), "Find a preset", &items) {
+                let (name, preset) = &factory[i];
+                preset.apply(app.project.module_mut(id).unwrap());
+                app.set_status(format!("Loaded the factory preset {name}"));
+                app.mark();
+                ui.close();
             }
         });
     }
@@ -120,18 +120,18 @@ pub fn menu(app: &mut App, ui: &mut egui::Ui, id: u8) {
     if names.is_empty() {
         ui.label(egui::RichText::new(format!("No {} presets of yours yet", m.kind.name())).color(theme::TEXT_WEAK));
     }
-    for name in names {
-        if ui.button(&name).clicked() {
-            match load(&dir, &name) {
-                Ok(p) => {
-                    p.apply(app.project.module_mut(id).unwrap());
-                    app.set_status(format!("Loaded the preset {name}"));
-                    app.mark();
-                }
-                Err(e) => app.set_status(format!("Could not load the preset {name}: {e}")),
+    let items: Vec<(String, String)> = names.iter().map(|n| (n.clone(), String::new())).collect();
+    if let Some(i) = widgets::menu_list(ui, ("my_presets", id), "Find a preset", &items) {
+        let name = &names[i];
+        match load(&dir, name) {
+            Ok(p) => {
+                p.apply(app.project.module_mut(id).unwrap());
+                app.set_status(format!("Loaded the preset {name}"));
+                app.mark();
             }
-            ui.close();
+            Err(e) => app.set_status(format!("Could not load the preset {name}: {e}")),
         }
+        ui.close();
     }
     ui.separator();
     // The name typed for a new preset, kept while the menu is open.

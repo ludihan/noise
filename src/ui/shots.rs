@@ -6,6 +6,7 @@
 use super::{App, View, sampler};
 use crate::project::{ModuleKind, OUTPUT_ID};
 use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
 use std::path::PathBuf;
 
 /// The demo song the pictures show, Clockwork Rain, of `DEMOS`.
@@ -44,9 +45,30 @@ fn shot_at(name: &str, size: [f32; 2], setup: impl FnOnce(&mut App)) {
     image.save(dir.join(format!("{name}.png"))).unwrap();
 }
 
+/// The instrument list's + menu, open on its Factory Instruments, the
+/// longest list in a menu, to see that it fits the window.
+fn factory_menu_shot() {
+    let mut harness =
+        Harness::builder().with_size([1400.0, 900.0]).wgpu().build_eframe(|cc| App::start(cc, None, false));
+    open(harness.state_mut());
+    harness.run_steps(2);
+    // The + furthest right is the instrument list's.
+    let plus = harness.query_all_by_label("+").max_by(|a, b| a.rect().right().total_cmp(&b.rect().right()));
+    plus.expect("the instrument list's +").click();
+    harness.run_steps(2);
+    harness.get_by_label_contains("Factory Instruments").click();
+    harness.run_steps(4);
+    let image = harness.render().expect("render");
+    let dir = std::env::var_os("NOISE_SHOTS")
+        .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/shots"), PathBuf::from);
+    std::fs::create_dir_all(&dir).unwrap();
+    image.save(dir.join("factory_instruments.png")).unwrap();
+}
+
 #[test]
 #[ignore = "draws pictures to look at; run with --ignored"]
 fn shots() {
+    factory_menu_shot();
     shot("pattern", |_| {});
     shot("mixer", |app| app.view = View::Mixer);
     shot("neighbours", |app| {

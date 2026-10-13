@@ -88,12 +88,14 @@ pub fn param_list(app: &mut App, ui: &mut egui::Ui, id: u8) {
                     modulate = Some((None, i));
                     ui.close();
                 }
-                for &m in &modulators {
-                    if ui.button(routing::label(app, m)).clicked() {
-                        modulate = Some((Some(m), i));
-                        ui.close();
+                super::widgets::menu_scroll(ui, "modulate_with", |ui| {
+                    for &m in &modulators {
+                        if ui.button(routing::label(app, m)).clicked() {
+                            modulate = Some((Some(m), i));
+                            ui.close();
+                        }
                     }
-                }
+                });
             });
         });
         changed |= resp.changed();

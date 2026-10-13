@@ -653,7 +653,7 @@ fn add_effect_menu(ui: &mut egui::Ui, label: &str, at: usize, action: &mut Optio
         }
         let wanted = search.trim().to_lowercase();
         let mut pick = None;
-        egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
+        widgets::menu_scroll(ui, "effects_to_add", |ui| {
             let mut groups: Vec<(&str, Vec<ModuleKind>)> =
                 EFFECT_GROUPS.iter().map(|(name, kinds)| (*name, kinds.to_vec())).collect();
             // Any effect not in a group yet still shows, last.
@@ -701,12 +701,14 @@ fn add_effect_menu(ui: &mut egui::Ui, label: &str, at: usize, action: &mut Optio
 fn add_send_menu(app: &App, ui: &mut egui::Ui, label: &str, owner: Owner, at: usize, action: &mut Option<Action>) {
     ui.menu_button(label, |ui| {
         let sends: Vec<u8> = app.project.sends.iter().map(|s| s.module).collect();
-        for to in sends.into_iter().filter(|&to| app.project.can_send(owner, to)) {
-            if ui.button(format!("To {}", routing::label(app, to))).clicked() {
-                *action = Some(Action::AddSend(at, Some(to)));
-                ui.close();
+        widgets::menu_scroll(ui, "sends_to_add", |ui| {
+            for to in sends.into_iter().filter(|&to| app.project.can_send(owner, to)) {
+                if ui.button(format!("To {}", routing::label(app, to))).clicked() {
+                    *action = Some(Action::AddSend(at, Some(to)));
+                    ui.close();
+                }
             }
-        }
+        });
         let tip = "A send track of its own, for a reverb or a delay several chains share";
         if ui.button("To a New Send Track").on_hover_text(tip).clicked() {
             *action = Some(Action::AddSend(at, None));
@@ -978,12 +980,14 @@ fn macros_panel(app: &mut App, ui: &mut egui::Ui, id: u8, h: f32) {
                         modulate = Some((None, n + 2 + k));
                         ui.close();
                     }
-                    for &by in &modulators {
-                        if ui.button(routing::label(app, by)).clicked() {
-                            modulate = Some((Some(by), n + 2 + k));
-                            ui.close();
+                    widgets::menu_scroll(ui, "macro_modulate_with", |ui| {
+                        for &by in &modulators {
+                            if ui.button(routing::label(app, by)).clicked() {
+                                modulate = Some((Some(by), n + 2 + k));
+                                ui.close();
+                            }
                         }
-                    }
+                    });
                 });
                 if !mac.targets.is_empty() && ui.button("Clear Targets").clicked() {
                     clear = true;
