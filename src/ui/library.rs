@@ -226,11 +226,11 @@ mod tests {
     #[test]
     fn the_factory_has_the_demos_instruments() {
         let names: Vec<&str> = factory().iter().map(|p| p.name.as_str()).collect();
-        for name in ["Felt Piano", "Strings", "Sub Bass", "Bells", "Ripple", "Swell", "Drums"] {
+        for name in ["Piano", "Strings", "Sub Bass", "Bells", "Ripple", "Swell", "Drums"] {
             assert!(names.contains(&name), "{name} in {names:?}");
         }
-        let piano = factory().iter().find(|p| p.name == "Felt Piano").unwrap();
-        assert_eq!(piano.instrument.samples.len(), 2);
+        let piano = factory().iter().find(|p| p.name == "Piano").unwrap();
+        assert_eq!(piano.instrument.samples.len(), 1);
         assert!(piano.instrument.samples.iter().all(|s| s.data.is_some()), "with their audio");
         let strings = factory().iter().find(|p| p.name == "Strings").unwrap();
         assert_eq!(strings.effects.len(), 4, "its chain: ensemble, phaser, EQ and width");
@@ -239,21 +239,21 @@ mod tests {
     #[test]
     fn presets_save_load_and_add_with_their_samples_and_chain() {
         let dir = std::env::temp_dir().join(format!("noise-instruments-{}", std::process::id()));
-        let piano = factory().iter().find(|p| p.name == "Felt Piano").unwrap();
+        let piano = factory().iter().find(|p| p.name == "Piano").unwrap();
         save(&dir, "My/Piano", piano).unwrap();
         assert_eq!(names(&dir), ["My_Piano"]);
         let back = load(&dir, "My_Piano").unwrap();
-        assert_eq!(back.instrument.samples.len(), 2);
+        assert_eq!(back.instrument.samples.len(), 1);
         let (a, b) =
             (back.instrument.samples[0].data.as_ref().unwrap(), piano.instrument.samples[0].data.as_ref().unwrap());
         assert_eq!(a.len(), b.len(), "the audio came back");
         let mut song = Project::empty();
         let id = back.add_to(&mut song, [0.0; 2]).unwrap();
         let m = song.module(id).unwrap();
-        assert_eq!((m.name.as_str(), m.samples.len()), ("Felt Piano", 2));
+        assert_eq!((m.name.as_str(), m.samples.len()), ("Piano", 1));
         assert!(m.samples.iter().all(|s| s.unsaved && s.path.is_none()), "written next to the song when saved");
         let chain = song.chain(id);
-        assert_eq!(chain.effects.len(), 3, "its EQ, exciter and room");
+        assert_eq!(chain.effects.len(), 1, "its room");
         assert_eq!(chain.outputs, [OUTPUT_ID]);
         std::fs::remove_dir_all(dir).unwrap();
     }
@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn macros_move_the_modules_a_preset_adds() {
         let mut song = Project::empty();
-        let piano = factory().iter().find(|p| p.name == "Felt Piano").unwrap();
+        let piano = factory().iter().find(|p| p.name == "Piano").unwrap();
         let id = piano.add_to(&mut song, [0.0; 2]).unwrap();
         let room = *song.chain(id).effects.last().unwrap();
         song.map_macro(id, 0, room, 0);

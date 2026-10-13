@@ -1,7 +1,7 @@
-//! The orchestral bank: a felt piano in two layers and a swell rendered
-//! here, a wavetable string pad, a sub bass, a rippling analog arp with its
-//! phrases, a choir-like lead, voices, bells, a granular haze and the
-//! drums, with the room and hall they share.
+//! The orchestral bank: a piano and a swell rendered here, a wavetable
+//! string pad, a sub bass, a rippling analog arp with its phrases, a
+//! choir-like lead, voices, bells, a granular haze and the drums, with
+//! the room and hall they share.
 
 use super::super::*;
 use crate::dsp::Frame;
@@ -125,31 +125,17 @@ fn instruments(p: &mut Project) {
     p.module_mut(speak).unwrap().key = Some(drums);
     send(p, voices, hall);
 
-    // The felt piano: two velocity layers, a filter that closes as notes
-    // ring, and a little tone shaping on the way to the hall.
-    let piano = add(p, K::Sampler, "Felt Piano", &[(0, 0.3), (3, 0.0), (4, 4.0), (5, 1.0), (6, 0.6)]);
+    // The piano: plainly struck, its tone left as it is, in a small room;
+    // velocity alone shapes it.
+    let piano = add(p, K::Sampler, "Piano", &[(0, 0.3), (3, 0.0), (4, 4.0), (5, 1.0), (6, 0.3)]);
     let sr = 44100.0;
-    let mut soft = rendered(felt_piano(sr, false));
-    soft.velocities = [0, 84];
-    let mut hard = rendered(felt_piano(sr, true));
-    hard.velocities = [85, 127];
-    // The bridge's haze: the soft piano as a cloud of grains.
-    let haze_sample = soft.clone();
-    let m = p.module_mut(piano).unwrap();
-    m.samples = vec![soft, hard];
-    m.modulation.filter = true;
-    m.modulation.cutoff = 5000.0;
-    m.modulation.resonance = 0.1;
-    m.modulation.filter_env =
-        VoiceEnvelope { on: true, points: vec![(0.0, 1.0), (1.5, 0.55)], sustain: None, curve: true, amount: 1.5 };
-    let piano_eq = p.chain_insert(piano, 0, K::Eq).unwrap();
-    set(p, piano_eq, "Piano Tone", &[(0, 0.8), (1, 1.1), (2, 0.9)]);
-    let air = p.chain_insert(piano, 1, K::Exciter).unwrap();
-    set(p, air, "Air", &[(0, 5000.0), (1, 2.0), (2, 0.15)]);
-    // A small room around it, convolved, before the shared hall.
-    let room = p.chain_insert(piano, 2, K::Convolver).unwrap();
-    set(p, room, "Piano Room", &[(0, 0.0), (1, 0.2), (2, 0.9)]);
-    send(p, piano, hall);
+    let mut struck = rendered(felt_piano(sr, true));
+    struck.name = "Piano".into();
+    p.module_mut(piano).unwrap().samples = vec![struck];
+    let room = p.chain_insert(piano, 0, K::Convolver).unwrap();
+    set(p, room, "Piano Room", &[(0, 0.0), (1, 0.12), (2, 1.0)]);
+    // The haze: the felt piano's soft layer as a cloud of grains.
+    let haze_sample = rendered(felt_piano(sr, false));
     let haze = add(
         p,
         K::Granular,

@@ -401,7 +401,7 @@ const TOPICS: &[Topic] = &[
             ),
             H("Instrument presets"),
             P(
-                "The instrument list's + adds a whole instrument from Factory Instruments, which you can type a few letters of a name to find, those of the demo songs and of banks made for them (Felt Piano, Strings, Sub Bass, Bells, 808, Emo Guitar, Vox Chops, Rain Break, Acid Line, Music Box, Rave Kit, Prism Lead, Orchestra Hit and the rest), or from My Instruments. An instrument preset holds the instrument with its samples, modulation, macros and phrases, and the effects of its own chain, but not its Sends, which belong to the song. Right-click an instrument and Save as Preset to keep it in instruments/ in the data folder, its samples as WAV files beside it.",
+                "The instrument list's + adds a whole instrument from Factory Instruments, which you can type a few letters of a name to find, those of the demo songs and of banks made for them (Piano, Strings, Sub Bass, Bells, 808, Emo Guitar, Vox Chops, Rain Break, Acid Line, Music Box, Rave Kit, Prism Lead, Orchestra Hit and the rest), or from My Instruments. An instrument preset holds the instrument with its samples, modulation, macros and phrases, and the effects of its own chain, but not its Sends, which belong to the song. Right-click an instrument and Save as Preset to keep it in instruments/ in the data folder, its samples as WAV files beside it.",
             ),
         ],
     },
