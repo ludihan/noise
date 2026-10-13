@@ -745,7 +745,7 @@ fn play_note(app: &mut App, held: super::Held, note: u8, vel: f32, vol: Option<u
         let pattern = app.current_pattern_index();
         app.recorded.retain(|r| r.0 != held);
         for &note in &notes {
-            let col = free_column(app, cur.track, cur.column);
+            let col = free_column(app, held, cur.track, cur.column);
             let cell = app.pattern_mut().cell_mut(cur.track, col, line);
             fill(cell, note);
             cell.delay = delay;
@@ -790,11 +790,14 @@ fn live_position(app: &App) -> Option<(usize, Option<u8>)> {
 }
 
 /// The first column of `track`, from `from` on and then round, that no key
-/// still held is recording into; with all of them taken, a new one.
-fn free_column(app: &mut App, track: usize, from: usize) -> usize {
+/// still held is recording into, `key` among them even when it plays no
+/// instrument; with all of them taken, a new one.
+fn free_column(app: &mut App, key: super::Held, track: usize, from: usize) -> usize {
     let pattern = app.current_pattern_index();
     let busy = |app: &App, c: usize| {
-        app.recorded.iter().any(|r| (r.1, r.2, r.3) == (pattern, track, c) && app.held.iter().any(|h| h.0 == r.0))
+        app.recorded
+            .iter()
+            .any(|r| (r.1, r.2, r.3) == (pattern, track, c) && (r.0 == key || app.held.iter().any(|h| h.0 == r.0)))
     };
     let cols = app.pattern().columns(track);
     if let Some(c) = (from..cols).chain(0..from).find(|&c| !busy(app, c)) {
@@ -1799,5 +1802,21 @@ mod tests {
         assert_eq!(notes, [60, 64, 67].map(|n| Some(Note::On(n))));
         assert_eq!(app.pattern().columns(0), 3, "the columns it needs");
         assert_eq!(app.cursor.line, app.step, "and the cursor steps on");
+    }
+
+    #[test]
+    fn a_chord_recorded_without_an_instrument_takes_a_column_a_note() {
+        use egui_kittest::Harness;
+        let mut harness = Harness::builder().build_eframe(|cc| App::start(cc, None, false));
+        let app = harness.state_mut();
+        app.project = Project::empty();
+        app.cursor = Cursor::default();
+        // A key that plays nothing, as none is selected, recording its
+        // first note in column 0: the next goes beside it.
+        let key = super::super::Held::Key(Key::Z);
+        app.recorded.push((key, app.current_pattern_index(), 0, 0));
+        assert!(app.held.is_empty());
+        assert_eq!(free_column(app, key, 0, 0), 1);
+        assert_eq!(app.pattern().columns(0), 2, "a column made for it");
     }
 }
