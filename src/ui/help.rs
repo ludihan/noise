@@ -155,7 +155,10 @@ const MODULES: &[(&str, &str)] = &[
         "Moves any parameters of any modules, each by a depth of its own, with an LFO or by following its input",
     ),
     ("Filter", "Lowpass, highpass or bandpass with resonance and an LFO"),
-    ("Distortion", "Soft clip, hard clip or wave fold with a tone control, bit crushing and downsampling"),
+    (
+        "Distortion",
+        "Soft clip, hard clip or wave fold with a tone control, bit crushing and downsampling; Oversample runs the clipping at 2, 4 or 8 times the rate so its overtones don't fold back as aliasing",
+    ),
     ("Delay", "Ping-pong delay, timed in pattern lines"),
     ("Reverb", "Freeverb-style reverb"),
     ("Amplifier", "Volume, pan and phase invert"),
@@ -187,7 +190,10 @@ const MODULES: &[(&str, &str)] = &[
         "A little drive and the tone of a speaker cabinet: a small combo, a 4x12, a bass 1x15 or a radio",
     ),
     ("Vibrato", "Bends the pitch up and down with a swinging delay, with a stereo offset"),
-    ("WaveShaper", "Bends the sound through a curve of nine points, mirrored or not, with input and output levels"),
+    (
+        "WaveShaper",
+        "Bends the sound through a curve of nine points, mirrored or not, with input and output levels, oversampled against aliasing as the Distortion is",
+    ),
     ("Filter Pro", "Eight filter types, 12 to 48 dB an octave, with resonance, and gain for the peak and shelves"),
     ("Chorus", "Up to four voices sweeping around each other, with a stereo offset and feedback"),
     ("Echo", "A delay timed in seconds, darker each time round, the right side later"),

@@ -676,7 +676,7 @@ fn input_plays_what_arrives_on_its_tape() {
 #[test]
 fn waveshaper_bends_the_sound_through_its_curve() {
     let defaults: Vec<f32> = ModuleKind::WaveShaper.params().iter().map(|p| p.default).collect();
-    let points = &defaults[4..];
+    let points = &defaults[4..4 + SHAPE_POINTS];
     for x in [-0.9, -0.3, 0.0, 0.4, 1.0] {
         assert!((shape(points, true, x) - x).abs() < 1e-6, "the default curve is a straight line at {x}");
     }
@@ -687,7 +687,8 @@ fn waveshaper_bends_the_sound_through_its_curve() {
     assert_eq!(shape(&clip, true, 0.9), 0.5);
     assert_eq!(shape(&clip, true, -0.9), -0.5);
     assert_eq!(shape(&clip, false, -0.9), -0.9, "not symmetric: the left half is its own");
-    let peak = effect_peak(ModuleKind::WaveShaper, &[(11, 0.5), (12, 0.5)], 100.0, 0.9);
+    // Without oversampling, whose filters ring a little past a hard edge.
+    let peak = effect_peak(ModuleKind::WaveShaper, &[(11, 0.5), (12, 0.5), (13, 0.0)], 100.0, 0.9);
     assert!((peak - 0.5).abs() < 1e-3, "{peak}");
 }
 
@@ -812,7 +813,8 @@ fn distortion_crushes_bits() {
     let sr = 48000.0;
     let ctx = Ctx { sr, samples_per_line: 6000.0, song_line: None };
     // Drive 1 and full tone keep the shape; 2 bits leave 2 levels a side.
-    let params = [1.0, 1.0, 1.0, 1.0, 2.0, 1.0];
+    // Oversampling is off, as its filters would round the steps.
+    let params = [1.0, 1.0, 1.0, 1.0, 2.0, 1.0, 0.0];
     let input: Vec<Frame> = (0..1000).map(|i| [(i as f32 / 1000.0) * 2.0 - 1.0; 2]).collect();
     let mut out = vec![[0.0; 2]; input.len()];
     let mut d = Distortion { lp: [0.0; 2], ..Default::default() };
@@ -1192,4 +1194,32 @@ fn the_vocoder_shapes_its_input_by_its_key() {
     assert!(level_at(&low, 2.0 * f0, 48000.0) > 5.0 * level_at(&low, 20.0 * f0, 48000.0));
     let peak = high.iter().fold(0f32, |m, f| m.max(f[0].abs()));
     assert!(peak > 0.02 && peak < 4.0, "{peak}");
+}
+
+#[test]
+fn oversampling_keeps_overtones_from_folding_back_as_aliasing() {
+    // A 7 kHz sine clipped hard at 48 kHz: its seventh harmonic, at
+    // 49 kHz, folds back to 1 kHz, where nothing of its own should be.
+    let (sr, freq) = (48000.0, 7000.0);
+    for kind in [ModuleKind::Distortion, ModuleKind::WaveShaper] {
+        let oversample = kind.params().iter().position(|p| p.name == "Oversample").unwrap();
+        let level = |factor: f32, f: f32| {
+            let ctx = Ctx { sr, samples_per_line: 6000.0, song_line: None };
+            let mut params: Vec<f32> = kind.params().iter().map(|p| p.default).collect();
+            params[oversample] = factor;
+            if kind == ModuleKind::Distortion {
+                (params[0], params[1], params[3]) = (20.0, 1.0, 1.0);
+            } else {
+                params[0] = 4.0;
+            }
+            let input: Vec<Frame> = (0..48000).map(|i| [0.8 * (TAU * freq * i as f32 / sr).sin(); 2]).collect();
+            let mut out = vec![[0.0; 2]; input.len()];
+            create(kind, sr).process(&ctx, &params, &input, &mut out);
+            level_at(&out[4800..], f, sr)
+        };
+        let (off, on) = (level(0.0, 1000.0), level(3.0, 1000.0));
+        assert!(on < off / 20.0, "{}: the alias at 1 kHz falls from {off} to {on}", kind.name());
+        let (tone_off, tone_on) = (level(0.0, freq), level(3.0, freq));
+        assert!((tone_on / tone_off - 1.0).abs() < 0.1, "{}: the tone stays: {tone_off} {tone_on}", kind.name());
+    }
 }

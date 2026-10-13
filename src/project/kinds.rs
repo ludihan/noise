@@ -199,6 +199,8 @@ pub const IMPULSES: &[&str] = &["Room", "Hall", "Plate", "Spring", "Cabinet", "S
 pub const LOOP_MODES: &[&str] = &["Off", "Forward", "Backward", "Ping-pong"];
 pub const FILTER_MODES: &[&str] = &["Lowpass", "Highpass", "Bandpass"];
 pub const DISTORTION_TYPES: &[&str] = &["Soft clip", "Hard clip", "Wave fold"];
+/// How many times the sample rate a curve runs at, against aliasing.
+pub const OVERSAMPLE: &[&str] = &["Off", "2x", "4x", "8x"];
 pub const LFO_MODES: &[&str] = &["Tremolo", "Auto-pan"];
 pub const LFO_SHAPES: &[&str] = &["Sine", "Triangle", "Square", "Saw down", "Saw up"];
 /// A Modulator's LFO shapes: the LFO's, and one drawn by hand.
@@ -393,13 +395,14 @@ static FILTER_PARAMS: [ParamSpec; 5] = [
     p("LFO rate", 0.0, 20.0, 0.0).unit(Hz),
     p("LFO depth", 0.0, 1.0, 0.0).unit(Percent),
 ];
-static DISTORTION_PARAMS: [ParamSpec; 6] = [
+static DISTORTION_PARAMS: [ParamSpec; 7] = [
     p("Drive", 1.0, 50.0, 4.0).unit(Gain),
     p("Tone", 0.0, 1.0, 0.7).unit(Percent),
     p("Mix", 0.0, 1.0, 1.0).unit(Percent),
     c("Type", 0.0, DISTORTION_TYPES),
     i("Bits", 1.0, 16.0, 16.0),
     i("Downsample", 1.0, 32.0, 1.0).unit(Ratio),
+    c("Oversample", 1.0, OVERSAMPLE),
 ];
 static DELAY_PARAMS: [ParamSpec; 4] = [
     p("Time", 0.25, 16.0, 3.0).unit(Lines),
@@ -541,7 +544,7 @@ static VIBRATO_PARAMS: [ParamSpec; 4] = [
 pub const INPUT_CHANNELS: &[&str] = &["Stereo", "Left", "Right", "Mono"];
 static INPUT_PARAMS: [ParamSpec; 2] = [p("Volume", 0.0, 4.0, 1.0).unit(Gain), c("Channels", 0.0, INPUT_CHANNELS)];
 /// The WaveShaper's curve points: what each of these input levels comes out as.
-static WAVESHAPER_PARAMS: [ParamSpec; 13] = [
+static WAVESHAPER_PARAMS: [ParamSpec; 14] = [
     p("Input", 0.0, 4.0, 1.0).unit(Gain),
     c("Symmetric", 1.0, &["Off", "On"]),
     p("Output", 0.0, 2.0, 1.0).unit(Gain),
@@ -555,6 +558,7 @@ static WAVESHAPER_PARAMS: [ParamSpec; 13] = [
     p("At +50%", -1.0, 1.0, 0.5),
     p("At +75%", -1.0, 1.0, 0.75),
     p("At +100%", -1.0, 1.0, 1.0),
+    c("Oversample", 1.0, OVERSAMPLE),
 ];
 /// The Filter Pro's types, in the order of `Shape::ALL`.
 pub const FILTER_PRO_TYPES: &[&str] =

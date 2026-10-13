@@ -233,7 +233,7 @@ pub fn create(kind: ModuleKind, sr: f32) -> Box<dyn Dsp> {
         ModuleKind::Vibrato => Box::new(Vibrato::new(sr)),
         ModuleKind::Fmx => Box::new(Fmx::new()),
         ModuleKind::Input => Box::new(LiveInput::new(Arc::default())),
-        ModuleKind::WaveShaper => Box::new(WaveShaper),
+        ModuleKind::WaveShaper => Box::new(WaveShaper::default()),
         ModuleKind::FilterPro => Box::new(FilterPro::default()),
         ModuleKind::Chorus => Box::new(Chorus::new(sr)),
         ModuleKind::Echo => Box::new(Echo::new(sr)),

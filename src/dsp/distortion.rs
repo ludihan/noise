@@ -2,6 +2,63 @@
 
 use super::*;
 
+// ---------------------------------------------------------------- oversampling
+
+/// The resonances of four biquads that make an eighth-order Butterworth
+/// lowpass.
+const BUTTERWORTH_8: [f32; 4] = [0.5098, 0.6013, 0.9000, 2.5629];
+
+/// Runs a curve at a multiple of the sample rate: the overtones it makes
+/// past the top of hearing are filtered off there, rather than folding
+/// back down as aliasing. The sound is stuffed with zeros up to the
+/// higher rate and smoothed by a lowpass, bent, and lowpassed again
+/// before every so many samples are kept.
+#[derive(Default)]
+pub(super) struct Oversampler {
+    up: [Biquad; 4],
+    down: [Biquad; 4],
+    /// The factor and sample rate the filters are made for.
+    made: (usize, f32),
+}
+
+impl Oversampler {
+    /// The factor that `OVERSAMPLE` choice `p` stands for.
+    pub(super) fn factor(p: f32) -> usize {
+        1 << (p.round() as usize).min(3)
+    }
+
+    pub(super) fn reset(&mut self) {
+        self.up.iter_mut().chain(&mut self.down).for_each(Biquad::clear);
+    }
+
+    /// Makes the filters for running `factor` times sample rate `sr`.
+    pub(super) fn prepare(&mut self, factor: usize, sr: f32) {
+        if self.made == (factor, sr) {
+            return;
+        }
+        self.made = (factor, sr);
+        for (b, &q) in self.up.iter_mut().chain(&mut self.down).zip(BUTTERWORTH_8.iter().cycle()) {
+            b.rbj(Shape::Lowpass, sr * 0.42, q, 1.0, sr * factor as f32);
+        }
+        self.reset();
+    }
+
+    /// Channel `ch`'s `x` through `curve`, at the factor `prepare` made
+    /// the filters for.
+    pub(super) fn run(&mut self, ch: usize, x: f32, curve: impl Fn(f32) -> f32) -> f32 {
+        let factor = self.made.0;
+        if factor <= 1 {
+            return curve(x);
+        }
+        let mut y = 0.0;
+        for k in 0..factor {
+            let stuffed = if k == 0 { x * factor as f32 } else { 0.0 };
+            y = through(&mut self.down, ch, curve(through(&mut self.up, ch, stuffed)));
+        }
+        y
+    }
+}
+
 // ---------------------------------------------------------------- distortion
 
 #[derive(Default)]
@@ -10,6 +67,7 @@ pub(super) struct Distortion {
     /// The held input of the sample-rate reducer and how long it is held.
     pub(super) hold: Frame,
     pub(super) held: f32,
+    pub(super) oversampler: Oversampler,
 }
 
 impl Dsp for Distortion {
@@ -17,9 +75,10 @@ impl Dsp for Distortion {
         self.lp = [0.0; 2];
         self.hold = [0.0; 2];
         self.held = 0.0;
+        self.oversampler.reset();
     }
 
-    fn process(&mut self, _: &Ctx, p: &[f32], input: &[Frame], out: &mut [Frame]) {
+    fn process(&mut self, ctx: &Ctx, p: &[f32], input: &[Frame], out: &mut [Frame]) {
         let (drive, tone, mix) = (p[0], p[1], p[2]);
         let kind = p[3].round() as u32;
         let steps = 2f32.powf(p[4].round() - 1.0);
@@ -27,6 +86,7 @@ impl Dsp for Distortion {
         let downsample = p[5].round().max(1.0);
         let norm = 1.0 / drive.tanh();
         let coef = 0.05 + 0.95 * tone * tone;
+        self.oversampler.prepare(Oversampler::factor(p[6]), ctx.sr);
         for (o, i) in out.iter_mut().zip(input) {
             // Sample-rate reduction: hold each input for `downsample` frames.
             self.held -= 1.0;
@@ -35,8 +95,7 @@ impl Dsp for Distortion {
                 self.held += downsample;
             }
             for ch in 0..2 {
-                let x = self.hold[ch] * drive;
-                let mut wet = match kind {
+                let mut wet = self.oversampler.run(ch, self.hold[ch] * drive, |x| match kind {
                     0 => x.tanh() * norm,
                     1 => x.clamp(-1.0, 1.0),
                     // Folds back from ±1 instead of flattening.
@@ -44,7 +103,7 @@ impl Dsp for Distortion {
                         let t = (x + 1.0).rem_euclid(4.0);
                         if t < 2.0 { t - 1.0 } else { 3.0 - t }
                     }
-                };
+                });
                 if crush {
                     wet = (wet * steps).round() / steps;
                 }
@@ -65,7 +124,9 @@ pub(super) const SHAPE_POINTS: usize = 9;
 /// right half onto the left, so only the points from 0 up count. A level
 /// past ±1 follows the end of the curve.
 #[derive(Default)]
-pub(super) struct WaveShaper;
+pub(super) struct WaveShaper {
+    pub(super) oversampler: Oversampler,
+}
 
 /// `x` through the curve of `points`, evenly spaced from -1 to 1.
 pub(super) fn shape(points: &[f32], symmetric: bool, x: f32) -> f32 {
@@ -79,12 +140,17 @@ pub(super) fn shape(points: &[f32], symmetric: bool, x: f32) -> f32 {
 }
 
 impl Dsp for WaveShaper {
-    fn process(&mut self, _: &Ctx, p: &[f32], input: &[Frame], out: &mut [Frame]) {
+    fn reset(&mut self) {
+        self.oversampler.reset();
+    }
+
+    fn process(&mut self, ctx: &Ctx, p: &[f32], input: &[Frame], out: &mut [Frame]) {
         let (gain, symmetric, level, mix) = (p[0], p[1] >= 0.5, p[2], p[3]);
         let points = &p[4..4 + SHAPE_POINTS];
+        self.oversampler.prepare(Oversampler::factor(p[4 + SHAPE_POINTS]), ctx.sr);
         for (o, i) in out.iter_mut().zip(input) {
             for ch in 0..2 {
-                let wet = shape(points, symmetric, i[ch] * gain) * level;
+                let wet = self.oversampler.run(ch, i[ch] * gain, |x| shape(points, symmetric, x)) * level;
                 o[ch] = i[ch] * (1.0 - mix) + wet * mix;
             }
         }
