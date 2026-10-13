@@ -100,6 +100,19 @@ fn old_track_mutes_are_kept() {
 }
 
 #[test]
+fn a_tempo_out_of_range_loads_as_the_nearest_the_transport_sets() {
+    let dir = temp_dir("tempo");
+    let mut json = serde_json::to_value(Project::empty()).unwrap();
+    json["bpm"] = serde_json::json!(1e9);
+    json["lpb"] = serde_json::json!(0);
+    let song = dir.join("tempo.json");
+    std::fs::write(&song, json.to_string()).unwrap();
+    let (p, _) = Project::load(song.to_str().unwrap()).unwrap();
+    assert_eq!((p.bpm, p.lpb), (999.0, 1));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn note_columns_make_lanes() {
     let mut p = Project::empty();
     p.patterns.push(Pattern::new("b", 4, 64));

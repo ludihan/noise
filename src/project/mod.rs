@@ -1239,6 +1239,8 @@ impl Project {
         let s = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
         let mut p: Project = serde_json::from_str(&s).map_err(|e| e.to_string())?;
         // Normalize anything a hand-edited file might get wrong.
+        p.bpm = p.bpm.clamp(20.0, 999.0);
+        p.lpb = p.lpb.clamp(1, 32);
         p.tpl = p.tpl.clamp(1, 16);
         p.groove = p.groove.clamp(0.0, 1.0);
         p.tracks.resize(MAX_TRACKS, Track::default());
