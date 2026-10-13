@@ -71,6 +71,11 @@ fn shots() {
     factory_menu_shot();
     shot("pattern", |_| {});
     shot("mixer", |app| app.view = View::Mixer);
+    shot_at("mixer_effects", [3000.0, 900.0], |app| {
+        // Every section, the effects' strips shown too.
+        app.ctx.data_mut(|d| d.insert_temp(eframe::egui::Id::new("mixer_effects"), true));
+        app.view = View::Mixer;
+    });
     shot("mixer_long_chain", |app| {
         // A chain longer than a strip lists, one of its effects switched off.
         let inst = app.project.modules.iter().find(|m| m.kind == ModuleKind::Sampler).expect("a Sampler").id;

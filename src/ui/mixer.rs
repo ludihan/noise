@@ -14,6 +14,12 @@ const STRIP_MIN_W: f32 = 80.0;
 /// The most effects a strip lists, and the height of each.
 const MAX_DEVICES: usize = 6;
 const DEVICE_H: f32 = 16.0;
+/// The space between strips, and between chains; the room around a
+/// chain's strips in its frame, and the band of its color above them.
+const STRIP_GAP: f32 = 4.0;
+const GROUP_GAP: f32 = 6.0;
+const GROUP_PAD: f32 = 3.0;
+const GROUP_BAND: f32 = 4.0;
 /// The marks on the scale between fader and meters, in dB.
 const MARKS: [f32; 6] = [6.0, 0.0, -6.0, -12.0, -24.0, -48.0];
 
@@ -32,26 +38,41 @@ pub fn db_text(gain: f32) -> String {
     if gain < 1e-4 { "-inf dB".into() } else { format!("{:+.1} dB", 20.0 * gain.log10()) }
 }
 
-/// The strips in their sections: the instruments, by number; the effects,
-/// chain by chain (the instruments' in their order, then the tracks', the
-/// send tracks' and the master's); and the send tracks as they are
-/// listed. Sends have no strips: their amounts say how loud they send.
-fn sections(app: &App) -> [(&'static str, &'static str, Vec<u8>); 3] {
+/// One chain's strips, side by side in a frame of its color: what starts
+/// it, an instrument or a send track, then its effects when they are
+/// shown. A track's chain and the master's have only their effects here.
+struct Group {
+    head: Option<u8>,
+    effects: Vec<u8>,
+    color: Color32,
+}
+
+/// The chains: the instruments', by number, the tracks', the send
+/// tracks' as they are listed, and the master's effects, beside its strip.
+/// Sends have no strips: their amounts say how loud they send.
+fn groups(app: &App, show_effects: bool) -> Vec<Group> {
     let p = &app.project;
+    let strips = |ids: &[u8]| -> Vec<u8> {
+        let shown = ids.iter().filter(|&&e| p.module(e).is_some_and(|m| m.kind != ModuleKind::Send));
+        if show_effects { shown.copied().collect() } else { Vec::new() }
+    };
+    let module = |id: u8| -> Option<Group> {
+        let m = p.module(id)?;
+        Some(Group { head: Some(id), effects: strips(&p.chain(id).effects), color: modules::module_color(m) })
+    };
     let mut instruments: Vec<u8> =
         (p.modules.iter()).filter(|m| m.kind.in_instrument_list() && m.kind.makes_sound()).map(|m| m.id).collect();
     instruments.sort();
-    let mut effects: Vec<u8> = instruments.iter().flat_map(|&i| p.chain(i).effects).collect();
-    effects.extend(p.tracks.iter().flat_map(|t| t.effects.iter().copied()));
-    effects.extend(p.sends.iter().flat_map(|s| s.effects.iter().copied()));
-    effects.extend(&p.master);
-    effects.retain(|&e| p.module(e).is_some_and(|m| m.kind != ModuleKind::Send));
-    let sends = p.sends.iter().map(|s| s.module).collect();
-    [
-        ("INSTRUMENTS", "What each instrument plays, before its effects", instruments),
-        ("EFFECTS", "Each effect's output, chain by chain", effects),
-        ("SEND TRACKS", "What comes back from each send track, on its way to the master", sends),
-    ]
+    let mut groups: Vec<Group> = instruments.into_iter().filter_map(module).collect();
+    for t in 0..p.tracks.len() {
+        let color = super::pattern::track_color(p, t);
+        groups.push(Group { head: None, effects: strips(&p.tracks[t].effects), color });
+    }
+    groups.extend(p.sends.iter().filter_map(|s| module(s.module)));
+    let master = p.module(OUTPUT_ID).map_or(theme::FRAME_LINE, modules::module_color);
+    groups.push(Group { head: None, effects: strips(&p.master), color: master });
+    groups.retain(|g| g.head.is_some() || !g.effects.is_empty());
+    groups
 }
 
 /// The effects strip `id` lists: its chain's, for an instrument, a send
@@ -80,50 +101,63 @@ pub fn view(app: &mut App, ui: &mut egui::Ui) {
         });
     });
     ui.data_mut(|d| d.insert_temp(effects_id, show_effects));
-    let mut sections = sections(app);
-    if !show_effects {
-        sections[1].2.clear();
-    }
-    let shown: Vec<u8> = sections.iter().flat_map(|s| s.2.iter().copied()).collect();
+    let groups = groups(app, show_effects);
+    let count = groups.iter().map(|g| g.effects.len() + g.head.is_some() as usize).sum::<usize>();
     // Every strip lists as many effects as the longest chain, so that the
-    // faders line up, and gives up rows before the faders get short.
-    let longest = shown.iter().chain([&OUTPUT_ID]).map(|&id| devices(app, id).len()).max().unwrap_or(0);
+    // faders line up, and gives up rows before the faders get short; none
+    // when the effects have strips of their own beside it.
+    let heads = groups.iter().filter_map(|g| g.head).chain([OUTPUT_ID]);
+    let longest = if show_effects { 0 } else { heads.map(|id| devices(app, id).len()).max().unwrap_or(0) };
     let rows = longest.min(MAX_DEVICES).min(((ui.available_height() - 320.0) / DEVICE_H).max(0.0) as usize);
+    // Frames need room around the strips, kept around every chain so
+    // that they line up.
+    let pad = if show_effects { GROUP_PAD } else { 0.0 };
     // The master stays on the right, however far the rest scrolls.
     let master_w = STRIP_W + 14.0;
     ui.horizontal_top(|ui| {
         let h = ui.available_height();
         let w = (ui.available_width() - master_w).max(STRIP_W);
         // Narrower strips before scrolling, when there are many.
-        let gap = ui.spacing().item_spacing.x;
-        let gaps = shown.len() as f32 * gap + sections.iter().filter(|s| !s.2.is_empty()).count() as f32 * 10.0;
-        let strip_w = ((w - gaps) / shown.len().max(1) as f32).clamp(STRIP_MIN_W, STRIP_W);
+        let gaps = count as f32 * STRIP_GAP + groups.len() as f32 * (GROUP_GAP + 2.0 * pad);
+        let strip_w = ((w - gaps) / count.max(1) as f32).clamp(STRIP_MIN_W, STRIP_W);
         ui.allocate_ui(Vec2::new(w, h), |ui| {
             egui::ScrollArea::horizontal().auto_shrink(false).show(ui, |ui| {
                 ui.horizontal_top(|ui| {
-                    for (title, tip, ids) in sections {
-                        if ids.is_empty() {
-                            continue;
-                        }
-                        ui.vertical(|ui| {
-                            ui.label(RichText::new(title).small().color(theme::TEXT_WEAK)).on_hover_text(tip);
-                            ui.horizontal_top(|ui| {
-                                for id in ids {
-                                    strip(app, ui, id, strip_w, rows);
-                                }
-                            });
+                    ui.spacing_mut().item_spacing.x = GROUP_GAP;
+                    for g in groups {
+                        let framed = !g.effects.is_empty();
+                        group(ui, pad, framed.then_some(g.color), |ui| {
+                            for id in g.head.into_iter().chain(g.effects) {
+                                strip(app, ui, id, strip_w, rows);
+                            }
                         });
-                        ui.add_space(10.0);
                     }
                 });
             });
         });
         ui.separator();
-        ui.vertical(|ui| {
-            ui.label(RichText::new("MASTER").small().color(theme::TEXT_WEAK));
-            strip(app, ui, OUTPUT_ID, STRIP_W, rows);
-        });
+        group(ui, pad, None, |ui| strip(app, ui, OUTPUT_ID, STRIP_W, rows));
     });
+}
+
+/// A chain's strips, added by `add`, `pad` from its edges with a band
+/// above them: framed in `color`, if any, as one with effects' strips is.
+fn group(ui: &mut egui::Ui, pad: f32, color: Option<Color32>, add: impl FnOnce(&mut egui::Ui)) {
+    let band = if pad > 0.0 { GROUP_BAND } else { 0.0 };
+    let margin = egui::Margin { top: (pad + band) as i8, ..egui::Margin::same(pad as i8) };
+    let mut frame = egui::Frame::new().inner_margin(margin).corner_radius(4.0);
+    if let Some(color) = color {
+        frame = frame.fill(color.gamma_multiply(0.08)).stroke(Stroke::new(1.0, color.gamma_multiply(0.5)));
+    }
+    let resp = frame.show(ui, |ui| {
+        ui.spacing_mut().item_spacing.x = STRIP_GAP;
+        ui.horizontal_top(add);
+    });
+    if let Some(color) = color {
+        let r = resp.response.rect;
+        let band = Rect::from_min_size(r.min, Vec2::new(r.width(), band));
+        ui.painter().rect_filled(band, egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 }, color);
+    }
 }
 
 /// The effects of a strip's chain, `rows` high: each on its color, dull
@@ -244,9 +278,10 @@ fn strip(app: &mut App, ui: &mut egui::Ui, id: u8, w: f32, rows: usize) {
         (OUTPUT_ID, _) => "to Sound card".to_string(),
         _ if m.kind == ModuleKind::Return => "to Master".to_string(),
         _ if m.kind.is_effect() => match owner {
-            Some(Owner::Track(t)) => format!("in Track {:02}", t + 1),
+            // In a frame with what starts its chain it says what it is.
+            Some(Owner::Track(t)) => format!("in {}", app.project.track_name(t)),
             Some(Owner::Module(OUTPUT_ID)) => "in Master".to_string(),
-            Some(Owner::Module(o)) => format!("in {}", app.project.module(o).map_or("?", |m| m.name.as_str())),
+            Some(Owner::Module(_)) => m.kind.name().to_string(),
             None => "in no chain".to_string(),
         },
         (_, true) => "to nowhere".to_string(),
